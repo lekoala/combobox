@@ -7,13 +7,14 @@
   "packageManager": "bun@1.4.0",
   "scripts": {
     "dev": "node test/server.js",
-    "test": "bun run test:browser",
+    "test": "bun run test:unit && bun run test:browser",
+    "test:unit": "bun test test/unit",
     "test:browser": "playwright test",
     "test:browser:headed": "playwright test --headed",
-    "test:syntax": "node --check src/combobox.js && node --check src/combo-box.js",
+    "test:syntax": "node --check src/combobox.js && node --check src/combo-box.js && node --check src/helpers.js",
     "lint": "biome check src test playwright.config.js",
     "format": "biome format --write src test playwright.config.js",
-    "check": "bun run test:syntax && bun run lint && bun run test:browser"
+    "check": "bun run test:syntax && bun run lint && bun run test:unit && bun run test:browser"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",

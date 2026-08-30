@@ -19,6 +19,14 @@ Build a small, native-first combobox/filterable-select enhancer. Prefer browser/
 - Strings rendered by the core are text, not HTML. Rich renderers return DOM Nodes.
 - Value mutations dispatch native `input` then `change`, and do not fire them when the value did not change.
 - All `combobox:before*` events are synchronous and cancellable. Do not pretend DOM cancellation can await a modal; async guard/confirmation semantics must be designed explicitly.
+- `guards` distinguish `false` from a rejection. `false` is a voluntary refusal and mutates nothing. A rejected promise is an application error: surface it to the programmatic caller, and on user interaction at least a generic error path/documentation. A user cancelling a confirmation dialog must resolve `false`, not reject.
+- Tokenized/separator creation is strictly sequential: per token, existing → select, else `canCreate` → guard → create → select, then the next token. Never `Promise.all` a batch. `maxItems` is re-evaluated between tokens. A trailing incomplete token stays in the input.
+- `maxOptions` is a rendering cap only. `results.length` may be 500 with `maxOptions: 20`; at most 20 options render. `0` means no cap. `loadMore()` may enrich the result store but must never bypass `maxOptions`; a pagination UI is a separate concept.
+- Canonical options are `<combo-box>` attributes (e.g. `separators`, `max-options`, `create-on-blur`, `label-field`, `value-field`, `close-on-select`, `autoselect-first`). Do not add new `data-*` attributes as official API; `data-separator` may live on the source only as legacy migration compatibility.
+- `createOnBlur` means actually leaving the combobox. A blur caused by internal interaction (picker click, adornment action, chip removal, clear) must never create input. IME composition (`isComposing`) also blocks blur-creation.
+- `maxItems` never corrects pre-existing native state at init/refresh. Six selected options with `max-items="5"` keep all six; the cap only blocks future additions. This matters for server-rendered content and form reset.
+- `labelField`/`valueField` map data objects only; real `<option>` elements are already canonical `{ value, label }` and are not reinterpreted.
+- No core option auto-injects a clear button. A clear affordance is authored by the application and calls `clear()`.
 
 ## Progressive enhancement
 
@@ -70,9 +78,12 @@ Lifecycle: `init`, `getInstance`, `getOrCreateInstance`, `show`, `hide`, `dispos
 ```bash
 bun install
 bun run lint
+bun run test:unit
 bun run test:browser
 bun run check
 ```
+
+`check` = syntax + lint + unit + browser.
 
 The demo can also be opened directly from `demo/index.html`.
 

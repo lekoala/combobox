@@ -29,21 +29,21 @@ The wrapper owns only lifecycle (upgrade/dispose); the native source never chang
 | `allowNew` | Rename | `create` |
 | `showAllSuggestions` | Simplify | matching/filter hook; empty query naturally shows source |
 | badge/chip styling options | Drop from JS core | CSS/render skin |
-| `allowClear` | Keep capability | `clear()`; optional clear UI later |
+| `allowClear` | Keep capability | `clear()`; the clear affordance is application-authored and calls `clear()` — no core option auto-injects a clear button |
 | `selected` config | Prefer native | selected `<option>`; programmatic `select()` |
 | `regex` | Redesign | `createFilter()` |
-| `separator` | Keep, redesign | `separators` + tokenizer seam; P0 implementation |
+| `separator` | Keep, redesigned | `separators` + `tokenize` seam; pipe-delimited attribute, full-string separators, sequential token consumption (implemented) |
 | `max` | Keep | `maxItems` |
 | `placeholder` | Keep | `placeholder` / native placeholder option |
 | `showDropIcon` | Skin | CSS/markup decision |
-| `keepOpen` | Keep behavior | likely `closeOnSelect` option; P0 |
-| `allowSame` | Drop/clarify | value identity must be unambiguous; duplicate labels are allowed |
-| `addOnBlur` | Consider | `createOnBlur`; P1 unless real usage requires P0 |
-| `showDisabled` | Default behavior decision | disabled results may be visible but never selectable |
+| `keepOpen` | Keep behavior | `closeOnSelect`; default single closes / multiple stays open (implemented) |
+| `allowSame` | Drop/clarify | value identity must be unambiguous (`#selectItem` resolves by value); duplicate labels are allowed |
+| `addOnBlur` | Consider | `createOnBlur` (implemented); means a real leave — internal blur and IME composition never create |
+| `showDisabled` | Default behavior decision | disabled results stay visible but are never selectable; a selected-but-disabled option keeps its chip without a remove button |
 | `hideNativeValidation` | Drop | preserve native validation instead |
 | `suggestionsThreshold` | Rename | `minChars` |
-| `maximumItems` (visible results) | Keep separately | `maxOptions`; P0 API decision |
-| `autoselectFirst` | Default behavior | first enabled result active; option only if needed |
+| `maximumItems` (visible results) | Keep separately | `maxOptions` (implemented): rendering cap only, never bypassed by `loadMore()` |
+| `autoselectFirst` | Divergence (documented) | default `false` (select-first requires ArrowDown); legacy default was `true` |
 | `updateOnSelect` | Mostly drop | select filter and form value are intentionally separate |
 | `highlightTyped` | Renderer/helper | not core state |
 | `fullWidth` | Drop | CSS Anchor sizing |
@@ -52,16 +52,16 @@ The wrapper owns only lifecycle (upgrade/dispose); the native source never chang
 | `startsWith` | Keep | `match: "startswith"` |
 | `singleBadge` | Drop | renderer/skin |
 | `activeClasses` | Drop | component CSS/state attributes |
-| `labelField`, `valueField` | Normalize items | canonical `{value,label}`; adapter/helper can map APIs |
+| `labelField`, `valueField` | Keep, narrowed | map data objects only; real `<option>` elements are never reinterpreted (implemented) |
 | `searchFields` | Keep | `searchFields` |
 | `queryParam`, `server*`, `fetchOptions`, `liveServer`, `noCache` | Drop transport DSL | application-owned `load()` |
 | `allowHtml`, `sanitizer` | Replace | safe text by default; rich renderer returns Node |
 | `debounceTime` | Keep | `debounce` |
 | `notFoundMessage` | Keep | `noResults` + renderer |
 | callbacks | Prefer events/hooks | lifecycle CustomEvents + render/load/create hooks |
-| `confirmAdd`, `confirmClear` | **P0 design gap** | explicit async guard contract needed |
+| `confirmAdd`, `confirmClear` | Implemented as `guards` | explicit async guard contract: `false` refuses, rejected promises are app errors (`combobox:guarderror`) |
 | programmatic `addItem/setItem/removeItem/removeAll` | Keep | `select/remove/clear/addOption` |
-| paste multiple tags | Keep | P0 tokenizer/paste tests |
+| paste multiple tags | Keep | tokenizer/paste (implemented) |
 | reset/native change | Keep and strengthen | native source authoritative |
 
 ## `bootstrap5-autocomplete`

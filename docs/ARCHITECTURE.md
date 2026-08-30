@@ -208,18 +208,22 @@ Do not fire native value events when a user chooses the already-current value.
 
 ### Async confirmation caveat
 
-DOM event cancellation is synchronous. The old tags library supports Promise-based `confirmAdd` / `confirmClear`; a production v1 must explicitly decide an async guard API rather than pretending a cancellable CustomEvent can await a modal.
-
-Candidate direction:
+DOM event cancellation is synchronous. `guards` is the explicit async guard API:
 
 ```js
 guards: {
+  add: async (label, context) => boolean,      // creation of new items
   remove: async (item, context) => boolean,
-  clear: async (items, context) => boolean,
+  clear: async (context) => boolean,
 }
 ```
 
-This is a P0 design decision in the roadmap.
+Contract:
+
+- `false` is a voluntary refusal and mutates nothing.
+- A rejected promise is an application error: `combobox:guarderror` (`detail { guard, error }`) fires, the operation blocks, and cancellation by a user dialog must resolve `false` rather than reject.
+- Guards run before the (still synchronous, cancellable) `before*` events, and on user and programmatic paths alike.
+- `remove()`/`clear()` are async (`Promise<boolean>`) because of guard evaluation; `select` and creation follow the same guarded path for creation.
 
 ## 8. Selection order
 
@@ -281,6 +285,7 @@ Not allowed:
 Do not split merely for file count. Once tests are in place, likely boundaries are:
 
 ```text
+helpers.js            pure helpers: normalize/toItem, separators/tokenizer
 combobox.js           orchestration/public API
 source/input.js       input+datalist adapter
 source/select.js      select adapter/native selection
@@ -290,4 +295,4 @@ selection.js          chips/order/formdata
 events.js             event helpers/operation guards
 ```
 
-The current POC intentionally keeps these as visible sections in one file until the contracts stabilize.
+The current POC intentionally keeps these as visible sections in one file until the contracts stabilize; `helpers.js` is already extracted so the pure functions can be unit-tested without a DOM shim.

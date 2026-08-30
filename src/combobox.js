@@ -2,6 +2,18 @@ const instances = new WeakMap();
 let uid = 0;
 let openCombobox = null;
 
+// src/helpers.js must load first: it provides normalize, toItem and the
+// separator/tokenizer primitives via the global ComboboxHelpers namespace.
+const { normalize, toItem, parseSeparators, splitTokens } =
+  typeof window !== "undefined" && window.ComboboxHelpers
+    ? window.ComboboxHelpers
+    : {
+        normalize: (v) => String(v ?? "").toLocaleLowerCase(),
+        toItem: (r) => ({ value: r, label: r }),
+        parseSeparators: () => [],
+        splitTokens: () => ({ done: [], rest: String() }),
+      };
+
 const DEFAULTS = {
   create: false,
   allowEmptyOption: false,
@@ -17,22 +29,22 @@ const DEFAULTS = {
   shouldLoad: null,
   debounce: 200,
   createFilter: null,
-  maxItems: 0, // 0 = unlimited
+  maxItems: 0, // 0 = unlimited: cap on selected values, never on rendering
+  maxOptions: 0, // 0 = unlimited: cap on rendered options only
   separators: [],
-  tokenize: null, // future/custom tokenizer seam for paste and separators
+  tokenize: null, // custom tokenizer seam for paste and separators
+  closeOnSelect: undefined, // default: single closes, multiple stays open
+  createOnBlur: false,
+  autoselectFirst: false,
+  labelField: undefined,
+  valueField: undefined,
+  guards: {}, // async add/remove/clear guards
   selectionOrder: "source", // source | selected
   sort: null,
   score: null,
   filter: null,
   render: {},
 };
-
-function normalize(value) {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLocaleLowerCase();
-}
 
 function supportsModernCombobox() {
   return (
@@ -94,18 +106,6 @@ function setContent(element, content) {
   }
 }
 
-function toItem(raw) {
-  if (raw == null) return null;
-  if (typeof raw === "string" || typeof raw === "number") {
-    return { value: String(raw), label: String(raw) };
-  }
-  return {
-    ...raw,
-    value: String(raw.value ?? raw.id ?? raw.label ?? ""),
-    label: String(raw.label ?? raw.text ?? raw.value ?? raw.id ?? ""),
-  };
-}
-
 /**
  * Native-first combobox / filterable-select skeleton.
  *
@@ -162,6 +162,8 @@ class Combobox {
     this.id = ++uid;
     this.mode = options.mode === "fallback" || !Combobox.supported ? "fallback" : "enhanced";
     this.anchorName = `--combobox-${this.id}`;
+    this.suppressReopen = false;
+    this.composing = false;
 
     const attrCreate = element.hasAttribute("data-create");
     const attrPlaceholder = element.getAttribute("data-placeholder");
@@ -175,7 +177,10 @@ class Combobox {
       placeholder: attrPlaceholder || DEFAULTS.placeholder,
       match: attrMatch || proposedSearch || DEFAULTS.match,
       maxItems: Number(element.getAttribute("data-max") || 0),
-      separators: (element.getAttribute("data-separators") || "").split("").filter(Boolean),
+      // The legacy `data-separator` attribute lives on the source only and
+      // uses the pipe-delimited encoding; JS options and the <combo-box>
+      // `separators` attribute pass a real array instead.
+      separators: parseSeparators(element.getAttribute("data-separator")),
       ...options,
       render: {
         ...DEFAULTS.render,
@@ -264,6 +269,9 @@ class Combobox {
   }
 
   async #createFallbackOption(label) {
+    const guard = await this.#runGuard("add", { label });
+    if (!guard.ok) return null;
+
     const before = emit(
       this.source,
       "combobox:beforecreate",
@@ -282,7 +290,7 @@ class Combobox {
           fallback: true,
         });
         if (!result) return null;
-        created = toItem(result);
+        created = toItem(result, this.#fields());
       }
 
       let option = this.#findOption(created.value);
@@ -453,9 +461,23 @@ class Combobox {
     }));
   }
 
+  /** Map data objects to canonical items when label/value fields are set. */
+  #fields() {
+    const { labelField, valueField } = this.options;
+    return labelField || valueField ? { labelField, valueField } : null;
+  }
+
+  // maxOptions is a rendering cap only: the result store (filteredItems) may
+  // be large, but at most maxOptions options are ever rendered/navigated.
+  get visibleItems() {
+    return this.options.maxOptions > 0
+      ? this.filteredItems.slice(0, this.options.maxOptions)
+      : this.filteredItems;
+  }
+
   /** Set transient picker results without turning the select into a remote cache. */
   setResults(items) {
-    this.results = Array.from(items || [], toItem).filter(Boolean);
+    this.results = Array.from(items || [], (item) => toItem(item, this.#fields())).filter(Boolean);
     return this;
   }
 
@@ -469,9 +491,18 @@ class Combobox {
     return Array.from(this.source.options).find((option) => option.value === String(value)) || null;
   }
 
+  /** Match a token to an existing native option by value or label. */
+  #findCreateMatch(label) {
+    const lookup = normalize(label);
+    for (const item of this.#sourceItems()) {
+      if (normalize(item.value) === lookup || normalize(item.label) === lookup) return item;
+    }
+    return null;
+  }
+
   /** Replace the native catalogue explicitly. Prefer setResults() for remote search. */
   setOptions(items, { preserveSelected = this.isSelect } = {}) {
-    const normalized = Array.from(items || [], toItem).filter(Boolean);
+    const normalized = Array.from(items || [], (item) => toItem(item, this.#fields())).filter(Boolean);
 
     if (this.isSelect) {
       const preserved = preserveSelected
@@ -590,8 +621,29 @@ class Combobox {
 
     this.input.addEventListener(
       "input",
-      () => {
+      (event) => {
+        // Separator tokens are consumed as they complete (typing or paste).
+        // IME composition feeds search but never tokenizes/creates.
+        if (this.isMultiple && !event.isComposing && this.#separatorsActive()) {
+          void this.#handleTokenInput();
+          return;
+        }
         this.search(this.input.value, { show: true, reason: "input" });
+      },
+      { signal },
+    );
+
+    this.input.addEventListener(
+      "compositionstart",
+      () => {
+        this.composing = true;
+      },
+      { signal },
+    );
+    this.input.addEventListener(
+      "compositionend",
+      () => {
+        this.composing = false;
       },
       { signal },
     );
@@ -615,11 +667,36 @@ class Combobox {
     this.input.addEventListener(
       "blur",
       () => {
-        queueMicrotask(() => {
-          if (!this.isOpen()) return;
+        queueMicrotask(async () => {
           const active = document.activeElement;
-          if (active === this.input || this.popover.contains(active)) return;
-          this.hide();
+          // Blur caused by internal interaction (picker click, adornment,
+          // chip removal, clear) never closes and never blur-creates.
+          const stillInside =
+            active === this.input ||
+            (this.popover?.contains(active) ?? false) ||
+            (this.control && active && this.control.contains(active));
+          if (this.isOpen() && stillInside) return;
+
+          if (this.isOpen() || this.options.createOnBlur) {
+            if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing) {
+              const value = this.input.value;
+              this.suppressReopen = true;
+              try {
+                if (this.#separatorsActive()) {
+                  const result = await this.#processTokens(value, { final: true });
+                  if (result?.consumed) this.input.value = result.rest;
+                } else if (value.trim()) {
+                  this.input.value = "";
+                  await this.#createItem(value.trim());
+                }
+              } finally {
+                this.suppressReopen = false;
+              }
+              this.refresh();
+            }
+            if (!this.isMultiple) this.#syncSingleLabel();
+            this.hide();
+          }
         });
       },
       { signal },
@@ -697,9 +774,14 @@ class Combobox {
 
     if (event.key === "Enter" && this.isOpen()) {
       event.preventDefault();
-      const active = this.filteredItems[this.activeIndex];
+      if (event.isComposing) return;
+      if (this.isMultiple && this.#separatorsActive()) {
+        void this.#commitEnterTokens();
+        return;
+      }
+      const active = this.visibleItems[this.activeIndex];
       if (active) this.#selectItem(active);
-      else if (this.#canCreate(this.input.value)) this.#createItem(this.input.value.trim());
+      else if (this.#canCreate(this.input.value)) void this.#createItem(this.input.value.trim());
       return;
     }
 
@@ -726,7 +808,7 @@ class Combobox {
     ) {
       const selected = this.#selectedOptionsInOrder();
       const last = selected[selected.length - 1];
-      if (last && !last.disabled) this.remove(last.value);
+      if (last && !last.disabled) void this.remove(last.value);
     }
   }
 
@@ -914,7 +996,9 @@ class Combobox {
     }
 
     this.#renderList();
-    this.#setActive(this.filteredItems.findIndex((item) => !item.disabled));
+    this.#setActive(
+      this.options.autoselectFirst ? this.visibleItems.findIndex((item) => !item.disabled) : -1,
+    );
   }
 
   #matches(item, query, lookup) {
@@ -978,7 +1062,7 @@ class Combobox {
     }
 
     let previousGroup = null;
-    for (const [index, item] of this.filteredItems.entries()) {
+    for (const [index, item] of this.visibleItems.entries()) {
       if (item.group && item.group !== previousGroup) {
         const group = document.createElement("div");
         group.className = "cb-group";
@@ -1095,8 +1179,9 @@ class Combobox {
           "click",
           (event) => {
             event.stopPropagation();
-            this.remove(item.value);
-            this.input.focus();
+            void this.remove(item.value).then((removed) => {
+              if (removed) this.input.focus();
+            });
           },
           { signal: this.abortController.signal },
         );
@@ -1159,13 +1244,14 @@ class Combobox {
 
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      if (this.remove(item.value)) {
+      void this.remove(item.value).then((removed) => {
+        if (!removed) return;
         queueMicrotask(() => {
           const remaining = Array.from(this.chips.querySelectorAll(".cb-chip"));
           remaining[Math.min(index, remaining.length - 1)]?.focus();
           if (!remaining.length) this.input.focus();
         });
-      }
+      });
       return;
     }
 
@@ -1180,12 +1266,13 @@ class Combobox {
   /* ---------------------------------------------------------------------- */
 
   #moveActive(delta) {
-    if (!this.filteredItems.length) return;
+    const visible = this.visibleItems;
+    if (!visible.length) return;
 
-    let next = this.activeIndex;
-    for (let checked = 0; checked < this.filteredItems.length; checked++) {
-      next = (next + delta + this.filteredItems.length) % this.filteredItems.length;
-      if (!this.filteredItems[next].disabled) {
+    let next = this.activeIndex < 0 ? (delta > 0 ? -1 : 0) : this.activeIndex;
+    for (let checked = 0; checked < visible.length; checked++) {
+      next = (next + delta + visible.length) % visible.length;
+      if (!visible[next].disabled) {
         this.#setActive(next);
         return;
       }
@@ -1193,6 +1280,7 @@ class Combobox {
   }
 
   #setActive(index) {
+    if (index >= this.visibleItems.length) index = -1;
     this.activeIndex = index;
 
     for (const item of this.#sourceItems()) item.option?.removeAttribute("data-active-option");
@@ -1202,7 +1290,7 @@ class Combobox {
       option.toggleAttribute("data-active", active);
       if (active) {
         this.input.setAttribute("aria-activedescendant", option.id);
-        this.filteredItems[index]?.option?.setAttribute("data-active-option", "");
+        this.visibleItems[index]?.option?.setAttribute("data-active-option", "");
         option.scrollIntoView({ block: "nearest" });
       }
     }
@@ -1215,7 +1303,9 @@ class Combobox {
 
     let option = null;
     if (this.isSelect) {
-      option = item.option || this.#findOption(item.value);
+      // Value identity is authoritative: a duplicate label/value resolves to
+      // the same canonical option, never to a second selected <option>.
+      option = this.#findOption(item.value) || item.option;
       if (!option) option = this.addOption(item);
       if (!option || option.disabled) return false;
 
@@ -1254,13 +1344,15 @@ class Combobox {
         this.#rememberSelection(option.value);
         this.input.value = "";
         this.#commit();
-        this.search("", { show: true, reason: "select" });
+        if (this.suppressReopen) this.refresh();
+        else if (this.#closeOnSelect()) this.hide();
+        else this.search("", { show: true, reason: "select" });
       } else {
         this.source.value = option.value;
         this.selectionOrder = [option.value];
         this.input.value = item.label;
         this.#commit();
-        this.hide();
+        if (this.#closeOnSelect()) this.hide();
       }
     } else {
       this.source.value = item.value;
@@ -1274,6 +1366,18 @@ class Combobox {
 
   async #createItem(label) {
     if (!this.#canCreate(label)) return null;
+
+    const existing = this.#findCreateMatch(label);
+    if (existing) {
+      this.#selectItem(existing);
+      return existing.option ?? null;
+    }
+
+    // guards.add is about creating a brand-new item; existing matches are
+    // selected above without running it.
+    const guard = await this.#runGuard("add", { label });
+    if (!guard.ok) return null;
+
     const before = emit(
       this.source,
       "combobox:beforecreate",
@@ -1283,22 +1387,7 @@ class Combobox {
       },
       { cancelable: true },
     );
-    if (before.defaultPrevented) return;
-
-    const existing = Array.from(this.source.options).find(
-      (option) => normalize(option.value) === normalize(label) || normalize(option.text) === normalize(label),
-    );
-
-    if (existing) {
-      this.#selectItem({
-        value: existing.value,
-        label: existing.textContent.trim(),
-        disabled: existing.disabled,
-        selected: existing.selected,
-        option: existing,
-      });
-      return;
-    }
+    if (before.defaultPrevented) return null;
 
     let created = { value: label, label };
     if (typeof this.options.create === "function") {
@@ -1312,7 +1401,7 @@ class Combobox {
           input: this.input,
         });
         if (!result) return null;
-        created = toItem(result);
+        created = toItem(result, this.#fields());
       } catch (error) {
         if (error?.name !== "AbortError")
           emit(this.source, "combobox:createerror", { combobox: this, label, error });
@@ -1332,8 +1421,113 @@ class Combobox {
       item: { ...created, option, selected: true },
     });
 
-    if (this.isMultiple) this.search("", { show: true, reason: "create" });
-    else this.hide();
+    if (this.isMultiple) {
+      if (this.suppressReopen) this.refresh();
+      else if (this.#closeOnSelect()) this.hide();
+      else this.search("", { show: true, reason: "create" });
+    } else {
+      this.hide();
+    }
+    return option;
+  }
+
+  /**
+   * Run an async guard. `false` is a voluntary refusal (no mutation, no
+   * error). A rejected promise is an application error: a generic
+   * `combobox:guarderror` event is emitted and the operation is blocked.
+   */
+  async #runGuard(name, payload) {
+    const guard = this.options.guards?.[name];
+    if (typeof guard !== "function") return { ok: true };
+    try {
+      const result = await guard(payload, {
+        combobox: this,
+        source: this.source,
+        input: this.input,
+        signal: this.abortController.signal,
+      });
+      return { ok: result !== false, refused: result === false };
+    } catch (error) {
+      emit(this.source, "combobox:guarderror", { combobox: this, guard: name, error });
+      return { ok: false, refused: false, error };
+    }
+  }
+
+  #closeOnSelect() {
+    return this.options.closeOnSelect ?? !this.isMultiple;
+  }
+
+  #separatorsActive() {
+    return this.isMultiple && Array.isArray(this.options.separators) && this.options.separators.length > 0;
+  }
+
+  /** Resolve the input value into token entries. Honors the optional `tokenize` seam. */
+  #resolveTokens(value, final = false) {
+    const custom = this.options.tokenize;
+    if (typeof custom === "function") {
+      const tokens = custom(value, { combobox: this, source: this.source, input: this.input });
+      const entries = Array.isArray(tokens) ? tokens.map((text) => ({ text: String(text), sep: "" })) : [];
+      return { entries, rest: final ? "" : String(value ?? "") };
+    }
+
+    const { done, rest } = splitTokens(value, this.options.separators);
+    const entries = final && rest.trim() ? [...done, { text: rest.trim(), sep: "" }] : done;
+    return { entries, rest: final ? "" : rest };
+  }
+
+  /**
+   * Consume completed tokens sequentially. Never Promise.all a batch: each
+   * token runs existing -> guard -> create -> select in order, re-evaluating
+   * maxItems between tokens. On refusal/error/maxItems the unprocessed
+   * remainder stays in the input; a trailing incomplete token stays too.
+   */
+  async #processTokens(value, { final = false } = {}) {
+    if (!this.#separatorsActive()) return null;
+
+    const { entries, rest } = this.#resolveTokens(value, final);
+    if (!entries.length) return { consumed: false, rest };
+
+    let consumedLength = 0;
+    for (let index = 0; index < entries.length; index++) {
+      const entry = entries[index];
+      if (this.options.maxItems > 0 && this.source.selectedOptions.length >= this.options.maxItems) {
+        return { consumed: false, rest: value.slice(consumedLength) };
+      }
+      if (!(await this.#applyToken(entry.text))) {
+        return { consumed: false, rest: value.slice(consumedLength) };
+      }
+      consumedLength += entry.text.length + entry.sep.length;
+    }
+    return { consumed: true, rest: final ? "" : rest };
+  }
+
+  /** Apply one token: existing option wins, otherwise guarded creation. */
+  async #applyToken(text) {
+    const term = String(text ?? "").trim();
+    if (!term) return true;
+
+    const existing = this.#findCreateMatch(term);
+    if (existing) {
+      this.#selectItem(existing);
+      return true;
+    }
+    if (!this.#canCreate(term)) return false;
+    const created = await this.#createItem(term);
+    return created !== null;
+  }
+
+  async #handleTokenInput() {
+    const result = await this.#processTokens(this.input.value);
+    if (result?.consumed) this.input.value = result.rest;
+    this.search(this.input.value, { show: true, reason: "input" });
+  }
+
+  async #commitEnterTokens() {
+    const result = await this.#processTokens(this.input.value, { final: true });
+    if (result?.consumed) {
+      this.input.value = result.rest;
+      this.search("", { show: true, reason: "create" });
+    }
   }
 
   #dispatchNativeValueEvents() {
@@ -1353,7 +1547,7 @@ class Combobox {
 
   addOption(rawItem, { selected = false } = {}) {
     if (!this.isSelect) throw new TypeError("addOption() is only available for select-backed comboboxes");
-    const item = toItem(rawItem);
+    const item = toItem(rawItem, this.#fields());
     if (!item?.value) throw new TypeError("Option requires a value");
 
     let option = this.#findOption(item.value);
@@ -1385,7 +1579,7 @@ class Combobox {
     if (this.mode === "fallback" && this.isSelect) {
       const item =
         typeof itemOrValue === "object"
-          ? toItem(itemOrValue)
+          ? toItem(itemOrValue, this.#fields())
           : { value: String(itemOrValue), label: String(itemOrValue) };
       const existing = this.#findOption(item.value);
       const option = existing || this.addOption(item);
@@ -1400,7 +1594,7 @@ class Combobox {
       return true;
     }
 
-    let item = typeof itemOrValue === "object" ? toItem(itemOrValue) : null;
+    let item = typeof itemOrValue === "object" ? toItem(itemOrValue, this.#fields()) : null;
     if (!item) {
       const value = String(itemOrValue);
       item = this.#items().find((candidate) => candidate.value === value) ||
@@ -1409,7 +1603,7 @@ class Combobox {
     return this.#selectItem(item);
   }
 
-  remove(value) {
+  async remove(value) {
     if (!this.isSelect) return false;
     const option = this.#findOption(value);
     if (!option?.selected || option.disabled) return false;
@@ -1420,6 +1614,8 @@ class Combobox {
       selected: true,
       data: { ...option.dataset },
     };
+    const guard = await this.#runGuard("remove", { item });
+    if (!guard.ok) return false;
     const before = emit(this.source, "combobox:beforeremove", { combobox: this, item }, { cancelable: true });
     if (before.defaultPrevented) return false;
     option.selected = false;
@@ -1429,9 +1625,11 @@ class Combobox {
     return true;
   }
 
-  clear() {
+  async clear() {
     if (!this.isSelect) {
       if (!this.source.value) return false;
+      const guard = await this.#runGuard("clear", {});
+      if (!guard.ok) return false;
       const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
       if (before.defaultPrevented) return false;
       this.source.value = "";
@@ -1442,6 +1640,8 @@ class Combobox {
 
     const selected = Array.from(this.source.selectedOptions).filter((option) => !option.disabled);
     if (!selected.length) return false;
+    const guard = await this.#runGuard("clear", {});
+    if (!guard.ok) return false;
     const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
     if (before.defaultPrevented) return false;
     for (const option of selected) option.selected = false;

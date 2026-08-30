@@ -44,3 +44,21 @@
   font: .875rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
   white-space: pre-wrap;
 }
+
+.demo-reset {
+  justify-self: start;
+}
+
+.demo-badge {
+  color: #b8860b;
+}
+
+.demo-card button,
+.demo-card .demo-reset {
+  justify-self: start;
+  padding: .375rem .875rem;
+  border: 1px solid #ced4da;
+  border-radius: .5rem;
+  background: white;
+  cursor: pointer;
+}

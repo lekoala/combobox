@@ -191,6 +191,140 @@
       </section>
 
       <section class="demo-card">
+        <h2>11. Async guards (confirm add/remove/clear)</h2>
+        <p class="demo-note">
+          <code>guards</code> may be sync or async. <code>false</code> is a voluntary
+          refusal and mutates nothing; a rejected promise is an application error
+          surfaced as <code>combobox:guarderror</code>. A cancelled confirmation
+          resolves <code>false</code>, it does not reject. This widget also shows
+          separators + <code>create-on-blur</code>.
+        </p>
+
+        <label for="emails">Emails</label>
+        <combo-box id="email-widget" create placeholder="a@x.dev, b@x.dev" separators=",|" create-on-blur max-items="3">
+          <select id="emails" name="emails[]" multiple>
+            <option value="info@x.dev" selected>info@x.dev</option>
+            <option value="cto@x.dev">cto@x.dev</option>
+            <option value="ceo@x.dev">ceo@x.dev</option>
+          </select>
+        </combo-box>
+        <button type="button" id="clear-emails">Clear all (guarded)</button>
+        <output id="guard-status" class="demo-events">Waiting for actions…</output>
+      </section>
+
+      <section class="demo-card">
+        <h2>12. maxItems never mutilates server-rendered selection</h2>
+        <p class="demo-note">
+          The server shipped three selected options with <code>max-items="2"</code>.
+          All three stay selected and removable; the cap only blocks future
+          additions (important for server-rendered content and form reset).
+        </p>
+
+        <label for="overlimit">Priorities</label>
+        <combo-box max-items="2">
+          <select id="overlimit" name="overlimit[]" multiple>
+            <option value="1" selected>First</option>
+            <option value="2" selected>Second</option>
+            <option value="3" selected>Third</option>
+            <option value="4">Fourth</option>
+            <option value="5">Fifth</option>
+          </select>
+        </combo-box>
+      </section>
+
+      <section class="demo-card">
+        <h2>13. Disabled items at runtime</h2>
+        <p class="demo-note">
+          A selected-then-disabled option stays as a chip without a remove button.
+          Toggling <code>disabled</code> and calling <code>refresh()</code> re-renders.
+        </p>
+
+        <label for="fruit">Fruit</label>
+        <combo-box id="fruit-widget">
+          <select id="fruit" name="fruit[]" multiple>
+            <option value="apple" selected>Apple</option>
+            <option value="banana" selected disabled>Banana (disabled)</option>
+            <option value="cherry">Cherry</option>
+            <option value="kiwi">Kiwi</option>
+          </select>
+        </combo-box>
+        <button type="button" id="toggle-fruit-disabled">Toggle Banana disabled</button>
+      </section>
+
+      <section class="demo-card">
+        <h2>14. maxOptions is a rendering cap only</h2>
+        <p class="demo-note">
+          Six catalogue options but <code>max-options="3"</code>: at most three
+          options ever render or take keyboard navigation. The native catalogue
+          stays intact.
+        </p>
+
+        <label for="seasons">Seasons</label>
+        <combo-box max-options="3">
+          <select id="seasons" name="seasons" multiple>
+            <option value="spring">Spring</option>
+            <option value="summer">Summer</option>
+            <option value="autumn">Autumn</option>
+            <option value="winter">Winter</option>
+            <option value="monsoon">Monsoon</option>
+            <option value="dry">Dry season</option>
+          </select>
+        </combo-box>
+      </section>
+
+      <section class="demo-card">
+        <h2>15. Rich renderer returns DOM Nodes</h2>
+        <p class="demo-note">
+          Labels are text by default. A renderer may return a DOM <code>Node</code>
+          (here a ★ badge for favorites). Hostile markup in option data renders as
+          text, never HTML.
+        </p>
+
+        <label for="frameworks-rich">Frameworks</label>
+        <combo-box id="rich-widget">
+          <select id="frameworks-rich" name="frameworks-rich[]" multiple>
+            <option value="react" data-kind="favorite" selected>React</option>
+            <option value="vue">Vue</option>
+            <option value="b">b&lt;script&gt;alert(1)&lt;/script&gt;</option>
+            <option value="svelte" data-kind="favorite">Svelte</option>
+            <option value="solid">Solid</option>
+          </select>
+        </combo-box>
+      </section>
+
+      <section class="demo-card">
+        <h2>16. Clear affordance is application-authored</h2>
+        <p class="demo-note">
+          The core never auto-injects a clear button. The application places one
+          and calls <code>clear()</code>, with a cancellable <code>combobox:beforeclear</code>.
+        </p>
+
+        <label for="clearable">Clearable</label>
+        <combo-box placeholder="Pick some…">
+          <select id="clearable" name="clearable[]" multiple>
+            <option value="a" selected>A</option>
+            <option value="b" selected>B</option>
+            <option value="c">C</option>
+          </select>
+        </combo-box>
+        <button type="button" id="clear-btn">Clear selection</button>
+      </section>
+
+      <section class="demo-card">
+        <h2>17. labelField/valueField + searchFields</h2>
+        <p class="demo-note">
+          <code>label-field</code>/<code>value-field</code> map data objects to
+          canonical <code>{ value, label }</code>. Search matches any field in
+          <code>search-fields</code> (config) and the renderer shows extra columns.
+        </p>
+
+        <label for="city-picker">City</label>
+        <combo-box id="cities-widget" placeholder="Type a city…" label-field="city" value-field="city">
+          <select id="city-picker" name="cities"></select>
+        </combo-box>
+      </section>
+
+      <section class="demo-card">
         <h2>Event / extension log</h2>
         <p class="demo-note">
           The architecture exposes cancellable “before” events, including the
@@ -200,9 +334,11 @@
       </section>
 
       <button type="submit">Submit demo form</button>
+      <input type="reset" value="Reset demo form" class="demo-reset" />
     </form>
   </main>
 
+  <script src="../src/helpers.js"></script>
   <script src="../src/combobox.js"></script>
   <script src="../src/combo-box.js"></script>
   <script>
@@ -319,6 +455,79 @@
       },
     });
 
+    const demoStatus = (message) => {
+      document.querySelector("#guard-status").textContent = message;
+    };
+
+    const confirmDialog = (message) => {
+      const confirmed = window.confirm(message);
+      return Promise.resolve(confirmed);
+    };
+
+    document.getElementById("email-widget").configure({
+      createFilter(value) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+      },
+      guards: {
+        add({ label }, { combobox }) {
+          const exclusive =
+            (label === "ceo@x.dev" && combobox.getSelectedValues().includes("cto@x.dev")) ||
+            (label === "cto@x.dev" && combobox.getSelectedValues().includes("ceo@x.dev"));
+          if (exclusive) {
+            demoStatus("Cannot email both ceo and cto");
+            return false;
+          }
+          return confirmDialog(`Add ${label}?`);
+        },
+        remove({ item }) {
+          return confirmDialog(`Remove ${item.label}?`);
+        },
+        clear() {
+          return confirmDialog("Remove all emails?");
+        },
+      },
+    });
+    document.getElementById("clear-emails").addEventListener("click", () => {
+      void Combobox.getInstance(document.getElementById("emails")).clear();
+    });
+
+    document.getElementById("toggle-fruit-disabled").addEventListener("click", () => {
+      const select = document.getElementById("fruit");
+      const banana = select.querySelector('option[value="banana"]');
+      banana.toggleAttribute("disabled");
+      Combobox.getInstance(select).refresh();
+    });
+
+    document.getElementById("clear-btn").addEventListener("click", () => {
+      void Combobox.getInstance(document.getElementById("clearable")).clear();
+    });
+
+    document.getElementById("rich-widget").configure({
+      render: {
+        option(item, { selected }) {
+          const node = document.createElement("span");
+          node.append(document.createTextNode(item.label));
+          if (item.data.kind === "favorite") {
+            const badge = document.createElement("b");
+            badge.className = "demo-badge";
+            badge.textContent = "★";
+            node.append(badge);
+          }
+          return node;
+        },
+      },
+    });
+
+    const cityData = [
+      { state: "Texas", city: "Houstan" },
+      { state: "Texas", city: "San Antonio" },
+      { state: "California", city: "Los Angeles" },
+      { state: "California", city: "San Diego" },
+    ];
+    const citiesWidget = document.getElementById("cities-widget");
+    citiesWidget.configure({ searchFields: ["city", "state"] });
+    void citiesWidget.whenReady().then((combo) => combo.setOptions(cityData));
+
     const events = document.querySelector("#events");
     const log = [];
     const record = (name, event) => {
@@ -336,12 +545,13 @@
       wrapper.addEventListener("combobox:ready", (event) => record("combobox:ready", event));
     }
 
-    for (const source of document.querySelectorAll("[data-combobox]")) {
+    for (const source of document.querySelectorAll("[data-combobox], combo-box select, app-combobox select")) {
       for (const type of [
         "combobox:beforeopen", "combobox:open", "combobox:beforeclose", "combobox:close",
         "combobox:beforeload", "combobox:load", "combobox:loaderror",
         "combobox:beforeselect", "combobox:select",
         "combobox:beforecreate", "combobox:create", "combobox:createerror",
+        "combobox:guarderror",
         "combobox:beforeremove", "combobox:remove",
         "combobox:beforeclear", "combobox:clear",
         "combobox:beforereorder", "combobox:reorder",

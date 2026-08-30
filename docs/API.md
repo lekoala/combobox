@@ -57,13 +57,19 @@ Child lookup is **direct children only**: a source nested inside another element
 | `search` | `match` |
 | `min-chars` | `minChars` |
 | `max-items` | `maxItems` |
+| `max-options` | `maxOptions` |
 | `selection-order` | `selectionOrder` |
-| `separators` | `separators` (per character) |
+| `separators` | `separators` (pipe-delimited: `",|;"` ⇒ `[",", ";"]`) |
+| `create-on-blur` | `createOnBlur: true` |
+| `close-on-select` | `closeOnSelect: true` |
+| `autoselect-first` | `autoselectFirst: true` |
+| `label-field` | `labelField` |
+| `value-field` | `valueField` |
 | `load-on-empty` | `loadOnEmpty: true` |
 | `allow-empty-option` | `allowEmptyOption: true` |
 | `debounce` | `debounce` |
 
-A matching `data-*` attribute on the native source is supported too, because the source may be reused imperatively. Wrapper options (`_options`) take precedence over both.
+Boolean attributes accept `="false"` to turn off. The legacy `data-separator` attribute on the native source is supported for migration only; canonical separators live on `<combo-box separators="…">` or in JS. A matching `data-*` attribute on the native source is supported too, because the source may be reused imperatively. Wrapper options (`_options`) take precedence over both.
 
 ### Event
 
@@ -83,7 +89,16 @@ A matching `data-*` attribute on the native source is supported too, because the
 
   create: false,            // true | async function
   createFilter: null,
-  maxItems: 0,
+  createOnBlur: false,
+  maxItems: 0,              // selected-value cap; never mutilates init state
+  maxOptions: 0,            // rendering cap only; 0 = unlimited
+  separators: [],           // full separator strings (multiple select)
+  tokenize: null,           // custom tokenizer seam
+  closeOnSelect: undefined, // default: single true, multiple false
+  autoselectFirst: false,
+  labelField: undefined,
+  valueField: undefined,
+  guards: {},               // async { add, remove, clear }
 
   load: null,
   shouldLoad: null,
@@ -201,19 +216,76 @@ create: async (label, { signal }) => {
 }
 ```
 
+## Async guards
+
+`guards` gate *mutations*, returning a boolean (or a promise resolving to a boolean):
+
+```js
+guards: {
+  add: async (label, ctx) => confirm(`Add ${label}?`),   // creation (new items)
+  remove: async (item, ctx) => confirm(`Remove ${item.label}?`),
+  clear: async (ctx) => confirm("Clear all?"),
+}
+```
+
+`ctx = { combobox, source, input, signal }`.
+
+Contract:
+
+- `false` is a **voluntary refusal**: the operation is blocked and nothing mutates.
+- A **rejection is an application error**: `combobox:guarderror` (detail `{ guard, error }`) fires and the operation is blocked. Do not reject for a user cancelling a dialog — that must resolve `false`.
+- Guards run on both user and programmatic paths. `before` events still fire (synchronously, cancellable) only after a guard has passed.
+- `guards.add` applies to brand-new items only: an existing match is selected without running it.
+- `createOnBlur` means genuinely leaving the combobox. Blur caused by internal interaction (picker click, adornment, chip removal, clear) never creates, and IME composition also blocks it.
+
+## Separators / tokenization
+
+`separators` (multiple-select only) consumes completed tokens as they are typed or pasted:
+
+```js
+separators: [",", ";"],
+separators: parseSeparators(",|;"),
+```
+
+```html
+<combo-box create separators=",|;" create-on-blur>…</combo-box>
+```
+
+- Separators are **full strings**, matched longest-first (`",|;"` ⇒ `[",", ";"]`); the attribute form is pipe-delimited.
+- Tokens are processed strictly sequentially — `existing → guard → create → select`, never `Promise.all` — and `maxItems` is re-evaluated between tokens (`maxOptions` is unrelated).
+- A trailing incomplete token stays in the input.
+- `tokenize(value, ctx)` replaces the default splitter when the application needs quoting or other rules.
+- IME composition feeds search but never tokenizes or creates.
+
+## Item field mapping
+
+`labelField`/`valueField` map **data objects** to canonical items (`setResults`, `setOptions`, `select`, `create` results):
+
+```js
+combo.configure({ labelField: "name", valueField: "id", searchFields: ["id", "name", "sku"] });
+```
+
+Real `<option>` elements are already canonical `{ value, label }` and are never reinterpreted; an object that already carries `value`/`label` is likewise left untouched.
+
+## Result rendering cap
+
+`maxOptions` caps *displayed/navigable* options only. `results` may hold 500 items with `maxOptions: 20` — at most 20 render, and keyboard navigation stays inside that window. `0` means no cap. Remote `loadMore()` may enrich the result store but never bypasses the cap; a pagination affordance is a separate concept.
+
 ## Value operations
 
 ```js
 combo.select({ value: data.id, label: data.name });
 combo.select("existing-value");
-combo.remove("value");
-combo.clear();
+const removed = await combo.remove("value");  // boolean
+const cleared = await combo.clear();          // boolean
 combo.addOption(item, { selected: false });
 combo.getSelectedValues();
 combo.getSelectedItems();
 ```
 
 `select({value,label})` is the important external-create seam: if a select-backed option does not exist, the component materializes it, selects it, refreshes UI and emits native value events.
+
+`remove()` and `clear()` are async because they can await `guards`; they resolve `false` when refused (voluntary or guarded).
 
 ## Ordering
 
@@ -288,6 +360,7 @@ combobox:clear
 combobox:beforecreate  cancellable
 combobox:create
 combobox:createerror
+combobox:guarderror     detail { guard, error }
 ```
 
 ### Ordering
@@ -326,10 +399,17 @@ Do not return trusted raw HTML strings as an implicit rendering mode. If an appl
 
 ## P0 API questions still to settle
 
-- async confirmation/guards for remove/clear/select vs synchronous cancellable events;
+Resolved:
+
+- async guards for create/remove/clear: `guards: { add, remove, clear }` — `false` refuses, rejected promises surface via `combobox:guarderror`;
+- tokenizer: separators splitter + optional `tokenize` seam, sequential token consumption, IME-safe;
+- `maxOptions` (rendered) vs `maxItems` (selected): independent options;
+- `closeOnSelect` defaults (single closes, multiple stays open) and `autoselectFirst` (default `false`, divergence from `bootstrap5-tags` documented);
+- `labelField`/`valueField` data-object mapping.
+
+Still open:
+
 - exact `init(root, selector?)` signature for dynamic fragments;
-- tokenizer contract for separators, quoted values and paste;
-- max visible results (`maxOptions`) vs max selected values (`maxItems`);
 - whether `tabSelect` belongs in core and what default is safest;
 - keyboard reorder gesture/announcements;
 - optional automatic MutationObserver sync;

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Feature fixtures</title>
+</head>
+<body>
+  <form id="form">
+    <label for="tags">Tags</label>
+    <select id="tags" name="tags[]" multiple>
+      <option value="1" selected>Apple</option>
+      <option value="2">Banana</option>
+      <option value="3">Orange</option>
+    </select>
+
+    <label for="overlimit">Over-limit (server shipped 3 selected, max 2)</label>
+    <select id="overlimit" name="overlimit[]" multiple>
+      <option value="1" selected>One</option>
+      <option value="2" selected>Two</option>
+      <option value="3" selected>Three</option>
+      <option value="4">Four</option>
+    </select>
+
+    <label for="dupes">Duplicate values</label>
+    <select id="dupes" name="dupes[]" multiple>
+      <option value="same" selected>First label</option>
+      <option value="same">Second label (same value)</option>
+      <option value="other">Other</option>
+    </select>
+
+    <label for="capped">Capped results</label>
+    <select id="capped" name="capped">
+      <option value="">Choose</option>
+      <option value="1">One</option>
+      <option value="2">Two</option>
+      <option value="3">Three</option>
+      <option value="4">Four</option>
+    </select>
+  </form>
+
+  <script src="../../src/helpers.js"></script>
+  <script src="../../src/combobox.js"></script>
+  <script src="../../src/combo-box.js"></script>
+</body>
+</html>

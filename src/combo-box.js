@@ -15,8 +15,14 @@ class ComboBoxElement extends HTMLElement {
     "search",
     "min-chars",
     "max-items",
+    "max-options",
     "selection-order",
     "separators",
+    "create-on-blur",
+    "close-on-select",
+    "autoselect-first",
+    "label-field",
+    "value-field",
     "load-on-empty",
     "allow-empty-option",
     "debounce",
@@ -158,13 +164,30 @@ class ComboBoxElement extends HTMLElement {
   #resolvedOptions() {
     const attrs = {};
 
+    const parseSeparators =
+      typeof window !== "undefined" && window.ComboboxHelpers?.parseSeparators
+        ? window.ComboboxHelpers.parseSeparators
+        : (value) =>
+            String(value ?? "")
+              .split("|")
+              .filter(Boolean);
+
     if (this.hasAttribute("create")) attrs.create = true;
     if (this.hasAttribute("placeholder")) attrs.placeholder = this.getAttribute("placeholder");
     if (this.hasAttribute("search")) attrs.match = this.getAttribute("search");
     if (this.hasAttribute("min-chars")) attrs.minChars = Number(this.getAttribute("min-chars"));
     if (this.hasAttribute("max-items")) attrs.maxItems = Number(this.getAttribute("max-items"));
+    if (this.hasAttribute("max-options")) attrs.maxOptions = Number(this.getAttribute("max-options"));
     if (this.hasAttribute("selection-order")) attrs.selectionOrder = this.getAttribute("selection-order");
-    if (this.hasAttribute("separators")) attrs.separators = Array.from(this.getAttribute("separators"));
+    if (this.hasAttribute("separators")) attrs.separators = parseSeparators(this.getAttribute("separators"));
+    if (this.hasAttribute("create-on-blur"))
+      attrs.createOnBlur = this.getAttribute("create-on-blur") !== "false";
+    if (this.hasAttribute("close-on-select"))
+      attrs.closeOnSelect = this.getAttribute("close-on-select") !== "false";
+    if (this.hasAttribute("autoselect-first"))
+      attrs.autoselectFirst = this.getAttribute("autoselect-first") !== "false";
+    if (this.hasAttribute("label-field")) attrs.labelField = this.getAttribute("label-field");
+    if (this.hasAttribute("value-field")) attrs.valueField = this.getAttribute("value-field");
     if (this.hasAttribute("load-on-empty")) attrs.loadOnEmpty = true;
     if (this.hasAttribute("allow-empty-option")) attrs.allowEmptyOption = true;
     if (this.hasAttribute("debounce")) attrs.debounce = Number(this.getAttribute("debounce"));

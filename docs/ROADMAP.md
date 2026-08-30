@@ -4,11 +4,11 @@
 
 Before splitting/refactoring the POC:
 
-- [ ] decide async operation guards/confirmations (`remove`, `clear`, possibly `select/create`);
+- [x] decide async operation guards/confirmations (`guards: { add, remove, clear }`; `false` refuses, rejections surface as `combobox:guarderror`);
 - [ ] finalize dynamic `init(root, selector?)` API;
-- [ ] finalize tokenizer/separator contract, including quoted terms and paste;
-- [ ] distinguish `maxItems` (selected) from `maxOptions` (shown);
-- [ ] decide `closeOnSelect` defaults single vs multiple;
+- [x] finalize tokenizer/separator contract (`separators` full-string pipe-delimited, sequential token consumption, optional `tokenize` seam);
+- [x] distinguish `maxItems` (selected) from `maxOptions` (shown — rendering cap only);
+- [x] decide `closeOnSelect` defaults single vs multiple (single closes, multiple stays open);
 - [ ] decide Tab selection policy;
 - [ ] decide ordered-mode keyboard reorder gesture + live announcement;
 - [ ] decide optional automatic MutationObserver sync vs explicit `sync()` only;
@@ -21,13 +21,13 @@ No major architecture change should be needed for these.
 
 Extract only where tests justify the boundary:
 
-- item normalization;
-- matching/search fields/accent folding;
+- item normalization; ✅ done in `src/helpers.js`
+- matching/search fields/accent folding; ✅ done (`normalize`)
 - result scoring/sorting;
-- tokenizer;
+- tokenizer; ✅ done (`splitTokens`/`parseSeparators` + `tokenize` seam)
 - ordered selection model.
 
-Add fast unit tests for these pure functions.
+Add fast unit tests for these pure functions. ✅ `test/unit/helpers.test.js` (`bun run test:unit`); order helpers still pending extraction.
 
 ## Phase 2 — Harden native source adapters
 
@@ -62,13 +62,14 @@ Add fast unit tests for these pure functions.
 
 ## Phase 5 — Creation/tokenization
 
-- createFilter;
-- sync and async create;
-- create errors/aborts;
-- separators and paste batches;
-- duplicate label/value behavior;
-- maxItems interaction;
-- fallback create parity where cheap.
+- [x] createFilter;
+- [x] sync and async create;
+- [x] create errors/aborts;
+- [x] separators and paste batches (sequential, `maxItems` re-evaluated between tokens);
+- [x] duplicate label/value behavior (value identity is authoritative, `#selectItem` resolves by value);
+- [x] maxItems interaction (never mutilates pre-existing init state);
+- [x] fallback create parity (`guards.add` + `beforecreate` on the Add input);
+- [ ] async guards edge review (unhandled rejections from user-facing paths are already event-surfaced).
 
 ## Phase 6 — Ordered multiple selection
 

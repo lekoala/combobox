@@ -55,7 +55,7 @@ Requirements inherited from `bootstrap5-tags` and Select2/Tom Select:
 - creation can be cancelled/error cleanly;
 - create state is visible when no normal result matches;
 - basic fallback can still create an option through the cheap Add input;
-- separators/paste multiple values are a P0 parity item.
+- separators/paste multiple values are implemented (sequential token consumption, `maxItems` re-evaluated between tokens, trailing incomplete token stays in the input).
 
 Real validation example:
 
@@ -135,9 +135,31 @@ Core responsibility:
 combo.clear();
 ```
 
-with cancellation + native value events.
+with cancellation (async `guards.clear`) + native value events.
 
-Whether the UI places a “Clear all” link in the label, a close icon in the control, or an external button is a skin/application decision.
+The clear UI is application-authored (no core auto-injected clear button); it lives wherever the app wants — near the label, in the control wrapper or on an external button — and calls `clear()`.
+
+## UC8b — Guarded mutations (business rules + confirmations)
+
+Real application requirement: an email list must not combine `mr.x` and `ms.x`, and destructive actions need a confirmation dialog without blocking the renderer.
+
+```js
+guards: {
+  add: async (label, ctx) => {
+    if (exclusivePair(label)) return false;      // voluntary refusal
+    return confirmDialog(`Add ${label}?`);       // cancel resolves false
+  },
+  remove: async (item, ctx) => confirmDialog(`Remove ${item.label}?`),
+  clear: async (ctx) => confirmDialog("Clear all?"),
+}
+```
+
+Requirements:
+
+- `false` refuses and mutates nothing;
+- a rejected promise is an application error surfaced as `combobox:guarderror`, never silently treated as `false`;
+- `before*` events stay synchronous and fire only after the guard passes;
+- tokenized/pasted batches apply guards per token, in order.
 
 ## UC9 — Explicit selection order
 
