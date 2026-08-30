@@ -74,7 +74,7 @@ The wrapper owns only lifecycle (upgrade/dispose); the native source never chang
 | hidden input/value | Usually drop | if label != value, model it as select-backed combobox |
 | datalist source | Keep | native fallback + enhanced source |
 | clear control | Core API, external UI | `clear()` |
-| `tabSelect` | Decide P0 | keyboard policy |
+| `tabSelect` | Divergence (documented) | opt-in JS option `tabSelect`, default `false`: Tab keeps native focus traversal unless the option is enabled, and then only commits when a real commit is possible. Legacy default was `true`/selective. |
 | `ignoreEnter` | Decide through keyboard policy | avoid legacy keyCode behavior |
 | `fillIn` secondary action | Not core initially | rich renderer/app action if needed |
 | browser autocomplete hacks | Minimize | enhanced input `autocomplete=off`; restore on dispose |

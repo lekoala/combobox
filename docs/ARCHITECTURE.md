@@ -31,6 +31,8 @@ For a select this is the declared `<option>` / `<optgroup>` catalogue. For an in
 
 It represents durable source data, including labels, disabled state, optgroups and initial selections.
 
+External mutants are reconciled at an explicit `sync()` by default. The opt-in `observeSource` option adds an automatic, debounced MutationObserver (structural `<option>`/`<optgroup>` changes plus `selected`/`disabled` and source state attributes) that calls `sync()` once per batch while skipping the component's own mutations — a convenience that never replaces the explicit contract.
+
 ### Result store
 
 The current list of candidates shown by the picker. For local searches it can be derived from the native catalogue. For remote searches it is transient.
@@ -249,7 +251,8 @@ Picker:
 - Arrow Down/Up changes active option;
 - Enter selects active option or creates when eligible;
 - Escape closes;
-- disabled results are skipped.
+- disabled results are skipped;
+- Tab: native focus traversal by default; the opt-in `tabSelect` option makes Tab commit the active option or an eligible create like Enter, but only ever blocks default focus traversal when such a commit is actually possible. Picker never blocks Tab during IME composition.
 
 Multiple chips:
 
@@ -258,11 +261,10 @@ Multiple chips:
 - Home/End first/last;
 - Delete/Backspace removes focused chip;
 - Arrow Right from last returns to search;
-- Escape returns to search.
+- Escape returns to search;
+- Alt+Arrow Left/Right reorders a focused chip one position; Alt+Home/End jumps to first/last; the moved chip keeps focus and the live status region announces the new position.
 
-No virtual caret positions between chips.
-
-Accessible keyboard reordering still needs a final shortcut/design decision before ordered mode is considered production-complete.
+No virtual caret positions between chips. Reordering chip keyboard support lands with ordered-mode completion.
 
 ## 10. Fallback policy
 

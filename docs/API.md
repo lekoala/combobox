@@ -13,7 +13,23 @@ Combobox.getOrCreateInstance(element, options);
 Combobox.supported;
 ```
 
-`init()` should ultimately accept either a selector and optional scope or a root directly; dynamic-page use cases must remain easy and idempotent.
+`init()` is a discovery/creation API, not a reconfiguration API. It accepts:
+- a CSS selector, globally or scoped to a root;
+- a root `Element`/`Document`;
+- a list of source elements (`NodeList` or array).
+
+```js
+Combobox.init("select");
+Combobox.init("select", options);
+Combobox.init(root);                 // root.querySelectorAll("[data-combobox]")
+Combobox.init(root, options);
+Combobox.init(root, "select");
+Combobox.init(root, "select", options);
+Combobox.init([select1, input2], options);
+Combobox.init(nodeList, options);
+```
+
+An element that already has an instance is returned as-is and **never** reconfigured — `init(root, { maxItems: 3 })` followed by `init(root, { maxItems: 10 })` upgrades nothing twice and silently reconfigures nothing. Unsupported elements inside a collection are ignored without invalidating the call. `init()` returns the array of `Combobox` instances.
 
 ## Element and registration
 
@@ -96,6 +112,7 @@ Boolean attributes accept `="false"` to turn off. The legacy `data-separator` at
   tokenize: null,           // custom tokenizer seam
   closeOnSelect: undefined, // default: single true, multiple false
   autoselectFirst: false,
+  tabSelect: false,          // true: Tab commits the active option / eligible create like Enter
   labelField: undefined,
   valueField: undefined,
   guards: {},               // async { add, remove, clear }
@@ -164,7 +181,7 @@ Explicitly replaces the durable native source catalogue. This is intentionally d
 
 ### `sync()`
 
-Refresh from externally-mutated native DOM. **TODO:** decide whether an optional MutationObserver should call this automatically.
+Refresh from externally-mutated native DOM. The explicit `sync()` contract is the default. Opt-in automatic sync via `observeSource: true` (default `false`): a MutationObserver watches the source `<select>`/`<datalist>` for structural `<option>`/`<optgroup>` changes plus `selected`/`disabled` and source-level `required`/`disabled`/`readonly`/`multiple` attributes, debounces to a single `sync()` per batch, and skips refreshes caused by the component's own mutations. Even with `observeSource` on, `sync()` remains the explicit escape hatch for arbitrary mutations.
 
 ## Remote
 
@@ -299,7 +316,12 @@ combo.move("value", 0);
 
 No built-in drag/drop. Applications may wire any UI to `move()`.
 
-**TODO before ordered mode is production complete:** finalize a discoverable keyboard reorder gesture and screen-reader announcement strategy.
+In ordered mode, a focused chip supports a keyboard reorder gesture:
+
+- `Alt+ArrowLeft` / `Alt+ArrowRight` — move the chip one position;
+- `Alt+Home` / `Alt+End` — jump to first/last position;
+- the moved chip keeps focus, and the live status region announces its new position (`"<label> position N of M"`);
+- reordering emits `combobox:beforereorder` (cancellable) then `combobox:reorder`, and never mutates catalogue order.
 
 ## Picker/lifecycle
 
@@ -405,12 +427,9 @@ Resolved:
 - tokenizer: separators splitter + optional `tokenize` seam, sequential token consumption, IME-safe;
 - `maxOptions` (rendered) vs `maxItems` (selected): independent options;
 - `closeOnSelect` defaults (single closes, multiple stays open) and `autoselectFirst` (default `false`, divergence from `bootstrap5-tags` documented);
-- `labelField`/`valueField` data-object mapping.
-
-Still open:
-
-- exact `init(root, selector?)` signature for dynamic fragments;
-- whether `tabSelect` belongs in core and what default is safest;
-- keyboard reorder gesture/announcements;
-- optional automatic MutationObserver sync;
-- final ESM export shape (classic global files today; packaging deferred, see PROJECT_SETUP.md).
+- `labelField`/`valueField` data-object mapping;
+- `init(root, selector?, options?)`: type-dispatched overloads, discovery/creation only, idempotent (returned instance is never reconfigured);
+- `tabSelect`: JS option, default `false`; when enabled Tab commits like Enter and only `preventDefault()`s when a commit is possible; IME composition falls through to native Tab (divergence from `bootstrap5-autocomplete` documented);
+- ordered-mode keyboard reorder: `Alt+ArrowLeft/Right` and `Alt+Home/End` on a focused chip, status-region position announcement, implementation in Phase 6;
+- automatic DOM sync: opt-in `observeSource` (default `false`), debounced `sync()`, internal mutations suppressed, implementation in Phase 2;
+- ESM export shape: see PROJECT_SETUP.md — implementation in Phase 8.

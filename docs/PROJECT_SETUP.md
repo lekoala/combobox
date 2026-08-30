@@ -19,9 +19,17 @@ Working project identity is intentionally boring: repository `combobox`, npm pac
 
 The POC keeps `window.Combobox`, `window.ComboBoxElement`, and `window.defineCombobox` so `demo/index.html` works directly under `file://`. It uses two classic source files: the engine and the Custom Element wrapper.
 
-Before npm publication, convert the package entry to normal ESM and decide whether a separate global/browser build is worth shipping. Do not maintain two hand-written implementations.
+**Decision (Phase 0, implementation in Phase 8):** the package entry is ESM; the classic global files are a generated release artifact, never a hand-maintained second implementation.
 
-Candidate export shape after that decision:
+Final export contract:
+
+- `src/index.js` — ESM barrel: `export { Combobox }` (`default` too), `ComboBoxElement`, `defineCombobox`, plus the pure helpers (`normalize`, `toItem`, `parseSeparators`, `splitTokens`) from `src/helpers.js`.
+- `src/combobox.js` and `src/combo-box.js` switch to named exports; the `window.*` globals exist only in the generated global build.
+- A release-only global build (single-file `dist/combobox.js` exposing `window.Combobox` + `window.ComboBoxElement` + `window.defineCombobox` + `window.ComboboxHelpers`) keeps the `file://` demo and classic `<script>` consumers working without a server.
+- `./combobox.css` ships as a subpath export.
+- Types are generated from checked JSDoc; no TypeScript source/transpilation.
+
+Candidate `package.json` shape:
 
 ```json
 {
@@ -31,13 +39,12 @@ Candidate export shape after that decision:
       "types": "./types/combobox.d.ts",
       "import": "./src/index.js"
     },
-    "./combobox.css": "./src/combobox.css"
+    "./combobox.css": "./src/combobox.css",
+    "./dist/combobox.js": "./dist/combobox.js"
   },
   "sideEffects": ["*.css"]
 }
 ```
-
-Types can be generated from checked JSDoc if that remains sufficient; TypeScript source/transpilation is not required merely to publish types.
 
 ## Browser policy
 
@@ -61,8 +68,8 @@ Before v1, document the actual tested browser floor based on the feature gate an
 - [x] Playwright smoke suite scaffold.
 - [x] GitHub Actions starter workflow.
 - [x] working repo/npm/tag naming: `combobox` / `@lekoala/combobox` / `<combo-box>`.
-- [ ] freeze Phase 0 API questions.
-- [ ] convert the two POC globals to final ESM exports without changing the engine/wrapper split.
+- [x] freeze Phase 0 API questions.
+- [ ] convert the two POC globals to final ESM exports without changing the engine/wrapper split (Phase 8).
 - [ ] create generated types/checkJs setup.
 - [ ] implement full P0 browser-test matrix.
 - [ ] test current Chromium + Firefox + WebKit and document support policy.

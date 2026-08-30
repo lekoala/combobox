@@ -36,6 +36,7 @@ const DEFAULTS = {
   closeOnSelect: undefined, // default: single closes, multiple stays open
   createOnBlur: false,
   autoselectFirst: false,
+  tabSelect: false, // when true, Tab commits the active option like Enter
   labelField: undefined,
   valueField: undefined,
   guards: {}, // async add/remove/clear guards
@@ -122,10 +123,53 @@ function setContent(element, content) {
 class Combobox {
   static supported = supportsModernCombobox();
 
-  static init(selector = "[data-combobox]", options = {}) {
-    for (const element of document.querySelectorAll(selector)) {
-      Combobox.getOrCreateInstance(element, options);
+  /**
+   * Discover and enhance combobox sources. This is a discovery/creation API
+   * only: an element that already has an instance is returned as-is and never
+   * reconfigured with new options (idempotence is unambiguous).
+   *
+   * Valid shapes:
+   *   init("selector") / init("selector", options)
+   *   init(root) / init(root, options)
+   *   init(root, "selector") / init(root, "selector", options)
+   *   init([element, ...], options) / init(nodeList, options)
+   *
+   * A string root is a CSS selector, an Element/Document root is a scope, and
+   * any other iterable is treated as a list of source elements. Unsupported
+   * elements inside collections are ignored without invalidating the call.
+   * Returns the array of Combobox instances.
+   */
+  static init(rootOrSelector = document, selectorOrOptions = "[data-combobox]", maybeOptions = {}) {
+    const targets = [];
+    let options = {};
+
+    const isNode = (value) => value instanceof Node;
+    const isPlainObject = (value) => value !== null && typeof value === "object" && !isNode(value);
+
+    if (typeof rootOrSelector === "string") {
+      targets.push(...document.querySelectorAll(rootOrSelector));
+      options = isPlainObject(selectorOrOptions) ? selectorOrOptions : {};
+    } else if (isNode(rootOrSelector)) {
+      const root = rootOrSelector;
+      if (typeof selectorOrOptions === "string") {
+        targets.push(...root.querySelectorAll(selectorOrOptions));
+        options = maybeOptions;
+      } else {
+        targets.push(...root.querySelectorAll("[data-combobox]"));
+        options = isPlainObject(selectorOrOptions) ? selectorOrOptions : {};
+      }
+    } else {
+      targets.push(...Array.from(rootOrSelector ?? []));
+      options = isPlainObject(selectorOrOptions) ? selectorOrOptions : {};
     }
+
+    const instances = [];
+    for (const element of targets) {
+      if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement)) continue;
+      const instance = Combobox.getOrCreateInstance(element, options);
+      if (instance && !instances.includes(instance)) instances.push(instance);
+    }
+    return instances;
   }
 
   static getInstance(element) {
@@ -782,6 +826,31 @@ class Combobox {
       const active = this.visibleItems[this.activeIndex];
       if (active) this.#selectItem(active);
       else if (this.#canCreate(this.input.value)) void this.#createItem(this.input.value.trim());
+      return;
+    }
+
+    // tabSelect deals with an open picker, not with the open state itself.
+    // preventDefault() only fires when a commit is actually possible; otherwise
+    // Tab keeps its native focus-traversal behavior. IME composition is never a
+    // commit (this.composing mirrors the blur handler) and always falls through
+    // to native Tab.
+    if (event.key === "Tab" && this.options.tabSelect && this.isOpen()) {
+      if (event.isComposing || this.composing) return;
+      if (this.isMultiple && this.#separatorsActive() && this.input.value.trim()) {
+        event.preventDefault();
+        void this.#commitEnterTokens();
+        return;
+      }
+      const active = this.visibleItems[this.activeIndex];
+      if (active) {
+        event.preventDefault();
+        this.#selectItem(active);
+        return;
+      }
+      if (this.#canCreate(this.input.value)) {
+        event.preventDefault();
+        void this.#createItem(this.input.value.trim());
+      }
       return;
     }
 

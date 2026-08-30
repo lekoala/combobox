@@ -50,7 +50,7 @@ Do not use happy-dom/jsdom as a substitute for browser interaction tests.
 - [ ] datalist is detached in enhanced mode and exactly restored on dispose.
 - [ ] source tabindex/aria/classes restored on dispose.
 - [ ] repeated init/dispose does not duplicate listeners/DOM.
-- [ ] dynamic fragment initialization works with final scoped-init API.
+- [x] dynamic fragment initialization works with final scoped-init API (`init(root, selector)`, `init(root | [element, …])`, idempotence without reconfiguration).
 
 Reference lesson: Select2 DOM-integration suite exercises source mutation and update behavior; Tom Select interaction tests verify label focus and original option identity.
 
@@ -92,7 +92,7 @@ Tom Select interaction tests explicitly cover close-after-select variants, Escap
 - [ ] Enter create behavior only runs when eligible.
 - [ ] Escape closes without corrupting source value.
 - [ ] Home/End behavior decided/tested if implemented.
-- [ ] Tab behavior explicitly tested once policy is fixed.
+- [x] Tab behavior explicitly tested once policy is fixed (`tabSelect` option; default native traversal, opt-in commit, IME-safe).
 - [ ] label click focuses enhanced input.
 
 Select2 search-a11y tests are particularly useful for `aria-activedescendant` and `aria-controls` lifecycle; Tom Select tests cover arrows through optgroups.

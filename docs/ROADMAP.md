@@ -5,15 +5,15 @@
 Before splitting/refactoring the POC:
 
 - [x] decide async operation guards/confirmations (`guards: { add, remove, clear }`; `false` refuses, rejections surface as `combobox:guarderror`);
-- [ ] finalize dynamic `init(root, selector?)` API;
+- [x] finalize dynamic `init(root, selector?)` API — type-dispatched overloads, discovery/creation only, idempotent (`init("selector")`, `init(root, "selector")`, `init(root | [element, …])`); implemented;
 - [x] finalize tokenizer/separator contract (`separators` full-string pipe-delimited, sequential token consumption, optional `tokenize` seam);
 - [x] distinguish `maxItems` (selected) from `maxOptions` (shown — rendering cap only);
 - [x] decide `closeOnSelect` defaults single vs multiple (single closes, multiple stays open);
-- [ ] decide Tab selection policy;
-- [ ] decide ordered-mode keyboard reorder gesture + live announcement;
-- [ ] decide optional automatic MutationObserver sync vs explicit `sync()` only;
+- [x] decide Tab selection policy — JS option `tabSelect` (default `false`; when enabled Tab commits like Enter, and only ever `preventDefault()`s when a commit is actually possible); implemented;
+- [x] decide ordered-mode keyboard reorder gesture + live announcement — `Alt+ArrowLeft/Right` moves a focused chip, `Alt+Home/End` jumps to first/last, status region announces position; implementation lands in Phase 6;
+- [x] decide optional automatic MutationObserver sync — opt-in `observeSource` (default `false`), debounced single `sync()`, component mutations suppressed; implementation lands in Phase 2;
 - [x] decide package name and primary element (`@lekoala/combobox`, `<combo-box>`, explicit `defineCombobox()` registration);
-- [ ] decide ESM/export shape (classic global files today — see PROJECT_SETUP.md).
+- [x] decide ESM/export shape — ESM entry + default export, `./combobox.css` subpath, release-only global build for `file://`/classic scripts, JSDoc types; implementation lands in Phase 8.
 
 No major architecture change should be needed for these.
 
