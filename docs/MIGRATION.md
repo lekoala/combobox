@@ -57,7 +57,7 @@ The wrapper owns only lifecycle (upgrade/dispose); the native source never chang
 | `queryParam`, `server*`, `fetchOptions`, `liveServer`, `noCache` | Drop transport DSL | application-owned `load()` |
 | `allowHtml`, `sanitizer` | Replace | safe text by default; rich renderer returns Node |
 | `debounceTime` | Keep | `debounce` |
-| `notFoundMessage` | Keep | `noResults` + renderer |
+| `notFoundMessage` | Keep, grouped | `messages.noResults` (+ `render.noResults` override) |
 | callbacks | Prefer events/hooks | lifecycle CustomEvents + render/load/create hooks |
 | `confirmAdd`, `confirmClear` | Implemented as `guards` | explicit async guard contract: `false` refuses, rejected promises are app errors (`combobox:guarderror`) |
 | programmatic `addItem/setItem/removeItem/removeAll` | Keep | `select/remove/clear/addOption` |

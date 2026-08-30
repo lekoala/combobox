@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Remote loading fixtures</title>
+</head>
+<body>
+  <form id="remote-form">
+    <label for="remote">Remote (single)</label>
+    <select id="remote" name="remote">
+      <option value="">Choose</option>
+      <option value="local1">Local One</option>
+      <option value="local2">Local Two</option>
+    </select>
+
+    <label for="remote-multi">Remote (multiple)</label>
+    <select id="remote-multi" name="remote-multi[]" multiple>
+      <option value="mlocal" selected>Local Multi</option>
+    </select>
+
+    <label for="dep-country">Country</label>
+    <select id="dep-country" name="dep-country">
+      <option value="">Pick a country</option>
+      <option value="be">Belgium</option>
+      <option value="fr">France</option>
+    </select>
+
+    <label for="dep-city">City</label>
+    <select id="dep-city" name="dep-city">
+      <option value="">Choose a city</option>
+      <option value="brussels">Brussels (cached)</option>
+    </select>
+  </form>
+
+  <input id="remote-input" name="remote-input" list="remote-input-list">
+  <datalist id="remote-input-list">
+    <option value="Local Alpha"></option>
+  </datalist>
+
+  <button id="outside" type="button">outside</button>
+
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>

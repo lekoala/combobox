@@ -149,12 +149,38 @@
           File-friendly async mock. Remote results are transient and do not fill
           the native select; only a selected result becomes a native option.
           The loader receives <code>{ signal, cursor, source, input, combobox }</code>.
+          A failed load shows a <code>.cb-error</code> row (overridable via
+          <code>render.error</code>), never touches the selection, and is cleared
+          by the next search.
         </p>
 
         <label for="country">Country</label>
         <combo-box id="country-widget" min-chars="1" debounce="120" placeholder="Search countries…">
           <select id="country" name="country">
             <option value="">Choose a country</option>
+          </select>
+        </combo-box>
+      </section>
+
+      <section class="demo-card">
+        <h2>7. Dependent-field loader</h2>
+        <p class="demo-note">
+          The loader reads the sibling field live from its own context.
+          <code>shouldLoad</code> vetoes the request while the country is empty,
+          and switching countries refreshes results (stale results never linger).
+        </p>
+
+        <label for="dep-demo-country">Country</label>
+        <select id="dep-demo-country" name="dep-demo-country">
+          <option value="">Pick a country</option>
+          <option value="be">Belgium</option>
+          <option value="fr">France</option>
+        </select>
+
+        <label for="dep-demo-city">City</label>
+        <combo-box id="dep-demo-city-widget" min-chars="1" debounce="120" placeholder="Search cities…">
+          <select id="dep-demo-city" name="dep-demo-city">
+            <option value="">Choose a city</option>
           </select>
         </combo-box>
       </section>
@@ -428,6 +454,36 @@
       ];
 
       document.getElementById("languages-widget").configure(remoteConfig(languages));
+
+      const depCities = {
+        be: ["Brussels", "Antwerp", "Ghent", "Bruges"],
+        fr: ["Paris", "Lyon", "Marseille", "Lille"],
+      };
+      document.getElementById("dep-demo-city-widget").configure({
+        shouldLoad() {
+          return document.getElementById("dep-demo-country").value !== "";
+        },
+        load(query, { signal }) {
+          const country = document.getElementById("dep-demo-country").value;
+          return new Promise((resolve, reject) => {
+            const timer = setTimeout(() => {
+              resolve(
+                (depCities[country] ?? [])
+                  .filter((city) => city.toLowerCase().includes(query.toLowerCase()))
+                  .map((city) => ({ value: city.toLowerCase(), label: city })),
+              );
+            }, 180);
+            signal.addEventListener(
+              "abort",
+              () => {
+                clearTimeout(timer);
+                reject(new DOMException("Aborted", "AbortError"));
+              },
+              { once: true },
+            );
+          });
+        },
+      });
 
       const demoStatus = (message) => {
         document.querySelector("#guard-status").textContent = message;

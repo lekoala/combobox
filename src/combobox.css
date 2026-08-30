@@ -13,6 +13,7 @@
   --cb-option-active-bg: #0d6efd;
   --cb-option-selected-bg: #e9ecef;
   --cb-muted-color: #6c757d;
+  --cb-error-color: #dc3545;
   --cb-control-height: 2.75rem;
   --cb-option-min-height: 2.5rem;
 }
@@ -322,7 +323,7 @@
 }
 
 /* ------------------------------------------------------------------------- */
-/* Empty / loading / create states — treated as real picker rows             */
+/* Empty / loading / error / create states — treated as real picker rows     */
 /* ------------------------------------------------------------------------- */
 
 .cb-empty {
@@ -330,6 +331,10 @@
   align-items: center;
   color: var(--cb-muted-color);
   overflow-wrap: anywhere;
+}
+
+.cb-empty.cb-error {
+  color: var(--cb-error-color);
 }
 
 .cb-group {

@@ -65,13 +65,17 @@ Full ESM source with zero globals; behavioral suite stays on the source, the bun
 
 ## Phase 4 — Remote/result store
 
-- debounce + abort race tests;
-- transient results separate from catalogue;
-- select remote result materialization;
-- loading/error/no-results;
-- dependent field loader examples;
-- cursor/loadMore contract;
-- no automatic virtual scrolling.
+- [x] debounce + abort race tests;
+- [x] transient results separate from catalogue;
+- [x] select remote result materialization;
+- [x] loading/error/no-results (loading row, `.cb-error` state mirrors loading, no retry affordance — pagination/retry stay app-owned; coverage in `test/browser/remote.spec.js` + fixture `test/fixtures/remote.html`);
+- [x] dependent field loader examples (demo section 7 + browser coverage);
+- [x] cursor/loadMore contract (`{items,cursor}`, cursor passed to `load`, append-only, `maxOptions` never bypassed);
+- [x] no automatic virtual scrolling.
+
+## Phase 4.5 — Messages/i18n
+
+- [x] flat UI-text options grouped into a `messages` object (`noResults`, `loading`, `loadError`, `create`) with deep-ish merge; `createLabel` renamed to `messages.create`; `placeholder` stays top-level (structural input state) and `render` stays the separate DOM-representation seam; browser coverage for overrides.
 
 ## Phase 5 — Creation/tokenization
 

@@ -101,6 +101,12 @@ take precedence over both.
 ```js
 {
   placeholder: "Search…",
+  messages: {
+    noResults: "No results",
+    loading: "Loading…",
+    loadError: "Failed to load results",
+    create: (query) => `Create “${query}”`,
+  },
   minChars: 0,
   match: "includes",       // includes | startswith | pattern | function
   searchFields: ["label"],
@@ -135,11 +141,27 @@ take precedence over both.
     item: null,
     group: null,
     loading: null,
+    error: null,
     noResults: null,
     create: null,
   },
 }
 ```
+
+`messages` centralizes every string the component generates, so i18n is a single object:
+
+```js
+new Combobox(select, {
+  messages: {
+    noResults: "Aucun résultat",
+    loading: "Chargement…",
+    loadError: "Impossible de charger les résultats",
+    create: (query) => `Créer « ${query} »`,
+  },
+})
+```
+
+`placeholder` deliberately stays top-level: it maps to the `<combo-box placeholder="…">` attribute and is structural input state, not generated text. `render` stays separate from `messages` — messages are the accessible/bypassable text fallback, renderers return DOM.
 
 ### Deliberately not config options
 
@@ -217,6 +239,10 @@ load: async (query, {
 `shouldLoad(query, context)` is the cheap business guard. Example: do not hit an endpoint while a date-shaped query is incomplete.
 
 `loadMore()` is a cursor seam, not an infinite-scroll implementation.
+
+Remote/transient results never rewrite the native catalogue. Selecting a remote result materializes **that one** native option (`addOption`); unpublished results are dropped by `clearResults()`, a below-threshold local query, or `sync()`.
+
+A failed `load` (non-abort rejection) shows the same `.cb-empty` family as loading with a `cb-error` modifier (text from `messages.loadError`, overridable via `render.error(query, { error, combobox })`), keeps the selection intact, and emits `combobox:loaderror`. The error row is cleared by the next `load()` that runs or by a local query that clears the result store. There is deliberately no built-in retry affordance — retry/pagination is application-owned. Returns are `[item…]` or `{ items, cursor }`; `cursor` is stored in `combobox.nextCursor` and fed back into `load(query, { cursor })` by `loadMore()`, which appends results and never bypasses `maxOptions`.
 
 ## Creation
 
@@ -452,6 +478,18 @@ render: {
   option(item, state) {
     const row = document.createElement("span");
     row.textContent = item.label;
+    return row;
+  },
+}
+```
+
+State rows (`loading`, `error`, `noResults`, `create`) accept a string or a returned `Node`:
+
+```js
+render: {
+  error(query, { error, combobox }) {
+    const row = document.createElement("span");
+    row.textContent = `Couldn't load results (${error.message})`;
     return row;
   },
 }

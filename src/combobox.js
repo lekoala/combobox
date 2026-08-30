@@ -12,13 +12,20 @@ const instances = new WeakMap();
 let uid = 0;
 let openCombobox = null;
 
+// Generated UI text, centralized for i18n. `render` is the DOM-representation
+// seam and stays separate; behavior options are above it.
+const DEFAULT_MESSAGES = {
+  noResults: "No results",
+  loading: "Loading…",
+  loadError: "Failed to load results",
+  create: (query) => `Create “${query}”`,
+};
+
 const DEFAULTS = {
   create: false,
   allowEmptyOption: false,
   placeholder: "Search…",
-  noResults: "No results",
-  loading: "Loading…",
-  createLabel: (query) => `Create “${query}”`,
+  messages: DEFAULT_MESSAGES,
   match: "includes", // Open UI-aligned: includes | startswith | pattern | function
   searchFields: ["label"],
   minChars: 0,
@@ -242,6 +249,7 @@ export class Combobox {
     this.searchGeneration = 0;
     this.nextCursor = null;
     this.loading = false;
+    this.loadError = null;
     this.query = "";
     this.id = ++uid;
     this.mode = options.mode === "fallback" || !Combobox.supported ? "fallback" : "enhanced";
@@ -268,6 +276,10 @@ export class Combobox {
       // `separators` attribute pass a real array instead.
       separators: parseSeparators(element.getAttribute("data-separator")),
       ...options,
+      messages: {
+        ...DEFAULT_MESSAGES,
+        ...(options.messages || {}),
+      },
       render: {
         ...DEFAULTS.render,
         ...(options.render || {}),
@@ -591,6 +603,9 @@ export class Combobox {
 
   clearResults() {
     this.results = null;
+    // A failed load is scoped to the newest search: any later local query,
+    // successful load or explicit clear drops the stale error row.
+    this.loadError = null;
     return this;
   }
 
@@ -1168,6 +1183,7 @@ export class Combobox {
     this.loadController?.abort();
     this.loadController = new AbortController();
     const signal = this.loadController.signal;
+    this.loadError = null;
 
     if (debounce && Number(this.options.debounce) > 0) {
       try {
@@ -1220,12 +1236,15 @@ export class Combobox {
       });
     } catch (error) {
       if (signal.aborted || error?.name === "AbortError") return;
+      // The error row mirrors loading: it replaces the list for this query and
+      // is cleared by the next successful load or local search. Long-lived
+      // selection lives on the native source and is untouched by a failed load.
+      this.loadError = error;
       emit(this.source, "combobox:loaderror", {
         query,
         combobox: this,
         error,
       });
-      // TODO: production error renderer / retry affordance hook.
     } finally {
       if (!signal.aborted) this.loading = false;
     }
@@ -1327,6 +1346,11 @@ export class Combobox {
       return;
     }
 
+    if (this.loadError) {
+      this.#renderError();
+      return;
+    }
+
     let previousGroup = null;
     for (const [index, item] of this.visibleItems.entries()) {
       if (item.group && item.group !== previousGroup) {
@@ -1371,28 +1395,42 @@ export class Combobox {
         const rendered = this.options.render.create?.(query, { combobox: this });
         const createLabel = document.createElement("span");
         createLabel.className = "cb-option-label";
-        setContent(createLabel, rendered ?? this.options.createLabel(query));
+        setContent(createLabel, rendered ?? this.options.messages.create(query));
         create.append(createLabel);
         this.listbox.append(create);
       } else {
         const empty = document.createElement("div");
         empty.className = "cb-empty";
         const rendered = this.options.render.noResults?.(this.query, { combobox: this });
-        setContent(empty, rendered ?? this.options.noResults);
+        setContent(empty, rendered ?? this.options.messages.noResults);
         this.listbox.append(empty);
-        this.status.textContent = this.options.noResults;
+        this.status.textContent = this.options.messages.noResults;
       }
     }
   }
 
   #renderLoading() {
     this.listbox.replaceChildren();
+    // A loading/error row replaces the option list, so no row may stay active:
+    // the previous aria-activedescendant would point at removed DOM.
+    this.#setActive(-1);
     const loading = document.createElement("div");
     loading.className = "cb-empty cb-loading";
     const rendered = this.options.render.loading?.(this.query, { combobox: this });
-    setContent(loading, rendered ?? this.options.loading);
+    setContent(loading, rendered ?? this.options.messages.loading);
     this.listbox.append(loading);
-    this.status.textContent = this.options.loading;
+    this.status.textContent = this.options.messages.loading;
+  }
+
+  #renderError() {
+    this.listbox.replaceChildren();
+    this.#setActive(-1);
+    const error = document.createElement("div");
+    error.className = "cb-empty cb-error";
+    const rendered = this.options.render.error?.(this.query, { error: this.loadError, combobox: this });
+    setContent(error, rendered ?? this.options.messages.loadError);
+    this.listbox.append(error);
+    this.status.textContent = this.options.messages.loadError;
   }
 
   #renderChips() {

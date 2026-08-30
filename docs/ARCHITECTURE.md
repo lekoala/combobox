@@ -187,6 +187,8 @@ or future-ready:
 
 `loadMore()` is an API seam; the core does not implement virtual scrolling or automatically decide when to fetch another page.
 
+A failed non-abort load renders the same empty-row family as loading with a `cb-error` modifier (`loadError` text, `render.error` seam), emits `combobox:loaderror`, and leaves the native selection untouched. The error row *replaces* the list exactly like loading and is cleared by the next load or a local query — deliberately no retry affordance, so pagination/retry UX stays application-owned.
+
 ## 7. Events and native integration
 
 Two layers intentionally coexist:

@@ -174,19 +174,22 @@ This maps to the Open UI direction and also covers the focus-stability concern p
 
 ## J. Remote loading
 
-- [ ] minChars prevents load.
-- [ ] `shouldLoad` prevents load (partial-date guard case).
-- [ ] debounce coalesces quick input.
-- [ ] new query aborts old request before it can win race.
-- [ ] stale query cannot render after newer query.
-- [ ] loading state appears without flashing no-results.
-- [ ] load receives live source/input/application-readable state.
-- [ ] array result works.
-- [ ] `{items,cursor}` result works.
-- [ ] loadMore passes cursor and appends transient results.
-- [ ] load error leaves selection intact and emits loaderror.
-- [ ] aborted load does not emit loaderror.
-- [ ] clearing query drops stale remote result store as designed.
+Coverage lives in `test/browser/remote.spec.js` (`test/fixtures/remote.html`).
+
+- [x] minChars prevents load.
+- [x] `shouldLoad` prevents load (partial-date guard case).
+- [x] debounce coalesces quick input.
+- [x] new query aborts old request before it can win race.
+- [x] stale query cannot render after newer query (late-resolving loader that ignores the signal).
+- [x] loading state appears without flashing no-results.
+- [x] load receives live source/input/application-readable state (dependent-field test).
+- [x] array result works.
+- [x] `{items,cursor}` result works.
+- [x] loadMore passes cursor and appends transient results (`maxOptions` never bypassed).
+- [x] load error leaves selection intact and emits loaderror; `.cb-error` row mirrors `loading` and clears on the next load or a below-threshold local query.
+- [x] aborted load does not emit loaderror/load.
+- [x] clearing query drops stale remote result store as designed.
+- [x] transient results stay out of the native catalogue; selecting a result materializes exactly that native option (single and multiple).
 
 Tom Select `config-load.js` covers preload/loading/no-results and query churn; our AbortSignal design should be stricter about races.
 
