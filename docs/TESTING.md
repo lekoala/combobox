@@ -145,7 +145,7 @@ Tom Select's events suite specifically verifies `input` before `change`, single 
 - [ ] `searchFields` supports label and extra data fields.
 - [ ] custom match.
 - [ ] custom filter.
-- [ ] score ordering stable for equal scores.
+- [x] score ordering stable for equal scores (pure logic in `rankByScore`, unit-tested).
 - [ ] custom sort.
 - [ ] invalid pattern query fails safely.
 - [ ] backspacing from no-results restores options.
@@ -234,6 +234,8 @@ Select2's tokenizer suite includes the important “createTag returns null must 
 - [ ] external DOM selected option is reconciled predictably by sync.
 - [ ] FormData repeated entries follow explicit ordered mode.
 - [ ] keyboard reorder behavior and live announcement once finalized.
+
+The pure order model is covered by unit tests (`reconcileSelected` — order ∩ selection, native-order append for unknowns, never resurrecting deselected values; `moveValueInOrder` — clamped from/to, fresh array, no-op/unknown → `null`). Those unit tests do **not** replace the DOM/FormData integration proof above: chips rendering, catalogue order stability and ordered FormData stay as browser tests.
 
 Tom Select has a regression test that physically reorders selected options; our test should deliberately prove we **do not need to** mutate catalogue order.
 

@@ -23,11 +23,11 @@ Extract only where tests justify the boundary:
 
 - item normalization; ✅ done in `src/helpers.js`
 - matching/search fields/accent folding; ✅ done (`normalize`)
-- result scoring/sorting;
+- result scoring/sorting; ✅ done (`rankByScore` — descending score, `false`/`null` exclusion, `0` valid, tie-stable by input index; custom `sort` stays a comparator passthrough with no internal behavior to encapsulate)
 - tokenizer; ✅ done (`splitTokens`/`parseSeparators` + `tokenize` seam)
-- ordered selection model.
+- ordered selection model; ✅ done (`reconcileSelected` for order ∩ selection + native-order unknowns; `moveValueInOrder` for pure clamped reordering)
 
-Add fast unit tests for these pure functions. ✅ `test/unit/helpers.test.js` (`bun run test:unit`); order helpers still pending extraction.
+Add fast unit tests for these pure functions. ✅ `test/unit/helpers.test.js` (`bun run test:unit`): scoring/sorting and order helpers covered.
 
 ## Phase 2 — Harden native source adapters
 

@@ -4,7 +4,7 @@ let openCombobox = null;
 
 // src/helpers.js must load first: it provides normalize, toItem and the
 // separator/tokenizer primitives via the global ComboboxHelpers namespace.
-const { normalize, toItem, parseSeparators, splitTokens } =
+const { normalize, toItem, parseSeparators, splitTokens, rankByScore, reconcileSelected, moveValueInOrder } =
   typeof window !== "undefined" && window.ComboboxHelpers
     ? window.ComboboxHelpers
     : {
@@ -12,6 +12,33 @@ const { normalize, toItem, parseSeparators, splitTokens } =
         toItem: (r) => ({ value: r, label: r }),
         parseSeparators: () => [],
         splitTokens: () => ({ done: [], rest: String() }),
+        rankByScore: (items, score) =>
+          items
+            .map((item, index) => ({ item, index, score: score(item, index) }))
+            .filter((entry) => entry.score !== false && entry.score !== null)
+            .sort((a, b) => b.score - a.score || a.index - b.index)
+            .map((entry) => entry.item),
+        reconcileSelected: (values, order) => {
+          const remaining = new Set(values);
+          const result = [];
+          for (const value of order) {
+            if (remaining.has(value)) {
+              result.push(value);
+              remaining.delete(value);
+            }
+          }
+          result.push(...remaining);
+          return result;
+        },
+        moveValueInOrder: (list, value, index) => {
+          const order = [...list];
+          const from = order.indexOf(String(value));
+          if (from < 0) return null;
+          const to = Math.max(0, Math.min(Number(index), order.length - 1));
+          if (from === to) return null;
+          order.splice(to, 0, ...order.splice(from, 1));
+          return { order, from, to };
+        },
       };
 
 const DEFAULTS = {
@@ -1044,11 +1071,7 @@ class Combobox {
     }
 
     if (typeof this.options.score === "function") {
-      visible = visible
-        .map((item, index) => ({ item, index, score: this.options.score(item, query, { combobox: this }) }))
-        .filter((entry) => entry.score !== false && entry.score !== null)
-        .sort((a, b) => b.score - a.score || a.index - b.index)
-        .map((entry) => entry.item);
+      visible = rankByScore(visible, (item, _index) => this.options.score(item, query, { combobox: this }));
     }
 
     if (typeof this.options.sort === "function") {
@@ -1265,18 +1288,13 @@ class Combobox {
     const selected = Array.from(this.source.selectedOptions);
     if (this.options.selectionOrder !== "selected") return selected;
 
+    // Reconcile the remembered order against the actual selection. Values no
+    // longer selected are dropped; values selected by external DOM mutations
+    // and absent from the remembered order are appended in native order.
     const byValue = new Map(selected.map((option) => [option.value, option]));
-    const ordered = [];
-    for (const value of this.selectionOrder) {
-      const option = byValue.get(value);
-      if (option) {
-        ordered.push(option);
-        byValue.delete(value);
-      }
-    }
-    // External DOM changes may introduce selected values we have not seen yet.
-    ordered.push(...byValue.values());
-    return ordered;
+    return reconcileSelected(Array.from(byValue.keys()), this.selectionOrder).map((value) =>
+      byValue.get(value),
+    );
   }
 
   #rememberSelection(value) {
@@ -1740,10 +1758,10 @@ class Combobox {
     if (!this.isMultiple || this.options.selectionOrder !== "selected") return false;
     value = String(value);
     if (!this.#findOption(value)?.selected) return false;
-    const from = this.selectionOrder.indexOf(value);
-    if (from < 0) return false;
-    const to = Math.max(0, Math.min(Number(index), this.selectionOrder.length - 1));
-    if (from === to) return false;
+
+    const moved = moveValueInOrder(this.selectionOrder, value, index);
+    if (!moved) return false;
+    const { order: nextOrder, from, to } = moved;
 
     const before = emit(
       this.source,
@@ -1752,8 +1770,7 @@ class Combobox {
       { cancelable: true },
     );
     if (before.defaultPrevented) return false;
-    this.selectionOrder.splice(from, 1);
-    this.selectionOrder.splice(to, 0, value);
+    this.selectionOrder = nextOrder;
     this.#renderChips();
     emit(this.source, "combobox:reorder", {
       combobox: this,

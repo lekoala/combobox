@@ -96,5 +96,66 @@
     return result;
   }
 
-  root.ComboboxHelpers = { normalize, toItem, parseSeparators, splitTokens };
+  /**
+   * Rank items by a score function with a stable tiebreak on the original
+   * relative order. `score(item, index) => number | false | null`:
+   * - `false` and `null` exclude the item (no confidence / explicit exclusion);
+   * - `0` is a valid score and keeps the item, ranked last for its tie group.
+   *
+   * The `index` argument is the position in the input list at scoring time,
+   * mirroring how the engine feeds filtered items to the user's scorer.
+   */
+  function rankByScore(items, score) {
+    return items
+      .map((item, index) => ({ item, index, score: score(item, index) }))
+      .filter((entry) => entry.score !== false && entry.score !== null)
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .map((entry) => entry.item);
+  }
+
+  /**
+   * Reconcile the remembered selection order against the currently selected
+   * values. Outcome: every selected value that appears in `order` first in the
+   * remembered sequence, then any selected value unknown to `order` appended in
+   * native `values` order. A remembered value that is no longer selected is
+   * never kept. `values` is treated as the source of truth for membership.
+   */
+  function reconcileSelected(values, order) {
+    const remaining = new Set(values);
+    const result = [];
+    for (const value of order) {
+      if (remaining.has(value)) {
+        result.push(value);
+        remaining.delete(value);
+      }
+    }
+    result.push(...remaining);
+    return result;
+  }
+
+  /**
+   * Move `value` within `list` to `index` (clamped to valid bounds). Returns
+   * `{ order, from, to }` when a real move happens (a fresh array, the input is
+   * never mutated), or `null` when the value is unknown or already at the
+   * target position. `from`/`to` are the pre-move positions.
+   */
+  function moveValueInOrder(list, value, index) {
+    const order = [...list];
+    const from = order.indexOf(String(value));
+    if (from < 0) return null;
+    const to = Math.max(0, Math.min(Number(index), order.length - 1));
+    if (from === to) return null;
+    order.splice(to, 0, ...order.splice(from, 1));
+    return { order, from, to };
+  }
+
+  root.ComboboxHelpers = {
+    normalize,
+    toItem,
+    parseSeparators,
+    splitTokens,
+    rankByScore,
+    reconcileSelected,
+    moveValueInOrder,
+  };
 })(typeof window !== "undefined" ? window : globalThis);
