@@ -31,7 +31,7 @@ For a select this is the declared `<option>` / `<optgroup>` catalogue. For an in
 
 It represents durable source data, including labels, disabled state, optgroups and initial selections.
 
-External mutants are reconciled at an explicit `sync()` — the only implemented path. **Planned (Phase 2, not yet built):** the opt-in `observeSource` option adds an automatic, debounced MutationObserver (structural `<option>`/`<optgroup>` changes plus `selected`/`disabled` and source state attributes) that calls `sync()` once per batch while skipping the component's own mutations — a convenience that never replaces the explicit contract.
+External mutants are reconciled at an explicit `sync()` — the fastest, most predictable contract. The opt-in `observeSource` option (default `false`) adds an automatic, debounced MutationObserver that calls `sync()` once per batch: the select's `<option>`/`<optgroup>` structure plus `selected`/`disabled`/`required`/`readonly` attributes, and the detached `<datalist>`'s `<option>` set for inputs. Engine-driven mutations are suppressed by dropping the observer around the engine's own writes (the engine re-reads the source on its own refresh). `sync()` remains the explicit escape hatch for arbitrary mutations — in particular, programmatic `option.selected = …` is a live-property change MutationObserver cannot see, and `multiple` is fixed at init time.
 
 ### Result store
 

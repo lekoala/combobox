@@ -47,15 +47,15 @@ Do not use happy-dom/jsdom as a substitute for browser interaction tests.
 
 ## A. Initialization / lifecycle
 
-- [ ] valid `input[list]`, select single, select multiple initialize.
-- [ ] invalid element or input without datalist fails clearly.
-- [ ] `init()` is idempotent.
-- [ ] `getInstance/getOrCreateInstance` return stable instance.
-- [ ] explicit sibling filter input is reused, unhidden, unnamed, and restored on dispose.
-- [ ] generated filter input is removed on dispose.
-- [ ] datalist is detached in enhanced mode and exactly restored on dispose.
-- [ ] source tabindex/aria/classes restored on dispose.
-- [ ] repeated init/dispose does not duplicate listeners/DOM.
+- [x] valid `input[list]`, select single, select multiple initialize.
+- [x] invalid element or input without datalist fails clearly.
+- [x] `init()` is idempotent.
+- [x] `getInstance/getOrCreateInstance` return stable instance.
+- [x] explicit sibling filter input is reused, unhidden, unnamed, and restored on dispose.
+- [x] generated filter input is removed on dispose.
+- [x] datalist is detached in enhanced mode and exactly restored on dispose.
+- [x] source tabindex/aria/classes restored on dispose.
+- [x] repeated init/dispose does not duplicate listeners/DOM.
 - [x] dynamic fragment initialization works with final scoped-init API (`init(root, selector)`, `init(root | [element, …])`, idempotence without reconfiguration).
 
 Reference lesson: Select2 DOM-integration suite exercises source mutation and update behavior; Tom Select interaction tests verify label focus and original option identity.
@@ -99,7 +99,7 @@ Tom Select interaction tests explicitly cover close-after-select variants, Escap
 - [ ] Escape closes without corrupting source value.
 - [ ] Home/End behavior decided/tested if implemented.
 - [x] Tab behavior explicitly tested once policy is fixed (`tabSelect` option; default native traversal, opt-in commit, IME-safe).
-- [ ] label click focuses enhanced input.
+- [x] label click focuses enhanced input.
 
 Select2 search-a11y tests are particularly useful for `aria-activedescendant` and `aria-controls` lifecycle; Tom Select tests cover arrows through optgroups.
 
@@ -122,8 +122,8 @@ We explicitly do **not** test or implement Tom Select's virtual caret-between-it
 - [ ] single reselect of current value does not fire false native value events.
 - [ ] multiple select updates only intended options.
 - [ ] duplicate labels with distinct values select correct identity.
-- [ ] disabled option cannot select.
-- [ ] disabled optgroup child cannot select.
+- [x] disabled option cannot select.
+- [x] disabled optgroup child cannot select.
 - [ ] externally-created remote result materializes one native option when selected.
 - [ ] unselected remote results do not accumulate as options.
 - [ ] input-backed combobox leaves arbitrary text as source value.
@@ -247,32 +247,32 @@ Tom Select has a regression test that physically reorders selected options; our 
 
 ## O. Optgroups
 
-- [ ] headers appear only when group has visible results.
-- [ ] disabled optgroup makes descendants unselectable.
-- [ ] filtering removes empty headers.
+- [x] headers appear only when group has visible results.
+- [x] disabled optgroup makes descendants unselectable.
+- [x] filtering removes empty headers.
 - [ ] remote group values render without requiring native optgroups until selected.
 - [ ] group renderer is safe.
 
 ## P. DOM sync / dynamic updates
 
-- [ ] add unselected native option → selection unchanged.
-- [ ] add selected native option → enhanced selection updates.
-- [ ] remove unselected option → selection unchanged.
-- [ ] remove selected option → selection updates according to native browser behavior.
-- [ ] replace many options → one batched UI refresh if MutationObserver is implemented.
-- [ ] update disabled/required/read-only after init → refresh/sync reflects it.
-- [ ] syncing while search focused preserves focus/query unless contract says otherwise.
+- [x] add unselected native option → selection unchanged.
+- [x] add selected native option → enhanced selection updates.
+- [x] remove unselected option → selection unchanged.
+- [x] remove selected option → selection updates according to native browser behavior.
+- [x] replace many options → one batched UI refresh if MutationObserver is implemented.
+- [x] update disabled/required/read-only after init → refresh/sync reflects it.
+- [x] syncing while search focused preserves focus/query unless contract says otherwise.
 
 These mirror concrete Select2 `tests/integration/dom-changes.js` cases.
 
 ## Q. Forms / validation
 
-- [ ] required empty single invalid.
-- [ ] selecting real option makes required valid.
-- [ ] clearing makes it invalid again.
-- [ ] form `checkValidity()` tracks source, not generated input fiction.
-- [ ] invalid directs focus to interaction input.
-- [ ] form reset restores initial selections/input value/chips.
+- [x] required empty single invalid.
+- [x] selecting real option makes required valid.
+- [x] clearing makes it invalid again.
+- [x] form `checkValidity()` tracks source, not generated input fiction.
+- [x] invalid directs focus to interaction input.
+- [x] form reset restores initial selections/input value/chips.
 - [ ] source input `pattern` remains authoritative for free-form mode.
 - [ ] FormData contains source `name` once/multiple as expected.
 - [ ] generated search inputs never appear in FormData.
@@ -284,14 +284,14 @@ Tom Select validation tests cover required state transitions and input pattern v
 
 Automated browser assertions:
 
-- [ ] combobox role on focus input.
+- [x] combobox role on focus input.
 - [ ] listbox/option semantics.
 - [ ] aria-expanded toggles exactly with picker state.
-- [ ] aria-controls lifecycle is valid.
+- [x] aria-controls lifecycle is valid.
 - [ ] aria-activedescendant references existing active option and is removed when closed.
-- [ ] accessible name comes from label/aria-label.
-- [ ] aria-describedby propagated.
-- [ ] required/invalid/disabled state represented.
+- [x] accessible name comes from label/aria-label.
+- [x] aria-describedby propagated.
+- [x] required/invalid/disabled state represented.
 - [ ] status live region announces loading/no-results and selected/removal/reorder where necessary.
 
 Manual AT matrix before release:
@@ -333,7 +333,7 @@ These cover multiple historical issues from both existing libraries that should 
 No virtualization target, but avoid pathological work:
 
 - [ ] init dozens of controls without repeated layout reads.
-- [ ] 4k local options: one source mutation batch should not produce thousands of refreshes.
+- [x] 4k local options: one source mutation batch should not produce thousands of refreshes (batching proven with the `observeSource` debounce).
 - [ ] filtering avoids unnecessary DOM reconstruction when future profiling justifies optimization.
 - [ ] remote searches do not grow native select catalogue indefinitely.
 

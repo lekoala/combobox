@@ -185,7 +185,7 @@ Requirements:
 - type-dispatched `init(root, selector?, options?)` — implemented (`init(selector)`, `init(root, selector)`, `init(root | [element, …])`);
 - `dispose()` cleans all listeners/generated DOM and restores native controls;
 - `sync()` handles application-driven option changes;
-- optional MutationObserver must batch changes and preserve focus if adopted.
+- opt-in `observeSource` MutationObserver batches changes to one `sync()` and preserves focus/query while they land.
 
 ## UC11 — Native validation and reset
 

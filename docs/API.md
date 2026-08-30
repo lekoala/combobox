@@ -128,6 +128,7 @@ take precedence over both.
   loadOnEmpty: false,
 
   selectionOrder: "source", // source | selected
+  observeSource: false,     // opt-in MutationObserver -> debounced sync()
 
   render: {
     option: null,
@@ -186,14 +187,17 @@ Explicitly replaces the durable native source catalogue. This is intentionally d
 
 ### `sync()`
 
-Refresh from externally-mutated native DOM. This is the explicit contract and the only
-one implemented. **Planned (Phase 2, not yet implemented):** opt-in automatic sync via
-`observeSource: true` (default `false`) — a MutationObserver watching the source
-`<select>`/`<datalist>` for structural `<option>`/`<optgroup>` changes plus
-`selected`/`disabled` and source-level `required`/`disabled`/`readonly`/`multiple`
-attributes, debounced to a single `sync()` per batch, skipping refreshes caused by the
-component's own mutations. Even then, `sync()` remains the explicit escape hatch for
-arbitrary mutations. `observeSource` does not exist in `DEFAULTS` yet.
+Refresh from externally-mutated native DOM. `sync()` also drops transient `setResults()` results back to the source catalogue, so it remains the explicit escape hatch for arbitrary mutations.
+
+`observeSource: true` (default `false`) adds an opt-in, debounced MutationObserver that calls `sync()` once per batch. It watches:
+
+- the select's `<option>`/`<optgroup>` structure and its `selected`/`disabled`/`required`/`readonly` attributes;
+- the (detached) `<datalist>`'s `<option>` set for input-backed comboboxes.
+
+Engine-driven mutations are not observed (the engine drops/reconnects the observer around its own writes and refreshes from source anyway), and the search input keeps focus and its query during an external sync. Two platform boundaries apply:
+
+- `multiple` is deliberately **not** observed — the value model is fixed at init time; toggling it after init requires re-initialization;
+- a programmatic `option.selected = true/false` is a live-property change, not an attribute/structural mutation, so MutationObserver cannot see it — call `sync()` for programmatic selection changes. `observeSource` covers structural changes and attribute-level source state only.
 
 ## Remote
 
@@ -443,5 +447,5 @@ Resolved:
 - `init(root, selector?, options?)`: type-dispatched overloads, discovery/creation only, idempotent (returned instance is never reconfigured);
 - `tabSelect`: JS option, default `false`; when enabled Tab commits like Enter and only `preventDefault()`s when a commit is possible; IME composition falls through to native Tab (divergence from `bootstrap5-autocomplete` documented);
 - ordered-mode keyboard reorder: `Alt+ArrowLeft/Right` and `Alt+Home/End` on a focused chip, status-region position announcement, implementation in Phase 6;
-- automatic DOM sync: opt-in `observeSource` (default `false`), debounced `sync()`, internal mutations suppressed, implementation in Phase 2;
+- automatic DOM sync: opt-in `observeSource` (default `false`), debounced `sync()`, internal mutations suppressed (implemented in Phase 2; programmatic `.selected` changes and `multiple` toggles are intentionally out of the observer — see `sync()`);
 - ESM export shape: see PROJECT_SETUP.md — implementation in Phase 8.

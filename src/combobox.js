@@ -39,6 +39,7 @@ const DEFAULTS = {
   valueField: undefined,
   guards: {}, // async add/remove/clear guards
   selectionOrder: "source", // source | selected
+  observeSource: false, // opt-in MutationObserver -> debounced sync()
   sort: null,
   score: null,
   filter: null,
@@ -247,6 +248,8 @@ export class Combobox {
     this.anchorName = `--combobox-${this.id}`;
     this.suppressReopen = false;
     this.composing = false;
+    this._sourceObserver = null;
+    this._sourceSyncTimer = null;
 
     const attrCreate = element.hasAttribute("data-create");
     const attrPlaceholder = element.getAttribute("data-placeholder");
@@ -301,6 +304,7 @@ export class Combobox {
     this.#createPopover();
     this.#bind();
     this.refresh();
+    this.#watchSource();
   }
 
   /* ---------------------------------------------------------------------- */
@@ -491,17 +495,31 @@ export class Combobox {
   }
 
   #copyAccessibleName() {
+    const labels = [];
     if (this.source.id) {
-      this.boundLabels = Array.from(document.querySelectorAll(`label[for="${CSS.escape(this.source.id)}"]`));
-      const labelIds = this.boundLabels.map((label, index) => {
-        if (!label.id) {
-          label.id = `combobox-label-${this.id}-${index}`;
-          this.original.inventedLabels.push({ label, id: label.id });
-        }
-        return label.id;
-      });
-      if (labelIds.length) this.input.setAttribute("aria-labelledby", labelIds.join(" "));
+      labels.push(...document.querySelectorAll(`label[for="${CSS.escape(this.source.id)}"]`));
     }
+    // A label wrapping the select (no `for`) still names it accessibly. Clicks
+    // are already redirected to the filter input by the focus forwarding on the
+    // hidden select; here we propagate the name itself.
+    const wrapped = this.source.closest("label");
+    if (wrapped) labels.push(wrapped);
+
+    const seen = new Set();
+    this.boundLabels = labels.filter((label) => {
+      if (seen.has(label)) return false;
+      seen.add(label);
+      return true;
+    });
+
+    const labelIds = this.boundLabels.map((label, index) => {
+      if (!label.id) {
+        label.id = `combobox-label-${this.id}-${index}`;
+        this.original.inventedLabels.push({ label, id: label.id });
+      }
+      return label.id;
+    });
+    if (labelIds.length) this.input.setAttribute("aria-labelledby", labelIds.join(" "));
 
     if (!this.input.hasAttribute("aria-labelledby") && this.source.getAttribute("aria-label")) {
       this.input.setAttribute("aria-label", this.source.getAttribute("aria-label"));
@@ -647,6 +665,7 @@ export class Combobox {
 
     this.clearResults();
     if (this.mode === "enhanced") this.refresh();
+    this.#markEngineMutation();
     return this;
   }
 
@@ -655,10 +674,67 @@ export class Combobox {
     // External source mutations invalidate transient results unless the caller
     // explicitly sets them again. This keeps catalogue and result-store roles clear.
     this.clearResults();
-    // TODO production option: optional MutationObserver that calls sync() when
-    // <option>/<optgroup> children change. Keep it opt-in to avoid surprise work.
     this.refresh();
     return this;
+  }
+
+  /**
+   * Engine-driven native mutations are never observed. The engine drops the
+   * observer (discarding queued records and any pending debounced sync) right
+   * before it re-renders from the native source, and reconnects on the next
+   * microtask. A refresh after an engine mutation re-reads the source anyway,
+   * so any external change that landed in the same window is still reflected.
+   */
+  #markEngineMutation() {
+    if (this._sourceSyncTimer) {
+      clearTimeout(this._sourceSyncTimer);
+      this._sourceSyncTimer = null;
+    }
+    this._sourceObserver?.disconnect();
+    this._sourceObserver = null;
+    queueMicrotask(() => {
+      if (instances.get(this.source) === this && this.options.observeSource && this.mode === "enhanced") {
+        this.#watchSource();
+      }
+    });
+  }
+
+  /**
+   * Opt-in automatic source sync. `observeSource` watches the native catalogue
+   * (select's <option>/<optgroup> structure and selected/disabled/required/
+   * readonly state; the detached datalist's <option> set for inputs) and calls
+   * `sync()` once per debounced batch. `multiple` is deliberately not observed:
+   * the value model is fixed at init time.
+   */
+  #watchSource() {
+    if (!this.options.observeSource || this._sourceObserver) return;
+
+    const config = this.isSelect
+      ? {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["selected", "disabled", "required", "readonly"],
+        }
+      : {
+          childList: true,
+          attributes: true,
+          attributeFilter: ["value", "disabled", "label"],
+        };
+
+    this._sourceObserver = new MutationObserver(() => this.#scheduleSourceSync());
+    // For input+datalist the datalist is detached in enhanced mode; a
+    // MutationObserver can observe a detached node just fine.
+    this._sourceObserver.observe(this.isSelect ? this.source : this.datalist, config);
+  }
+
+  #scheduleSourceSync() {
+    clearTimeout(this._sourceSyncTimer);
+    this._sourceSyncTimer = setTimeout(() => {
+      this._sourceSyncTimer = null;
+      if (instances.get(this.source) !== this) return;
+      this.sync();
+    }, 50);
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1502,6 +1578,7 @@ export class Combobox {
     }
 
     emit(this.source, "combobox:select", { combobox: this, item });
+    this.#markEngineMutation();
     return true;
   }
 
@@ -1569,6 +1646,7 @@ export class Combobox {
     } else {
       this.hide();
     }
+    this.#markEngineMutation();
     return option;
   }
 
@@ -1769,6 +1847,8 @@ export class Combobox {
     this.#forgetSelection(option.value);
     this.#commit();
     emit(this.source, "combobox:remove", { combobox: this, item });
+    this.refresh();
+    this.#markEngineMutation();
     return true;
   }
 
@@ -1795,6 +1875,8 @@ export class Combobox {
     this.selectionOrder = this.selectionOrder.filter((value) => this.#findOption(value)?.selected);
     this.#commit();
     emit(this.source, "combobox:clear", { combobox: this });
+    this.refresh();
+    this.#markEngineMutation();
     return true;
   }
 
@@ -1907,6 +1989,12 @@ export class Combobox {
     instances.delete(this.source);
     this.loadController?.abort();
     this.abortController.abort();
+    this._sourceObserver?.disconnect();
+    this._sourceObserver = null;
+    if (this._sourceSyncTimer) {
+      clearTimeout(this._sourceSyncTimer);
+      this._sourceSyncTimer = null;
+    }
 
     if (this.mode === "fallback") {
       this.fallbackControl?.remove();

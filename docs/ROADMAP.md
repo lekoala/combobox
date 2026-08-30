@@ -11,7 +11,7 @@ Before splitting/refactoring the POC:
 - [x] decide `closeOnSelect` defaults single vs multiple (single closes, multiple stays open);
 - [x] decide Tab selection policy — JS option `tabSelect` (default `false`; when enabled Tab commits like Enter, and only ever `preventDefault()`s when a commit is actually possible); implemented;
 - [x] decide ordered-mode keyboard reorder gesture + live announcement — `Alt+ArrowLeft/Right` moves a focused chip, `Alt+Home/End` jumps to first/last, status region announces position; implementation lands in Phase 6;
-- [x] decide optional automatic MutationObserver sync — opt-in `observeSource` (default `false`), debounced single `sync()`, component mutations suppressed; implementation lands in Phase 2;
+- [x] decide optional automatic MutationObserver sync — opt-in `observeSource` (default `false`), debounced single `sync()`, component mutations suppressed; implemented in Phase 2;
 - [x] decide package name and primary element (`@lekoala/combobox`, `<combo-box>`, explicit `defineCombobox()` registration);
 - [x] decide ESM/export shape — ESM entry + default export, `./combobox.css` subpath, `./define` side-effect entry, zero globals, generated classic build; base landed in Phase 1.5, release polish (minification/types) stays in Phase 8.
 
@@ -44,13 +44,13 @@ Full ESM source with zero globals; behavioral suite stays on the source, the bun
 
 ## Phase 2 — Harden native source adapters
 
-- input+datalist detach/restore;
-- select single/multiple source mapping;
-- optgroup/disabled propagation;
-- required/invalid/reset;
-- label/description accessibility transfer;
-- external `sync()`;
-- source mutations while focused.
+- [x] input+datalist detach/restore (imperative + wrapper dispose, idempotent dispose, clear TypeError for a datalist-less input);
+- [x] select single/multiple source mapping (explicit filter input reuse/unnaming/restore, generated filter removed on dispose, single label sync);
+- [x] optgroup/disabled propagation (disabled option and disabled optgroup unselectable by mouse and keyboard, headers only for visible groups, filter removes empty headers);
+- [x] required/invalid/reset (native `checkValidity()`, `invalid` focus + `aria-invalid`, form reset restores label/value/chips, disabled/readonly reflected by refresh/sync);
+- [x] label/description accessibility transfer (for-label, wrapped label, `aria-label` fallback, `aria-describedby`, invented ids stripped on dispose, label click focuses the filter);
+- [x] external `sync()` (add/remove options, transient-results purge, ordered reconciliation, source state attributes);
+- [x] source mutations while focused (opt-in `observeSource`: one debounced `sync()` per batch, engine mutations suppressed, focus/query preserved, detached datalist observed).
 
 ## Phase 3 — Picker + keyboard
 

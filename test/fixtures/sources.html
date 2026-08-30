@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Source adapter fixtures</title>
+</head>
+<body>
+  <form id="source-form">
+    <label for="grouped">Grouped</label>
+    <select id="grouped" name="grouped">
+      <option value="">Choose</option>
+      <optgroup label="Fruits">
+        <option value="apple">Apple</option>
+        <option value="banana" disabled>Banana (disabled)</option>
+      </optgroup>
+      <optgroup label="Veggies" disabled>
+        <option value="carrot">Carrot</option>
+      </optgroup>
+    </select>
+
+    <label for="req">Required</label>
+    <select id="req" name="req" required>
+      <option value="">Choose...</option>
+      <option value="a">Alpha</option>
+      <option value="b">Beta</option>
+    </select>
+
+    <label for="ro">Readonly</label>
+    <select id="ro" name="ro" readonly>
+      <option value="1">One</option>
+    </select>
+
+    <label for="dis">Disabled</label>
+    <select id="dis" name="dis" disabled>
+      <option value="1" selected>One</option>
+      <option value="2">Two</option>
+    </select>
+
+    <label for="explicit">Explicit filter</label>
+    <input type="text" id="explicit-filter" hidden>
+    <select id="explicit" name="explicit" data-filter-input="explicit-filter">
+      <option value="">Choose</option>
+      <option value="x">X-Ray</option>
+      <option value="z">Zulu</option>
+    </select>
+
+    <input type="text" id="disc-filter" filter="disc" hidden>
+    <label for="disc" id="disc-real-label">Discovered filter</label>
+    <select id="disc" name="disc">
+      <option value="">Choose</option>
+      <option value="y">Yankee</option>
+    </select>
+
+    <label id="wrapped-wrap">
+      Wrapped
+      <select id="wrapped" name="wrapped">
+        <option value="">Choose</option>
+        <option value="w1">Wizard</option>
+      </select>
+    </label>
+
+    <select id="arialabel" name="arialabel" aria-label="Accessible label test">
+      <option value="">Choose</option>
+      <option value="al">Alfa</option>
+    </select>
+    <span id="desc-text" hidden>Helper description text</span>
+    <input type="text" id="described-filter" hidden>
+    <select id="described" name="described" data-filter-input="described-filter" aria-describedby="desc-text">
+      <option value="">Choose</option>
+      <option value="dd">Delta</option>
+    </select>
+
+    <label for="syncs">Sync-able</label>
+    <select id="syncs" name="syncs[]" multiple>
+      <option value="1" selected>One</option>
+      <option value="2">Two</option>
+      <option value="3">Three</option>
+    </select>
+
+    <input id="city2" name="city2" list="city2-list">
+    <datalist id="city2-list">
+      <option value="Brussels"></option>
+      <option value="Ghent"></option>
+    </datalist>
+  </form>
+
+  <input type="text" id="nolist" name="nolist" placeholder="no datalist">
+  <button id="outside" type="button">outside</button>
+
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>
