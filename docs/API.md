@@ -304,6 +304,30 @@ Real `<option>` elements are already canonical `{ value, label }` and are never 
 
 `maxOptions` caps *displayed/navigable* options only. `results` may hold 500 items with `maxOptions: 20` — at most 20 render, and keyboard navigation stays inside that window. `0` means no cap. Remote `loadMore()` may enrich the result store but never bypasses the cap; a pagination affordance is a separate concept.
 
+## Keyboard interaction
+
+Focus stays in the search input; the picker is driven entirely through it (`role=combobox` + `aria-activedescendant`). Options are non-focusable rows.
+
+### Picker
+
+| Key | Behavior |
+| --- | --- |
+| `ArrowDown` / `ArrowUp` | open the picker when closed; move the active option, wrapping within the rendered window and skipping `disabled` rows |
+| `Home` / `End` | jump to the first/last selectable option |
+| `PageDown` / `PageUp` | move the active option by a page (listbox viewport height ÷ row height), clamped to the first/last selectable option |
+| `Enter` | select the active option, or create an eligible entry when no option is active |
+| `Escape` | close the picker and clear `aria-activedescendant` |
+| `Tab` | native focus traversal by default; with `tabSelect: true` commits the active option / eligible create like Enter, and only `preventDefault()`s when a commit is actually possible |
+
+Navigation keys always operate on the filtered, rendered window (`maxOptions`), open a closed picker, skip `disabled` rows, and never land on one. IME composition never tokenizes/selects. `autoselectFirst: true` preselects the first selectable option after every filter.
+
+### Chips (multiple)
+
+- `ArrowLeft` on an empty search focuses the last chip; `Backspace` on an empty search removes the last selected entry through the normal guarded/`beforeremove` path.
+- On a focused chip: `ArrowLeft`/`ArrowRight` move between chips, `Home`/`End` jump to first/last, and moving past the last returns to the search input.
+- `Delete` / `Backspace` on a focused chip removes it and refocuses the neighbor (or the input when the list empties); `Escape` returns to the search input.
+- Arrow/handoff keys are physical: in RTL layouts they keep DOM-index semantics while the layout flows right-to-left via logical CSS (matching Select2/TomSelect and the legacy libraries).
+
 ## Value operations
 
 ```js

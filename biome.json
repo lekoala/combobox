@@ -12,6 +12,18 @@
       "recommended": true
     }
   },
+  "overrides": [
+    {
+      "includes": ["src/combobox.css"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noImportantStyles": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double",

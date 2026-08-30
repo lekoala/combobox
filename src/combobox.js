@@ -997,6 +997,26 @@ export class Combobox {
       return;
     }
 
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      if (!this.isOpen()) this.search(this.input.value, { show: true, reason: "keyboard" });
+      const last = this.visibleItems.length - 1;
+      const from = event.key === "End" ? last : 0;
+      const toward = event.key === "End" ? -1 : 1;
+      this.#setActive(this.#nearestSelectable(from, toward));
+      return;
+    }
+
+    if (event.key === "PageUp" || event.key === "PageDown") {
+      event.preventDefault();
+      if (!this.isOpen()) this.search(this.input.value, { show: true, reason: "keyboard" });
+      const down = event.key === "PageDown";
+      const base = this.activeIndex < 0 ? (down ? -1 : 0) : this.activeIndex;
+      const distance = base + (down ? this.#pageSize() : -this.#pageSize());
+      this.#setActive(this.#nearestSelectable(distance, down ? 1 : -1));
+      return;
+    }
+
     if (event.key === "Enter" && this.isOpen()) {
       event.preventDefault();
       if (event.isComposing) return;
@@ -1494,6 +1514,32 @@ export class Combobox {
         return;
       }
     }
+  }
+
+  /** Nearest selectable row at/after (`direction > 0`) or at/before an index, or -1. */
+  #nearestSelectable(from, direction) {
+    const visible = this.visibleItems;
+    const len = visible.length;
+    if (!len) return -1;
+    from = Math.max(0, Math.min(from, len - 1));
+    for (let i = from; i >= 0 && i < len; i += direction) {
+      if (!visible[i]?.disabled) return i;
+    }
+    if (direction > 0) {
+      for (let i = from - 1; i >= 0; i--) if (!visible[i]?.disabled) return i;
+    } else {
+      for (let i = from + 1; i < len; i++) if (!visible[i]?.disabled) return i;
+    }
+    return -1;
+  }
+
+  /** Rendered page height in selectable rows, used by PageUp/PageDown. */
+  #pageSize() {
+    const first = this.listbox.querySelector(".cb-option");
+    if (!first) return 1;
+    const row = first.offsetHeight || 48;
+    const view = this.popover.clientHeight || 0;
+    return Math.max(1, Math.floor(view / row));
   }
 
   #setActive(index) {

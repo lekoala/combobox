@@ -54,14 +54,14 @@ Full ESM source with zero globals; behavioral suite stays on the source, the bun
 
 ## Phase 3 — Picker + keyboard
 
-- manual popover lifecycle;
-- outside click without races;
-- active option state;
-- arrow/home/end/page behavior as chosen;
-- Enter/Escape/Tab policy;
-- chip navigation/removal;
-- focus stability through filtering and DOM updates;
-- RTL.
+- [x] manual popover lifecycle (`popover="manual"` + Anchor Positioning, `show/hide/isOpen`, single open instance, `combobox:beforeopen/open/beforeclose/close`, popover removed on `dispose()`, canceled before-events never flip state);
+- [x] outside click without races (capture `pointerdown` hides, blur-microtask guard keeps option `pointerdown` and control-internal moves from closing);
+- [x] active option state (`aria-activedescendant`, `data-active` on the row + `data-active-option` on the source option, reset on close, skipped/none never highlighted);
+- [x] arrow/home/end/page behavior as chosen (wrapping arrows, Home/End first/last selectable, PageDown/PageUp step by viewport page, all opening a closed picker and skipping disabled);
+- [x] Enter/Escape/Tab policy (Enter selects or creates, opt-in `tabSelect` commits and never blocks native traversal unless a commit is possible, IME never blocks/commits, Escape closes and clears the active descendant);
+- [x] chip navigation/removal (ArrowLeft from empty search, chip ArrowLeft/Right/Home/End, Delete/Backspace guarded removal with focus hand-back, Escape, arrow keys physical in RTL);
+- [x] focus stability through filtering and DOM updates (filtering, async load → results and chip removal never steal focus; valid `aria-activedescendant` throughout);
+- [x] RTL (logical-CSS layout: chips flow right-to-left, popover flips via `position-try`; browser coverage added).
 
 ## Phase 4 — Remote/result store
 

@@ -76,28 +76,30 @@ Run on every browser with fallback forced even when modern APIs exist.
 
 ## C. Open / close / pointer lifecycle
 
-- [ ] focus opens expected picker.
-- [ ] clicking the control does not immediately close it (regression for the original auto-popover race).
-- [ ] outside pointer closes.
-- [ ] pointer inside listbox does not close before selection.
-- [ ] Escape closes.
-- [ ] opening a second combobox closes the first unless beforeclose cancels.
-- [ ] beforeopen/beforeclose cancellation works.
-- [ ] single closes after select by default; multiple default policy tested once decided.
-- [ ] no open/close event duplication.
+- [x] focus opens expected picker.
+- [x] clicking the control does not immediately close it (regression for the original auto-popover race).
+- [x] outside pointer closes.
+- [x] pointer inside listbox does not close before selection.
+- [x] Escape closes.
+- [x] opening a second combobox closes the first unless beforeclose cancels.
+- [x] beforeopen/beforeclose cancellation works.
+- [x] single closes after select by default; multiple default policy tested once decided.
+- [x] no open/close event duplication.
 
 Tom Select interaction tests explicitly cover close-after-select variants, Escape, reopen-after-close and keeping focus while interacting with dropdown content.
 
 ## D. Keyboard picker navigation
 
-- [ ] Arrow Down opens and activates first enabled result.
-- [ ] Arrow Down/Up walks enabled results and skips disabled options/groups.
-- [ ] `aria-activedescendant` follows active result.
-- [ ] active descendant is removed on close/no active item.
-- [ ] Enter selects active result.
-- [ ] Enter create behavior only runs when eligible.
-- [ ] Escape closes without corrupting source value.
-- [ ] Home/End behavior decided/tested if implemented.
+- [x] Arrow Down opens and activates first enabled result.
+- [x] Arrow Down/Up walks enabled results and skips disabled options/groups.
+- [x] `aria-activedescendant` follows active result.
+- [x] active descendant is removed on close/no active item.
+- [x] Enter selects active result.
+- [x] Enter create behavior only runs when eligible.
+- [x] Escape closes without corrupting source value.
+- [x] Home/End step to first/last selectable option (disabled tails skipped).
+- [x] PageDown/PageUp step by a page (viewport height ÷ row height) and clamp at the selectable edges.
+- [x] all picker navigation keys open a closed picker.
 - [x] Tab behavior explicitly tested once policy is fixed (`tabSelect` option; default native traversal, opt-in commit, IME-safe).
 - [x] label click focuses enhanced input.
 
@@ -105,13 +107,13 @@ Select2 search-a11y tests are particularly useful for `aria-activedescendant` an
 
 ## E. Multiple chip keyboard navigation
 
-- [ ] Arrow Left from empty search focuses last chip.
-- [ ] Left/Right navigate chips.
-- [ ] Right from last returns search input.
-- [ ] Home/End first/last.
-- [ ] Delete/Backspace removes focused removable chip.
+- [x] Arrow Left from empty search focuses last chip.
+- [x] Left/Right navigate chips.
+- [x] Right from last returns search input.
+- [x] Home/End first/last.
+- [x] Delete/Backspace removes focused removable chip.
 - [ ] disabled/read-only chip cannot be removed.
-- [ ] focus lands predictably after removal.
+- [x] focus lands predictably after removal.
 - [ ] normal Left/Right editing inside non-empty search is untouched.
 
 We explicitly do **not** test or implement Tom Select's virtual caret-between-items behavior.
@@ -324,6 +326,7 @@ Tom Select has a dedicated XSS suite for original values, group labels, option l
 - [ ] long no-results/loading state has no horizontal scrollbar.
 - [ ] multiple chips wrap/grow without changing picker anchor width incorrectly.
 - [ ] RTL logical placement/text.
+- [x] RTL: chips flow right-to-left, picker flips and has no horizontal overflow, physical keyboard navigation is stable.
 - [ ] zoom and forced-colors.
 
 These cover multiple historical issues from both existing libraries that should disappear with top-layer + Anchor rather than become special cases.

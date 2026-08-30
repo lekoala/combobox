@@ -248,11 +248,12 @@ For form submission in ordered mode, use the `formdata` event to replace repeate
 Picker:
 
 - focus remains in search input;
-- Arrow Down/Up changes active option;
+- Arrow Down/Up changes active option and opens the picker when closed; disabled results are skipped, navigation wraps within the rendered window;
+- Home/End jump to the first/last selectable option; PageDown/PageUp move by a page (listbox viewport height ÷ row height) and clamp at the selectable edges;
 - Enter selects active option or creates when eligible;
-- Escape closes;
-- disabled results are skipped;
+- Escape closes and clears `aria-activedescendant`;
 - Tab: native focus traversal by default; the opt-in `tabSelect` option makes Tab commit the active option or an eligible create like Enter, but only ever blocks default focus traversal when such a commit is actually possible. Picker never blocks Tab during IME composition.
+- Arrow and page keys are physical in RTL layouts (DOM-index semantics); direction-aware layout is handled by logical CSS alone.
 
 Multiple chips:
 
