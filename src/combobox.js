@@ -564,6 +564,11 @@ class Combobox {
     this.popover.append(this.listbox, this.status);
     document.body.append(this.popover);
 
+    // The popover renders in the top layer, outside the control's subtree, so
+    // it cannot inherit the control's typography. Adopt the interaction
+    // input's resolved font to avoid falling back to the page-level font.
+    this.popover.style.font = getComputedStyle(this.input).font;
+
     this.input.setAttribute("role", "combobox");
     this.input.setAttribute("aria-autocomplete", "list");
     this.input.setAttribute("aria-expanded", "false");
@@ -1001,7 +1006,10 @@ class Combobox {
         selected: item.selected,
         combobox: this,
       });
-      setContent(option, rendered ?? item.label);
+      const label = document.createElement("span");
+      label.className = "cb-option-label";
+      setContent(label, rendered ?? item.label);
+      option.append(label);
 
       option.addEventListener("pointermove", () => this.#setActive(index), {
         signal: this.abortController.signal,
@@ -1019,7 +1027,10 @@ class Combobox {
         create.role = "option";
         const query = this.input.value.trim();
         const rendered = this.options.render.create?.(query, { combobox: this });
-        setContent(create, rendered ?? this.options.createLabel(query));
+        const createLabel = document.createElement("span");
+        createLabel.className = "cb-option-label";
+        setContent(createLabel, rendered ?? this.options.createLabel(query));
+        create.append(createLabel);
         create.addEventListener("click", () => this.#createItem(query), {
           signal: this.abortController.signal,
         });

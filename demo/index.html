@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>@lekoala/combobox demo</title>
   <link rel="stylesheet" href="../src/combobox.css">
-  <link rel="stylesheet" href="./demo.css">
+  <link rel="stylesheet" href="../demo/demo.css">
 </head>
 <body>
   <main class="demo">
@@ -169,6 +169,25 @@
             <option value="">Choose a language</option>
           </select>
         </app-combobox>
+      </section>
+
+      <section class="demo-card" dir="rtl">
+        <h2>10. RTL</h2>
+        <p class="demo-note">
+          <code>dir="rtl"</code> on the wrapper: chips, remove button and selected
+          markers mirror naturally. Logical properties (<code>padding-inline</code>,
+          <code>inline-size</code>) keep the layout correct.
+        </p>
+
+        <label for="rtl-tags">العادات الصحية</label>
+        <combo-box create placeholder="ابحث أو أنشئ…">
+          <select id="rtl-tags" name="rtl-tags[]" multiple>
+            <option value="fit" selected>لياقة بدنية</option>
+            <option value="nut" selected>تغذية سليمة</option>
+            <option value="sleep">نوم كافٍ</option>
+            <option value="hr">فحوصات دورية</option>
+          </select>
+        </combo-box>
       </section>
 
       <section class="demo-card">

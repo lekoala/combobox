@@ -63,6 +63,7 @@ Lifecycle: `init`, `getInstance`, `getOrCreateInstance`, `show`, `hide`, `dispos
 - Test the native source state, not only generated DOM.
 - Any bug involving focus, keyboard, popover state, forms, validation, browser layout, IME, or ARIA needs a real-browser regression test.
 - Unit-test pure matching/tokenization/order helpers after extraction; do not use a DOM shim as a substitute for browser interaction tests.
+- Work inside the project directory. Use the gitignored `.temp/` folder for throwaway artifacts (screenshots, ad-hoc scripts); never write outside the workspace.
 
 ## Commands
 
