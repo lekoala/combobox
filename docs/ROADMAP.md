@@ -39,7 +39,7 @@ Full ESM source with zero globals; behavioral suite stays on the source, the bun
 - ✅ persistent listeners routed through `handleEvent`; listbox/chips/control fully delegated so renderers add zero listeners; options are non-focusable `div[role=option]`.
 - ✅ upgrade/dispose symmetry enforced with a `captureAttributes(...).restore()` snapshot on every non-owned element (filter input, source input/select) plus invented `<label>` id cleanup.
 - ✅ custom `tokenize` seam frozen to `{ tokens, rest }` with a leftover-`rest` browser test.
-- ✅ demo + fixtures dual surface: ESM over http(s), dist bundle under `file://`; browser suite hits ESM, `test/dist` smoke-tests the bundle (incl. a `file://` page).
+- ✅ demo always loads generated `dist/combobox.js` (validates the distributable over http(s) and `file://`); browser suite hits ESM, `test/dist` smoke-tests the bundle (incl. a `file://` page).
 - ✅ docs aligned (README, PROJECT_SETUP, API, USE_CASES, CONTRIBUTING, AGENTS, ROADMAP).
 
 ## Phase 2 — Harden native source adapters

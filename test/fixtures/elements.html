@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Custom element fixtures</title>
+</head>
+<body>
+  <!-- Element markup shared by combobox-element.spec.js. These tests exercise the
+       ESM engine, so this page registers <combo-box> from src/define.js (not the
+       dist bundle used by the demo). Options assigned before the module below
+       runs are picked up at upgrade via #upgradeProperty(options). -->
+  <combo-box create placeholder="Search or create a framework…">
+    <select id="frameworks" name="frameworks[]" multiple>
+      <option value="react" selected>React</option>
+      <option value="vue">Vue</option>
+      <option value="svelte">Svelte</option>
+      <option value="solid">Solid</option>
+    </select>
+  </combo-box>
+
+  <combo-box id="languages-widget" placeholder="Search languages…" min-chars="1" debounce="120">
+    <select id="languages" name="languages">
+      <option value="">Choose a language</option>
+    </select>
+  </combo-box>
+
+  <script>
+    const forceNative = new URLSearchParams(location.search).has("native");
+    const base = forceNative ? { mode: "fallback" } : {};
+
+    for (const wrap of document.querySelectorAll("combo-box")) {
+      if (forceNative) wrap.options = { mode: "fallback" };
+    }
+
+    const languages = [
+      { value: "fr", label: "Français" },
+      { value: "en", label: "English" },
+      { value: "nl", label: "Nederlands" },
+      { value: "es", label: "Español" },
+    ];
+    document.querySelector("#languages-widget").options = {
+      ...base,
+      shouldLoad(query) {
+        return query.trim().length >= 1;
+      },
+      async load(query) {
+        const q = query.toLocaleLowerCase();
+        return languages.filter((item) => item.label.toLocaleLowerCase().includes(q));
+      },
+    };
+  </script>
+
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>

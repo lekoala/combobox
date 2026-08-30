@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
+// The element specs exercise the ESM engine, so they run against the dedicated
+// ESM fixture rather than the demo (which loads the dist bundle).
+const ELEMENTS_HTML = "/test/fixtures/elements.html";
+
 test("loading the engine exports never auto-registers nor leaks globals", async ({ page }) => {
   // No exposeEsm here: this test asserts the page itself stays global-free.
   await page.goto("/test/fixtures/scripts-only.html");
@@ -30,7 +34,7 @@ test("loading the engine exports never auto-registers nor leaks globals", async 
 });
 
 test("defineCombobox registers default and custom names and is idempotent", async ({ page }) => {
-  await setup(page, "/");
+  await setup(page, ELEMENTS_HTML);
 
   const state = await page.evaluate(() => {
     const defaultClass = defineCombobox("combo-box");
@@ -49,7 +53,7 @@ test("defineCombobox registers default and custom names and is idempotent", asyn
 });
 
 test("existing markup upgrades and attributes map to engine options", async ({ page }) => {
-  await setup(page, "/");
+  await setup(page, ELEMENTS_HTML);
 
   const state = await page.evaluate(() => {
     const wrap = document.querySelector("#frameworks").parentElement;
@@ -74,7 +78,7 @@ test("existing markup upgrades and attributes map to engine options", async ({ p
 });
 
 test("custom element name + configure() wires JS-only options", async ({ page }) => {
-  await setup(page, "/");
+  await setup(page, ELEMENTS_HTML);
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const config = await page.evaluate(() => {
@@ -99,7 +103,7 @@ test("custom element name + configure() wires JS-only options", async ({ page })
 });
 
 test("combobox:ready fires and whenReady() resolves after dynamic insertion", async ({ page }) => {
-  await setup(page, "/");
+  await setup(page, ELEMENTS_HTML);
 
   const state = await page.evaluate(() => {
     const wrap = document.createElement("combo-box");
@@ -116,7 +120,7 @@ test("combobox:ready fires and whenReady() resolves after dynamic insertion", as
 });
 
 test("dispose on removal restores the detached datalist source", async ({ page }) => {
-  await setup(page, "/");
+  await setup(page, ELEMENTS_HTML);
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const state = await page.evaluate(async () => {
@@ -150,7 +154,7 @@ test("dispose on removal restores the detached datalist source", async ({ page }
 });
 
 test("wrapper can be forced into native fallback", async ({ page }) => {
-  await setup(page, "/?native=1");
+  await setup(page, `${ELEMENTS_HTML}?native=1`);
 
   const state = await page.evaluate(() => {
     const wrap = document.querySelector("#frameworks").parentElement;

@@ -90,9 +90,10 @@ bun run check
 `check` = syntax + lint + unit + build + browser + dist smoke. The behavioral browser
 suite targets the ESM source; only `test/dist` exercises the generated bundle.
 
-The demo (`demo/index.html`) runs from ESM over http(s). For `file://` it needs
-`bun run build` first (the classic build self-registers `<combo-box>` with zero globals;
-JS-only demo sections degrade to native controls under `file://`).
+The demo (`demo/index.html`) always loads the generated classic `dist/combobox.js`
+(self-registers `<combo-box>` with zero globals), so it works over both http(s) and
+`file://` after a single `bun run build`. The demo validates the distributable; the
+source ESM is exercised directly by the unit/browser test suites.
 
 ## Definition of done for a feature
 

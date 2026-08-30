@@ -12,7 +12,7 @@
   },
   "scripts": {
     "build": "bun build src/define.js --outfile=dist/combobox.js --format=iife",
-    "dev": "node test/server.js",
+    "dev": "bun run build && node test/server.js",
     "test": "bun run test:unit && bun run test:browser && bun run test:dist",
     "test:unit": "bun test test/unit",
     "test:browser": "playwright test test/browser",

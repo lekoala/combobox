@@ -6,6 +6,7 @@
   <title>@lekoala/combobox demo</title>
   <link rel="stylesheet" href="../src/combobox.css">
   <link rel="stylesheet" href="../demo/demo.css">
+  <script src="../dist/combobox.js"></script>
 </head>
 <body>
   <main class="demo">
@@ -13,8 +14,10 @@
     <p>
       One engine enhances free-form <code>input+datalist</code> and constrained
       <code>select</code> controls, wrapped declaratively in a
-      <code>&lt;combo-box&gt;</code> custom element or enhanced imperatively.
-      The original source always owns form values.
+      <code>&lt;combo-box&gt;</code> custom element. The imperative surface needs
+      no global: every example here is configured through the element itself
+      (<code>options</code>/<code>configure()</code>) and its public
+      <code>.combobox</code> engine. The original source always owns form values.
     </p>
 
     <p class="demo-status" id="support-status"></p>
@@ -23,23 +26,34 @@
       <a href="./index.html?native=1">Force basic fallback</a>
     </p>
 
+    <p class="demo-note">
+      This page always loads the generated classic build
+      (<code>../dist/combobox.js</code>), so it validates the distributed product
+      and works identically over <code>http(s)</code> and <code>file://</code>.
+      Run <code>bun run build</code> before opening it. The source ESM is
+      exercised directly by the unit and browser test suites.
+    </p>
+
     <form class="demo-grid" action="./index.html" method="get" id="demo-form">
       <section class="demo-card">
         <h2>1. Free text autocomplete</h2>
         <p class="demo-note">
           Native source: <code>input + datalist</code>. Enhanced mode detaches the
           datalist so the UA picker never competes with the custom picker.
+          <code>search="includes"</code> selects an accent-insensitive substring match.
         </p>
 
         <label for="city">City</label>
-        <input id="city" name="city" list="cities" data-combobox search="includes" autocomplete="address-level2">
-        <datalist id="cities">
-          <option value="Brussels"></option>
-          <option value="Namur"></option>
-          <option value="Liège"></option>
-          <option value="Antwerp"></option>
-          <option value="Ghent"></option>
-        </datalist>
+        <combo-box search="includes">
+          <input id="city" name="city" list="cities" autocomplete="address-level2">
+          <datalist id="cities">
+            <option value="Brussels"></option>
+            <option value="Namur"></option>
+            <option value="Liège"></option>
+            <option value="Antwerp"></option>
+            <option value="Ghent"></option>
+          </datalist>
+        </combo-box>
       </section>
 
       <section class="demo-card">
@@ -47,22 +61,25 @@
         <p class="demo-note">
           The filter input is a separate unnamed interaction control. The select
           remains the constrained value owner. “Add external doctor” simulates a
-          modal/API creating an entity and selecting it programmatically.
+          modal/API creating an entity and selecting it programmatically via
+          <code>.combobox.select()</code>.
         </p>
 
         <label for="doctor">Doctor</label>
-        <input id="doctor-filter" filter="doctor" hidden placeholder="Find a doctor…">
-        <select id="doctor" name="doctor" data-combobox required>
-          <option value="">Choose a doctor</option>
-          <optgroup label="General">
-            <option value="101">Alice Martin</option>
-            <option value="102" selected>Bruno Lambert</option>
-          </optgroup>
-          <optgroup label="Specialists">
-            <option value="103">Chloé Bernard</option>
-            <option value="104" disabled>David Simon (unavailable)</option>
-          </optgroup>
-        </select>
+        <combo-box id="doctor-widget">
+          <input id="doctor-filter" filter="doctor" hidden placeholder="Find a doctor…">
+          <select id="doctor" name="doctor" required>
+            <option value="">Choose a doctor</option>
+            <optgroup label="General">
+              <option value="101">Alice Martin</option>
+              <option value="102" selected>Bruno Lambert</option>
+            </optgroup>
+            <optgroup label="Specialists">
+              <option value="103">Chloé Bernard</option>
+              <option value="104" disabled>David Simon (unavailable)</option>
+            </optgroup>
+          </select>
+        </combo-box>
         <button type="button" id="add-doctor">Add external doctor</button>
       </section>
 
@@ -75,13 +92,15 @@
         </p>
 
         <label for="specialties">Specialties</label>
-        <select id="specialties" name="specialties[]" multiple data-combobox data-placeholder="Add a specialty…">
-          <option value="cardiology" selected>Cardiology</option>
-          <option value="dermatology">Dermatology</option>
-          <option value="neurology" selected>Neurology</option>
-          <option value="pediatrics">Pediatrics</option>
-          <option value="psychiatry">Psychiatry</option>
-        </select>
+        <combo-box placeholder="Add a specialty…">
+          <select id="specialties" name="specialties[]" multiple>
+            <option value="cardiology" selected>Cardiology</option>
+            <option value="dermatology">Dermatology</option>
+            <option value="neurology" selected>Neurology</option>
+            <option value="pediatrics">Pediatrics</option>
+            <option value="psychiatry">Psychiatry</option>
+          </select>
+        </combo-box>
       </section>
 
       <section class="demo-card">
@@ -93,12 +112,14 @@
         </p>
 
         <label for="tags">Tags</label>
-        <select id="tags" name="tags[]" multiple data-combobox data-create data-placeholder="Search or create…">
-          <option value="css" selected>CSS</option>
-          <option value="javascript">JavaScript</option>
-          <option value="html">HTML</option>
-          <option value="accessibility">Accessibility</option>
-        </select>
+        <combo-box id="tags-widget" create placeholder="Search or create…">
+          <select id="tags" name="tags[]" multiple>
+            <option value="css" selected>CSS</option>
+            <option value="javascript">JavaScript</option>
+            <option value="html">HTML</option>
+            <option value="accessibility">Accessibility</option>
+          </select>
+        </combo-box>
       </section>
 
       <section class="demo-card">
@@ -110,12 +131,14 @@
         </p>
 
         <label for="priorities">Visit priorities</label>
-        <select id="priorities" name="priorities[]" multiple data-combobox data-placeholder="Choose priorities…">
-          <option value="a">First contact</option>
-          <option value="b">Follow-up</option>
-          <option value="c">Urgent review</option>
-          <option value="d">Administrative</option>
-        </select>
+        <combo-box id="priorities-widget" selection-order="selected">
+          <select id="priorities" name="priorities[]" multiple>
+            <option value="a">First contact</option>
+            <option value="b">Follow-up</option>
+            <option value="c">Urgent review</option>
+            <option value="d">Administrative</option>
+          </select>
+        </combo-box>
         <button type="button" id="move-last-first">Move last selection first</button>
         <output id="order-output" class="demo-events">No selection</output>
       </section>
@@ -129,9 +152,11 @@
         </p>
 
         <label for="country">Country</label>
-        <select id="country" name="country" data-combobox data-placeholder="Search countries…">
-          <option value="">Choose a country</option>
-        </select>
+        <combo-box id="country-widget" min-chars="1" debounce="120" placeholder="Search countries…">
+          <select id="country" name="country">
+            <option value="">Choose a country</option>
+          </select>
+        </combo-box>
       </section>
 
       <section class="demo-card">
@@ -139,8 +164,9 @@
         <p class="demo-note">
           The wrapper owns nothing: the child <code>select</code> stays the
           form-value owner and attributes map to engine options. Registration is
-          centralized — importing the engine never registers anything; this page
-          explicitly charges the <code>define</code> side-effect entry.
+          centralized — importing the engine never registers anything
+          (<code>src/define.js</code> does). This page charges that entry via the
+          generated <code>dist/combobox.js</code> bundle.
         </p>
 
         <label for="frameworks">Frameworks</label>
@@ -156,19 +182,20 @@
       </section>
 
       <section class="demo-card">
-        <h2>9. Custom element name + JS options</h2>
+        <h2>9. JS options through the element</h2>
         <p class="demo-note">
-          <code>defineCombobox("app-combobox")</code> registers the same engine
-          under an application namespace. JavaScript-only behavior such as
-          <code>load()</code> is passed through <code>configure()</code>.
+          JavaScript-only behavior such as <code>load()</code> is passed through
+          <code>configure()</code> on the element. Registering the engine under a
+          custom name (<code>defineCombobox("app-combobox")</code>) is covered by
+          tests and documentation.
         </p>
 
         <label for="languages">Language</label>
-        <app-combobox id="languages-widget" placeholder="Search languages…" min-chars="1" debounce="120">
+        <combo-box id="languages-widget" placeholder="Search languages…" min-chars="1" debounce="120">
           <select id="languages" name="languages">
             <option value="">Choose a language</option>
           </select>
-        </app-combobox>
+        </combo-box>
       </section>
 
       <section class="demo-card" dir="rtl">
@@ -236,7 +263,7 @@
         <h2>13. Disabled items at runtime</h2>
         <p class="demo-note">
           A selected-then-disabled option stays as a chip without a remove button.
-          Toggling <code>disabled</code> and calling <code>refresh()</code> re-renders.
+          Toggling <code>disabled</code> and calling <code>.combobox.refresh()</code> re-renders.
         </p>
 
         <label for="fruit">Fruit</label>
@@ -296,11 +323,11 @@
         <h2>16. Clear affordance is application-authored</h2>
         <p class="demo-note">
           The core never auto-injects a clear button. The application places one
-          and calls <code>clear()</code>, with a cancellable <code>combobox:beforeclear</code>.
+          and calls <code>.combobox.clear()</code>, with a cancellable <code>combobox:beforeclear</code>.
         </p>
 
         <label for="clearable">Clearable</label>
-        <combo-box placeholder="Pick some…">
+        <combo-box id="clearable-widget" placeholder="Pick some…">
           <select id="clearable" name="clearable[]" multiple>
             <option value="a" selected>A</option>
             <option value="b" selected>B</option>
@@ -339,64 +366,20 @@
   </main>
 
   <script>
-    // Engine loading, one path per protocol:
-    // - http(s): the authoritative ESM source. src/define.js only registers
-    //   <combo-box>; the imperative blocks below import the engine explicitly.
-    // - file://: the generated classic build (dist/combobox.js) self-registers
-    //   <combo-box> with zero globals. Imperative sections in this demo require
-    //   a server; under file:// they degrade to the native controls.
-    if (location.protocol === "file:") {
-      const script = document.createElement("script");
-      script.src = "../dist/combobox.js";
-      document.head.append(script);
-    } else {
-      const module = document.createElement("script");
-      module.type = "module";
-      module.src = "../src/define.js";
-      document.head.append(module);
-    }
-  </script>
-  <script>
-    (async () => {
+    // Everything goes through the element: options/configure() assignments are
+    // safe before or after upgrade (pre-upgrade options win; post-upgrade ones
+    // schedule a rebuild). The engine instance is reached via .whenReady() and
+    // the public .combobox getter — no library global is needed.
+    (() => {
       const forceNative = new URLSearchParams(location.search).has("native");
-      const baseOptions = forceNative ? { mode: "fallback" } : {};
 
-      // The ESM engine is authoritative over http(s). It is the same cached
-      // module used by ../src/define.js above, so instances stay coherent.
-      let Combobox = null;
-      let defineCombobox = null;
-      if (location.protocol !== "file:") {
-        ({ Combobox, defineCombobox } = await import("../src/index.js"));
-        defineCombobox("app-combobox");
-      }
-
-      // Options assigned before upgrade are picked up during upgrade, in both
-      // modes. This is the imperative surface that needs no engine global.
-      for (const wrapper of document.querySelectorAll("combo-box, app-combobox")) {
-        if (forceNative) wrapper.options = { mode: "fallback" };
-      }
-
-      const stage = document.querySelector("#support-status");
       if (forceNative) {
-        stage.textContent =
-          "Basic fallback forced: native controls remain authoritative; creatable selects keep only the cheap add-input enhancement.";
-      } else if (Combobox) {
-        stage.textContent = Combobox.supported
-          ? "Enhanced mode active: manual Popover + CSS Anchor Positioning."
-          : "Basic fallback active: native controls remain usable; no legacy popup positioning engine is loaded.";
-      } else {
-        stage.textContent = "file:// mode: declarative <combo-box> demos active via dist/combobox.js.";
+        for (const wrapper of document.querySelectorAll("combo-box")) {
+          wrapper.options = { mode: "fallback" };
+        }
       }
 
-      if (!Combobox) return;
-
-      for (const id of ["city", "doctor", "specialties"]) {
-        Combobox.getOrCreateInstance(document.getElementById(id), baseOptions);
-      }
-
-      const tags = Combobox.getOrCreateInstance(document.getElementById("tags"), {
-        ...baseOptions,
-        create: true,
+      document.getElementById("tags-widget").configure({
         createFilter(value) {
           const term = value.trim();
           if (term.length <= 2) return false;
@@ -404,23 +387,6 @@
           return true;
         },
       });
-
-      const priorities = Combobox.getOrCreateInstance(document.getElementById("priorities"), {
-        ...baseOptions,
-        selectionOrder: "selected",
-      });
-
-      const orderOutput = document.getElementById("order-output");
-      const renderOrder = () => {
-        orderOutput.textContent = priorities.getSelectedValues().join(" → ") || "No selection";
-      };
-      document.getElementById("priorities").addEventListener("change", renderOrder);
-      document.getElementById("priorities").addEventListener("combobox:reorder", renderOrder);
-      document.getElementById("move-last-first").addEventListener("click", () => {
-        const values = priorities.getSelectedValues();
-        if (values.length > 1) priorities.move(values.at(-1), 0);
-      });
-      renderOrder();
 
       const countries = [
         { value: "be", label: "Belgium" },
@@ -432,32 +398,25 @@
         { value: "it", label: "Italy" },
       ];
 
-      Combobox.getOrCreateInstance(document.getElementById("country"), {
-        ...baseOptions,
-        minChars: 1,
-        debounce: 120,
+      const remoteLoader = (dataset) => async (query, { signal }) => {
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(resolve, 180);
+          signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new DOMException("Aborted", "AbortError"));
+          }, { once: true });
+        });
+        const q = query.toLocaleLowerCase();
+        return dataset.filter((item) => item.label.toLocaleLowerCase().includes(q));
+      };
+      const remoteConfig = (dataset) => ({
         shouldLoad(query) {
           return query.trim().length >= 1;
         },
-        async load(query, { signal }) {
-          await new Promise((resolve, reject) => {
-            const timer = setTimeout(resolve, 180);
-            signal.addEventListener("abort", () => {
-              clearTimeout(timer);
-              reject(new DOMException("Aborted", "AbortError"));
-            }, { once: true });
-          });
-          const q = query.toLocaleLowerCase();
-          return countries.filter((item) => item.label.toLocaleLowerCase().includes(q));
-        },
+        load: remoteLoader(dataset),
       });
 
-      document.getElementById("add-doctor").addEventListener("click", () => {
-        Combobox.getInstance(document.getElementById("doctor")).select({
-          value: "205",
-          label: "Eva Dupont",
-        });
-      });
+      document.getElementById("country-widget").configure(remoteConfig(countries));
 
       const languages = [
         { value: "fr", label: "Français" },
@@ -468,31 +427,12 @@
         { value: "it", label: "Italiano" },
       ];
 
-      document.getElementById("languages-widget").configure({
-        shouldLoad(query) {
-          return query.trim().length >= 1;
-        },
-        async load(query, { signal }) {
-          await new Promise((resolve, reject) => {
-            const timer = setTimeout(resolve, 150);
-            signal.addEventListener("abort", () => {
-              clearTimeout(timer);
-              reject(new DOMException("Aborted", "AbortError"));
-            }, { once: true });
-          });
-          const q = query.toLocaleLowerCase();
-          return languages.filter((item) => item.label.toLocaleLowerCase().includes(q));
-        },
-      });
+      document.getElementById("languages-widget").configure(remoteConfig(languages));
 
       const demoStatus = (message) => {
         document.querySelector("#guard-status").textContent = message;
       };
-
-      const confirmDialog = (message) => {
-        const confirmed = window.confirm(message);
-        return Promise.resolve(confirmed);
-      };
+      const confirmDialog = (message) => Promise.resolve(window.confirm(message));
 
       document.getElementById("email-widget").configure({
         createFilter(value) {
@@ -517,20 +457,6 @@
           },
         },
       });
-      document.getElementById("clear-emails").addEventListener("click", () => {
-        void Combobox.getInstance(document.getElementById("emails")).clear();
-      });
-
-      document.getElementById("toggle-fruit-disabled").addEventListener("click", () => {
-        const select = document.getElementById("fruit");
-        const banana = select.querySelector('option[value="banana"]');
-        banana.toggleAttribute("disabled");
-        Combobox.getInstance(select).refresh();
-      });
-
-      document.getElementById("clear-btn").addEventListener("click", () => {
-        void Combobox.getInstance(document.getElementById("clearable")).clear();
-      });
 
       document.getElementById("rich-widget").configure({
         render: {
@@ -548,50 +474,96 @@
         },
       });
 
+      document.getElementById("cities-widget").configure({ searchFields: ["city", "state"] });
+
       const cityData = [
         { state: "Texas", city: "Houstan" },
         { state: "Texas", city: "San Antonio" },
         { state: "California", city: "Los Angeles" },
         { state: "California", city: "San Diego" },
       ];
-      const citiesWidget = document.getElementById("cities-widget");
-      citiesWidget.configure({ searchFields: ["city", "state"] });
-      void citiesWidget.whenReady().then((combo) => combo.setOptions(cityData));
 
-      const events = document.querySelector("#events");
-      const log = [];
-      const record = (name, event) => {
-        const query = event.query ?? event.detail?.query;
-        log.unshift(`${name}${query !== undefined ? ` query=${JSON.stringify(query)}` : ""}`);
-        events.textContent = log.slice(0, 14).join("\n");
-      };
-
-      for (const input of document.querySelectorAll("input[data-combobox], input[filter]")) {
-        input.addEventListener("beforefilter", (event) => record("beforefilter", event));
-        input.addEventListener("filter", (event) => record("filter", event));
-      }
-
-      for (const wrapper of document.querySelectorAll("combo-box, app-combobox")) {
-        wrapper.addEventListener("combobox:ready", (event) => record("combobox:ready", event));
-      }
-
-      for (const source of document.querySelectorAll("[data-combobox], combo-box select, app-combobox select")) {
-        for (const type of [
-          "combobox:beforeopen", "combobox:open", "combobox:beforeclose", "combobox:close",
-          "combobox:beforeload", "combobox:load", "combobox:loaderror",
-          "combobox:beforeselect", "combobox:select",
-          "combobox:beforecreate", "combobox:create", "combobox:createerror",
-          "combobox:guarderror",
-          "combobox:beforeremove", "combobox:remove",
-          "combobox:beforeclear", "combobox:clear",
-          "combobox:beforereorder", "combobox:reorder",
-        ]) {
-          source.addEventListener(type, (event) => record(type, event));
+      customElements.whenDefined("combo-box").then(async () => {
+        const stage = document.querySelector("#support-status");
+        const firstCombo = await document.querySelector("combo-box").whenReady();
+        if (forceNative) {
+          stage.textContent =
+            "Basic fallback forced: native controls remain authoritative; creatable selects keep only the cheap add-input enhancement.";
+        } else if (firstCombo.mode === "enhanced") {
+          stage.textContent = "Enhanced mode active: manual Popover + CSS Anchor Positioning.";
+        } else {
+          stage.textContent = "Basic fallback active: native controls remain usable; no legacy popup positioning engine is loaded.";
         }
-      }
-    })().catch((error) => {
-      console.error("Demo failed to initialize:", error);
-    });
+
+        const priorities = await document.getElementById("priorities-widget").whenReady();
+        const orderOutput = document.getElementById("order-output");
+        const renderOrder = () => {
+          orderOutput.textContent = priorities.getSelectedValues().join(" → ") || "No selection";
+        };
+        document.getElementById("priorities").addEventListener("change", renderOrder);
+        document.getElementById("priorities").addEventListener("combobox:reorder", renderOrder);
+        document.getElementById("move-last-first").addEventListener("click", () => {
+          const values = priorities.getSelectedValues();
+          if (values.length > 1) priorities.move(values.at(-1), 0);
+        });
+        renderOrder();
+
+        const doctor = await document.getElementById("doctor-widget").whenReady();
+        document.getElementById("add-doctor").addEventListener("click", () => {
+          doctor.select({ value: "205", label: "Eva Dupont" });
+        });
+
+        const emailWidget = await document.getElementById("email-widget").whenReady();
+        document.getElementById("clear-emails").addEventListener("click", () => {
+          void emailWidget.clear();
+        });
+
+        const fruitWidget = await document.getElementById("fruit-widget").whenReady();
+        document.getElementById("toggle-fruit-disabled").addEventListener("click", () => {
+          const banana = document.getElementById("fruit").querySelector('option[value="banana"]');
+          banana.toggleAttribute("disabled");
+          fruitWidget.refresh();
+        });
+
+        const clearableWidget = await document.getElementById("clearable-widget").whenReady();
+        document.getElementById("clear-btn").addEventListener("click", () => {
+          void clearableWidget.clear();
+        });
+
+        const citiesWidget = await document.getElementById("cities-widget").whenReady();
+        citiesWidget.setOptions(cityData);
+
+        const events = document.querySelector("#events");
+        const log = [];
+        const record = (name, event) => {
+          const query = event.query ?? event.detail?.query;
+          log.unshift(`${name}${query !== undefined ? ` query=${JSON.stringify(query)}` : ""}`);
+          events.textContent = log.slice(0, 14).join("\n");
+        };
+
+        for (const wrapper of document.querySelectorAll("combo-box")) {
+          wrapper.addEventListener("combobox:ready", (event) => record("combobox:ready", event));
+        }
+
+        for (const source of document.querySelectorAll("combo-box select, combo-box input")) {
+          for (const type of [
+            "beforefilter", "filter",
+            "combobox:beforeopen", "combobox:open", "combobox:beforeclose", "combobox:close",
+            "combobox:beforeload", "combobox:load", "combobox:loaderror",
+            "combobox:beforeselect", "combobox:select",
+            "combobox:beforecreate", "combobox:create", "combobox:createerror",
+            "combobox:guarderror",
+            "combobox:beforeremove", "combobox:remove",
+            "combobox:beforeclear", "combobox:clear",
+            "combobox:beforereorder", "combobox:reorder",
+          ]) {
+            source.addEventListener(type, (event) => record(type, event));
+          }
+        }
+      }).catch((error) => {
+        console.error("Demo failed to initialize:", error);
+      });
+    })();
   </script>
 </body>
 </html>

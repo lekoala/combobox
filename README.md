@@ -104,10 +104,9 @@ Use `?native=1` in the demo to force this mode.
 
 ## Try the POC
 
-`demo/index.html` is file-friendly: after `bun run build`, the dist bundle self-registers
-`<combo-box>` and the declarative demos work by opening the file directly. Full interactive
-sections (remote loading, reordering, imperative styling) need a server, exactly like the
-browser test suite: `bun run dev` then open `http://127.0.0.1:4173/`.
+`demo/index.html` always loads the generated classic `dist/combobox.js`, so after a single
+`bun run build` it works identically over `http(s)` and directly from `file://`, validating
+the distributed product. Run `bun run dev` to build and serve it at `http://127.0.0.1:4173/`.
 
 The demo covers:
 
@@ -119,7 +118,7 @@ The demo covers:
 6. async/remote result loading with transient results;
 7. programmatic selection of an externally created entity;
 8. declarative `<combo-box>` with attribute-driven options;
-9. `defineCombobox("app-combobox")` + JS-only options via `configure()`;
+9. JS-only options via `configure()` on the element;
 10. RTL;
 11. async `guards` (confirm add/remove/clear) + separators + `create-on-blur`;
 12. `max-items` without mutilating server-rendered over-limit selections;
@@ -161,7 +160,7 @@ Reordering **is** a core data concern; drag/drop is merely one possible UI for c
 ```text
 AGENTS.md                 implementation rules for coding agents/contributors
 README.md                 project overview
-demo/index.html           architecture demo (ESM over http, dist bundle under file://)
+demo/index.html           architecture demo (always loads generated dist/combobox.js)
 src/index.js              pure ESM exports: engine + element + helpers
 src/define.js             single side-effect entry: registers <combo-box>
 src/helpers.js            pure helpers (normalization, items, separators/tokenizer)
