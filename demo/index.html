@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>@lekoala/combobox demo</title>
+  <link rel="stylesheet" href="../src/combobox.css">
+  <link rel="stylesheet" href="./demo.css">
+</head>
+<body>
+  <main class="demo">
+    <h1>@lekoala/combobox</h1>
+    <p>
+      One engine enhances free-form <code>input+datalist</code> and constrained
+      <code>select</code> controls, wrapped declaratively in a
+      <code>&lt;combo-box&gt;</code> custom element or enhanced imperatively.
+      The original source always owns form values.
+    </p>
+
+    <p class="demo-status" id="support-status"></p>
+    <p>
+      <a href="./index.html">Auto mode</a> ·
+      <a href="./index.html?native=1">Force basic fallback</a>
+    </p>
+
+    <form class="demo-grid" action="./index.html" method="get" id="demo-form">
+      <section class="demo-card">
+        <h2>1. Free text autocomplete</h2>
+        <p class="demo-note">
+          Native source: <code>input + datalist</code>. Enhanced mode detaches the
+          datalist so the UA picker never competes with the custom picker.
+        </p>
+
+        <label for="city">City</label>
+        <input id="city" name="city" list="cities" data-combobox search="includes" autocomplete="address-level2">
+        <datalist id="cities">
+          <option value="Brussels"></option>
+          <option value="Namur"></option>
+          <option value="Liège"></option>
+          <option value="Antwerp"></option>
+          <option value="Ghent"></option>
+        </datalist>
+      </section>
+
+      <section class="demo-card">
+        <h2>2. Filterable single select</h2>
+        <p class="demo-note">
+          The filter input is a separate unnamed interaction control. The select
+          remains the constrained value owner. “Add external doctor” simulates a
+          modal/API creating an entity and selecting it programmatically.
+        </p>
+
+        <label for="doctor">Doctor</label>
+        <input id="doctor-filter" filter="doctor" hidden placeholder="Find a doctor…">
+        <select id="doctor" name="doctor" data-combobox required>
+          <option value="">Choose a doctor</option>
+          <optgroup label="General">
+            <option value="101">Alice Martin</option>
+            <option value="102" selected>Bruno Lambert</option>
+          </optgroup>
+          <optgroup label="Specialists">
+            <option value="103">Chloé Bernard</option>
+            <option value="104" disabled>David Simon (unavailable)</option>
+          </optgroup>
+        </select>
+        <button type="button" id="add-doctor">Add external doctor</button>
+      </section>
+
+      <section class="demo-card">
+        <h2>3. Multiple select with chips</h2>
+        <p class="demo-note">
+          The native <code>select multiple</code> owns selected values. Chips are a
+          projection only. Use Arrow Left from an empty search to enter chip
+          keyboard navigation; Delete/Backspace removes the focused chip.
+        </p>
+
+        <label for="specialties">Specialties</label>
+        <select id="specialties" name="specialties[]" multiple data-combobox data-placeholder="Add a specialty…">
+          <option value="cardiology" selected>Cardiology</option>
+          <option value="dermatology">Dermatology</option>
+          <option value="neurology" selected>Neurology</option>
+          <option value="pediatrics">Pediatrics</option>
+          <option value="psychiatry">Psychiatry</option>
+        </select>
+      </section>
+
+      <section class="demo-card">
+        <h2>4. Creatable multiple select</h2>
+        <p class="demo-note">
+          Creation is validated separately from creation itself. This demo rejects
+          tags of 2 characters or fewer and purely numeric tags. Basic fallback
+          keeps the native select plus a small unnamed Add input.
+        </p>
+
+        <label for="tags">Tags</label>
+        <select id="tags" name="tags[]" multiple data-combobox data-create data-placeholder="Search or create…">
+          <option value="css" selected>CSS</option>
+          <option value="javascript">JavaScript</option>
+          <option value="html">HTML</option>
+          <option value="accessibility">Accessibility</option>
+        </select>
+      </section>
+
+      <section class="demo-card">
+        <h2>5. Explicit selection order</h2>
+        <p class="demo-note">
+          Catalogue order, result order and selection order are distinct. This
+          instance preserves selection order without physically moving source
+          options. <code>move()</code> is the model operation; drag-and-drop is not core.
+        </p>
+
+        <label for="priorities">Visit priorities</label>
+        <select id="priorities" name="priorities[]" multiple data-combobox data-placeholder="Choose priorities…">
+          <option value="a">First contact</option>
+          <option value="b">Follow-up</option>
+          <option value="c">Urgent review</option>
+          <option value="d">Administrative</option>
+        </select>
+        <button type="button" id="move-last-first">Move last selection first</button>
+        <output id="order-output" class="demo-events">No selection</output>
+      </section>
+
+      <section class="demo-card">
+        <h2>6. Remote loading contract</h2>
+        <p class="demo-note">
+          File-friendly async mock. Remote results are transient and do not fill
+          the native select; only a selected result becomes a native option.
+          The loader receives <code>{ signal, cursor, source, input, combobox }</code>.
+        </p>
+
+        <label for="country">Country</label>
+        <select id="country" name="country" data-combobox data-placeholder="Search countries…">
+          <option value="">Choose a country</option>
+        </select>
+      </section>
+
+      <section class="demo-card">
+        <h2>8. Declarative <code>&lt;combo-box&gt;</code> custom element</h2>
+        <p class="demo-note">
+          The wrapper owns nothing: the child <code>select</code> stays the
+          form-value owner and attributes map to engine options. Registration is
+          explicit — loading the scripts never registers <code>combo-box</code>
+          automatically.
+        </p>
+
+        <label for="frameworks">Frameworks</label>
+        <combo-box create placeholder="Search or create a framework…">
+          <select id="frameworks" name="frameworks[]" multiple>
+            <option value="react" selected>React</option>
+            <option value="vue">Vue</option>
+            <option value="svelte">Svelte</option>
+            <option value="solid">Solid</option>
+            <option value="angular">Angular</option>
+          </select>
+        </combo-box>
+      </section>
+
+      <section class="demo-card">
+        <h2>9. Custom element name + JS options</h2>
+        <p class="demo-note">
+          <code>defineCombobox("app-combobox")</code> registers the same engine
+          under an application namespace. JavaScript-only behavior such as
+          <code>load()</code> is passed through <code>configure()</code>.
+        </p>
+
+        <label for="languages">Language</label>
+        <app-combobox id="languages-widget" placeholder="Search languages…" min-chars="1" debounce="120">
+          <select id="languages" name="languages">
+            <option value="">Choose a language</option>
+          </select>
+        </app-combobox>
+      </section>
+
+      <section class="demo-card">
+        <h2>Event / extension log</h2>
+        <p class="demo-note">
+          The architecture exposes cancellable “before” events, including the
+          Open UI-inspired <code>beforefilter</code> with <code>event.query</code>.
+        </p>
+        <output id="events" class="demo-events">Waiting for events…</output>
+      </section>
+
+      <button type="submit">Submit demo form</button>
+    </form>
+  </main>
+
+  <script src="../src/combobox.js"></script>
+  <script src="../src/combo-box.js"></script>
+  <script>
+    const forceNative = new URLSearchParams(location.search).has("native");
+    const baseOptions = forceNative ? { mode: "fallback" } : {};
+
+    // Options assigned before registration are picked up during upgrade.
+    for (const wrapper of document.querySelectorAll("combo-box, app-combobox")) {
+      if (forceNative) wrapper.options = { mode: "fallback" };
+    }
+
+    // Explicit registration: importing the files never auto-registers.
+    defineCombobox();
+    defineCombobox("app-combobox");
+
+    document.querySelector("#support-status").textContent = forceNative
+      ? "Basic fallback forced: native controls remain authoritative; creatable selects keep only the cheap add-input enhancement."
+      : Combobox.supported
+        ? "Enhanced mode active: manual Popover + CSS Anchor Positioning."
+        : "Basic fallback active: native controls remain usable; no legacy popup positioning engine is loaded.";
+
+    for (const id of ["city", "doctor", "specialties"]) {
+      Combobox.getOrCreateInstance(document.getElementById(id), baseOptions);
+    }
+
+    const tags = Combobox.getOrCreateInstance(document.getElementById("tags"), {
+      ...baseOptions,
+      create: true,
+      createFilter(value) {
+        const term = value.trim();
+        if (term.length <= 2) return false;
+        if (term !== "" && !Number.isNaN(Number(term))) return false;
+        return true;
+      },
+    });
+
+    const priorities = Combobox.getOrCreateInstance(document.getElementById("priorities"), {
+      ...baseOptions,
+      selectionOrder: "selected",
+    });
+
+    const orderOutput = document.getElementById("order-output");
+    const renderOrder = () => {
+      orderOutput.textContent = priorities.getSelectedValues().join(" → ") || "No selection";
+    };
+    document.getElementById("priorities").addEventListener("change", renderOrder);
+    document.getElementById("priorities").addEventListener("combobox:reorder", renderOrder);
+    document.getElementById("move-last-first").addEventListener("click", () => {
+      const values = priorities.getSelectedValues();
+      if (values.length > 1) priorities.move(values.at(-1), 0);
+    });
+    renderOrder();
+
+    const countries = [
+      { value: "be", label: "Belgium" },
+      { value: "fr", label: "France" },
+      { value: "de", label: "Germany" },
+      { value: "nl", label: "Netherlands" },
+      { value: "lu", label: "Luxembourg" },
+      { value: "es", label: "Spain" },
+      { value: "it", label: "Italy" },
+    ];
+
+    Combobox.getOrCreateInstance(document.getElementById("country"), {
+      ...baseOptions,
+      minChars: 1,
+      debounce: 120,
+      shouldLoad(query) {
+        return query.trim().length >= 1;
+      },
+      async load(query, { signal }) {
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(resolve, 180);
+          signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new DOMException("Aborted", "AbortError"));
+          }, { once: true });
+        });
+        const q = query.toLocaleLowerCase();
+        return countries.filter((item) => item.label.toLocaleLowerCase().includes(q));
+      },
+    });
+
+    document.getElementById("add-doctor").addEventListener("click", () => {
+      Combobox.getInstance(document.getElementById("doctor")).select({
+        value: "205",
+        label: "Eva Dupont",
+      });
+    });
+
+    const languages = [
+      { value: "fr", label: "Français" },
+      { value: "en", label: "English" },
+      { value: "nl", label: "Nederlands" },
+      { value: "es", label: "Español" },
+      { value: "de", label: "Deutsch" },
+      { value: "it", label: "Italiano" },
+    ];
+
+    document.getElementById("languages-widget").configure({
+      shouldLoad(query) {
+        return query.trim().length >= 1;
+      },
+      async load(query, { signal }) {
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(resolve, 150);
+          signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new DOMException("Aborted", "AbortError"));
+          }, { once: true });
+        });
+        const q = query.toLocaleLowerCase();
+        return languages.filter((item) => item.label.toLocaleLowerCase().includes(q));
+      },
+    });
+
+    const events = document.querySelector("#events");
+    const log = [];
+    const record = (name, event) => {
+      const query = event.query ?? event.detail?.query;
+      log.unshift(`${name}${query !== undefined ? ` query=${JSON.stringify(query)}` : ""}`);
+      events.textContent = log.slice(0, 14).join("\n");
+    };
+
+    for (const input of document.querySelectorAll("input[data-combobox], input[filter]")) {
+      input.addEventListener("beforefilter", (event) => record("beforefilter", event));
+      input.addEventListener("filter", (event) => record("filter", event));
+    }
+
+    for (const wrapper of document.querySelectorAll("combo-box, app-combobox")) {
+      wrapper.addEventListener("combobox:ready", (event) => record("combobox:ready", event));
+    }
+
+    for (const source of document.querySelectorAll("[data-combobox]")) {
+      for (const type of [
+        "combobox:beforeopen", "combobox:open", "combobox:beforeclose", "combobox:close",
+        "combobox:beforeload", "combobox:load", "combobox:loaderror",
+        "combobox:beforeselect", "combobox:select",
+        "combobox:beforecreate", "combobox:create", "combobox:createerror",
+        "combobox:beforeremove", "combobox:remove",
+        "combobox:beforeclear", "combobox:clear",
+        "combobox:beforereorder", "combobox:reorder",
+      ]) {
+        source.addEventListener(type, (event) => record(type, event));
+      }
+    }
+  </script>
+</body>
+</html>

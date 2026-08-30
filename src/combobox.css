@@ -1,0 +1,229 @@
+/* Structural prototype CSS. No Bootstrap JS dependency. */
+
+.cb-source-hidden {
+  position: absolute !important;
+  inline-size: 1px !important;
+  block-size: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.cb-control,
+.cb-text-control,
+.cb-fallback-input,
+.cb-fallback-add {
+  box-sizing: border-box;
+  min-block-size: 2.75rem;
+  border: 1px solid #adb5bd;
+  border-radius: 0.375rem;
+  background: #fff;
+  color: #212529;
+  font: inherit;
+}
+
+.cb-text-control,
+.cb-fallback-input {
+  display: block;
+  inline-size: 100%;
+  padding: 0.5rem 0.75rem;
+}
+
+.cb-text-control:focus,
+.cb-fallback-input:focus {
+  border-color: #86b7fe;
+  outline: 0.25rem solid rgb(13 110 253 / 25%);
+}
+
+.cb-control {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  cursor: text;
+}
+
+.cb-control-single {
+  flex-wrap: nowrap;
+  padding-inline: 0.75rem;
+}
+
+.cb-control-multiple {
+  flex-wrap: wrap;
+}
+
+.cb-control:focus-within {
+  border-color: #86b7fe;
+  outline: 0.25rem solid rgb(13 110 253 / 25%);
+}
+
+.cb-chips:empty {
+  display: none;
+}
+
+.cb-input {
+  flex: 1 1 8rem;
+  min-inline-size: 4rem;
+  inline-size: auto;
+  border: 0;
+  outline: 0;
+  padding: 0.125rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.cb-control-single .cb-input {
+  flex-basis: 100%;
+  min-inline-size: 0;
+}
+
+.cb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-inline-size: 100%;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: #e9ecef;
+}
+
+.cb-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cb-chip-remove {
+  appearance: none;
+  border: 0;
+  padding: 0 0.125rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cb-popover {
+  box-sizing: border-box;
+  inset: auto;
+  margin: 0.25rem 0 0;
+  position: fixed;
+  position-area: bottom;
+  position-try: flip-block;
+  position-try-fallbacks: flip-block;
+  inline-size: anchor-size(width);
+  max-block-size: min(20rem, 50vh);
+  padding: 0.25rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #ced4da;
+  border-radius: 0.375rem;
+  background: Canvas;
+  color: CanvasText;
+  box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 15%);
+}
+
+.cb-popover::backdrop {
+  background: transparent;
+}
+
+.cb-listbox {
+  display: grid;
+  min-inline-size: 0;
+  gap: 0.125rem;
+}
+
+.cb-option,
+.cb-empty,
+.cb-group {
+  box-sizing: border-box;
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: 0.45rem 0.6rem;
+}
+
+.cb-option,
+.cb-empty {
+  min-block-size: 2.5rem;
+  border-radius: 0.25rem;
+}
+
+.cb-option {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.cb-option:is(:hover, [data-active]) {
+  background: Highlight;
+  color: HighlightText;
+}
+
+.cb-option[aria-selected="true"]::after {
+  content: " ✓";
+}
+
+.cb-option[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cb-empty {
+  display: flex;
+  align-items: center;
+  color: #6c757d;
+}
+
+.cb-group {
+  color: #6c757d;
+  font-size: 0.875em;
+  font-weight: 600;
+}
+
+.cb-create {
+  font-style: italic;
+}
+
+.cb-status {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.cb-fallback-create {
+  display: flex;
+  gap: 0.5rem;
+  margin-block-start: 0.5rem;
+}
+
+.cb-fallback-input {
+  flex: 1 1 auto;
+}
+
+.cb-fallback-add {
+  flex: 0 0 auto;
+  padding-inline: 0.875rem;
+  cursor: pointer;
+}
+
+.cb-chip:focus {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* The custom element is an enhancement/lifecycle boundary, not a shadow tree. */
+combo-box {
+  display: block;
+  min-inline-size: 0;
+}
