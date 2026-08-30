@@ -1,11 +1,8 @@
 import { expect, test } from "@playwright/test";
-
-async function modernSupported(page) {
-  return page.evaluate(() => window.Combobox?.supported === true);
-}
+import { modernSupported, setup } from "./helpers.js";
 
 test("fallback keeps native controls and cheap create input", async ({ page }) => {
-  await page.goto("/?native=1");
+  await setup(page, "/?native=1");
 
   await expect(page.locator("#tags")).toBeVisible();
   await expect(page.locator(".cb-popover")).toHaveCount(0);
@@ -23,7 +20,7 @@ test("fallback keeps native controls and cheap create input", async ({ page }) =
 });
 
 test("enhanced input detaches native datalist and popover stays open", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   await expect(page.locator("#cities")).toHaveCount(0);
@@ -36,7 +33,7 @@ test("enhanced input detaches native datalist and popover stays open", async ({ 
 });
 
 test("single select uses separate unnamed filter and preserves native value", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const filter = page.locator("#doctor-filter");
@@ -51,7 +48,7 @@ test("single select uses separate unnamed filter and preserves native value", as
 });
 
 test("programmatic select materializes externally-created option", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   await page.locator("#add-doctor").click();
 
   await expect(page.locator('#doctor option[value="205"]')).toHaveText("Eva Dupont");
@@ -59,7 +56,7 @@ test("programmatic select materializes externally-created option", async ({ page
 });
 
 test("remote results remain transient until selected", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   await expect(page.locator("#country option")).toHaveCount(1);
@@ -79,7 +76,7 @@ test("remote results remain transient until selected", async ({ page }) => {
 });
 
 test("selection order changes without moving catalogue options", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const before = await page

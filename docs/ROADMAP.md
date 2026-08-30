@@ -13,7 +13,7 @@ Before splitting/refactoring the POC:
 - [x] decide ordered-mode keyboard reorder gesture + live announcement — `Alt+ArrowLeft/Right` moves a focused chip, `Alt+Home/End` jumps to first/last, status region announces position; implementation lands in Phase 6;
 - [x] decide optional automatic MutationObserver sync — opt-in `observeSource` (default `false`), debounced single `sync()`, component mutations suppressed; implementation lands in Phase 2;
 - [x] decide package name and primary element (`@lekoala/combobox`, `<combo-box>`, explicit `defineCombobox()` registration);
-- [x] decide ESM/export shape — ESM entry + default export, `./combobox.css` subpath, release-only global build for `file://`/classic scripts, JSDoc types; implementation lands in Phase 8.
+- [x] decide ESM/export shape — ESM entry + default export, `./combobox.css` subpath, `./define` side-effect entry, zero globals, generated classic build; base landed in Phase 1.5, release polish (minification/types) stays in Phase 8.
 
 No major architecture change should be needed for these.
 
@@ -28,6 +28,19 @@ Extract only where tests justify the boundary:
 - ordered selection model; ✅ done (`reconcileSelected` for order ∩ selection + native-order unknowns; `moveValueInOrder` for pure clamped reordering)
 
 Add fast unit tests for these pure functions. ✅ `test/unit/helpers.test.js` (`bun run test:unit`): scoring/sorting and order helpers covered.
+
+## Phase 1.5 — Modernize the foundation
+
+Full ESM source with zero globals; behavioral suite stays on the source, the bundle gets smoke tests only.
+
+- ✅ `src/` converted to pure ESM named exports (`helpers.js`, `combobox.js`, `combo-box.js`); all `window.*`/helper-fallback scaffolding removed (`index.js` is a pure barrel, `define.js` is the single side-effect entry).
+- ✅ generated classic build `dist/combobox.js` from `src/define.js` via `bun run build` (`--format=iife`), gitignored; `exports` maps `.`, `./define`, `./combobox.css`.
+- ✅ unit tests import `src/helpers.js` directly (no `vm.runInNewContext`).
+- ✅ persistent listeners routed through `handleEvent`; listbox/chips/control fully delegated so renderers add zero listeners; options are non-focusable `div[role=option]`.
+- ✅ upgrade/dispose symmetry enforced with a `captureAttributes(...).restore()` snapshot on every non-owned element (filter input, source input/select) plus invented `<label>` id cleanup.
+- ✅ custom `tokenize` seam frozen to `{ tokens, rest }` with a leftover-`rest` browser test.
+- ✅ demo + fixtures dual surface: ESM over http(s), dist bundle under `file://`; browser suite hits ESM, `test/dist` smoke-tests the bundle (incl. a `file://` page).
+- ✅ docs aligned (README, PROJECT_SETUP, API, USE_CASES, CONTRIBUTING, AGENTS, ROADMAP).
 
 ## Phase 2 — Harden native source adapters
 

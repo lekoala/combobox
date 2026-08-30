@@ -1,29 +1,36 @@
 import { expect, test } from "@playwright/test";
+import { modernSupported, setup } from "./helpers.js";
 
-async function modernSupported(page) {
-  return page.evaluate(() => window.Combobox?.supported === true);
-}
-
-test("loading the engine and wrapper does not auto-register any element", async ({ page }) => {
+test("loading the engine exports never auto-registers nor leaks globals", async ({ page }) => {
+  // No exposeEsm here: this test asserts the page itself stays global-free.
   await page.goto("/test/fixtures/scripts-only.html");
 
-  const state = await page.evaluate(() => ({
-    engine: typeof window.Combobox,
-    defineCombobox: typeof window.defineCombobox,
-    elementClass: typeof window.ComboBoxElement,
-    registered: customElements.get("combo-box"),
-    registeredCustom: customElements.get("app-combobox"),
-  }));
+  const state = await page.evaluate(async () => {
+    const mod = await import("/src/index.js");
+    return {
+      engineExport: typeof mod.Combobox,
+      defineExport: typeof mod.defineCombobox,
+      elementClassExport: typeof mod.ComboBoxElement,
+      windowCombobox: typeof window.Combobox,
+      windowDefine: typeof window.defineCombobox,
+      windowElement: typeof window.ComboBoxElement,
+      registered: customElements.get("combo-box"),
+      registeredCustom: customElements.get("app-combobox"),
+    };
+  });
 
-  expect(state.engine).toBe("function");
-  expect(state.defineCombobox).toBe("function");
-  expect(state.elementClass).toBe("function");
+  expect(state.engineExport).toBe("function");
+  expect(state.defineExport).toBe("function");
+  expect(state.elementClassExport).toBe("function");
+  expect(state.windowCombobox).toBe("undefined");
+  expect(state.windowDefine).toBe("undefined");
+  expect(state.windowElement).toBe("undefined");
   expect(state.registered).toBeUndefined();
   expect(state.registeredCustom).toBeUndefined();
 });
 
 test("defineCombobox registers default and custom names and is idempotent", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
 
   const state = await page.evaluate(() => {
     const defaultClass = defineCombobox("combo-box");
@@ -42,7 +49,7 @@ test("defineCombobox registers default and custom names and is idempotent", asyn
 });
 
 test("existing markup upgrades and attributes map to engine options", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
 
   const state = await page.evaluate(() => {
     const wrap = document.querySelector("#frameworks").parentElement;
@@ -67,7 +74,7 @@ test("existing markup upgrades and attributes map to engine options", async ({ p
 });
 
 test("custom element name + configure() wires JS-only options", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const config = await page.evaluate(() => {
@@ -92,7 +99,7 @@ test("custom element name + configure() wires JS-only options", async ({ page })
 });
 
 test("combobox:ready fires and whenReady() resolves after dynamic insertion", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
 
   const state = await page.evaluate(() => {
     const wrap = document.createElement("combo-box");
@@ -109,7 +116,7 @@ test("combobox:ready fires and whenReady() resolves after dynamic insertion", as
 });
 
 test("dispose on removal restores the detached datalist source", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const state = await page.evaluate(async () => {
@@ -143,7 +150,7 @@ test("dispose on removal restores the detached datalist source", async ({ page }
 });
 
 test("wrapper can be forced into native fallback", async ({ page }) => {
-  await page.goto("/?native=1");
+  await setup(page, "/?native=1");
 
   const state = await page.evaluate(() => {
     const wrap = document.querySelector("#frameworks").parentElement;

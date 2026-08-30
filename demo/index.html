@@ -139,8 +139,8 @@
         <p class="demo-note">
           The wrapper owns nothing: the child <code>select</code> stays the
           form-value owner and attributes map to engine options. Registration is
-          explicit — loading the scripts never registers <code>combo-box</code>
-          automatically.
+          centralized — importing the engine never registers anything; this page
+          explicitly charges the <code>define</code> side-effect entry.
         </p>
 
         <label for="frameworks">Frameworks</label>
@@ -338,227 +338,260 @@
     </form>
   </main>
 
-  <script src="../src/helpers.js"></script>
-  <script src="../src/combobox.js"></script>
-  <script src="../src/combo-box.js"></script>
   <script>
-    const forceNative = new URLSearchParams(location.search).has("native");
-    const baseOptions = forceNative ? { mode: "fallback" } : {};
-
-    // Options assigned before registration are picked up during upgrade.
-    for (const wrapper of document.querySelectorAll("combo-box, app-combobox")) {
-      if (forceNative) wrapper.options = { mode: "fallback" };
+    // Engine loading, one path per protocol:
+    // - http(s): the authoritative ESM source. src/define.js only registers
+    //   <combo-box>; the imperative blocks below import the engine explicitly.
+    // - file://: the generated classic build (dist/combobox.js) self-registers
+    //   <combo-box> with zero globals. Imperative sections in this demo require
+    //   a server; under file:// they degrade to the native controls.
+    if (location.protocol === "file:") {
+      const script = document.createElement("script");
+      script.src = "../dist/combobox.js";
+      document.head.append(script);
+    } else {
+      const module = document.createElement("script");
+      module.type = "module";
+      module.src = "../src/define.js";
+      document.head.append(module);
     }
+  </script>
+  <script>
+    (async () => {
+      const forceNative = new URLSearchParams(location.search).has("native");
+      const baseOptions = forceNative ? { mode: "fallback" } : {};
 
-    // Explicit registration: importing the files never auto-registers.
-    defineCombobox();
-    defineCombobox("app-combobox");
-
-    document.querySelector("#support-status").textContent = forceNative
-      ? "Basic fallback forced: native controls remain authoritative; creatable selects keep only the cheap add-input enhancement."
-      : Combobox.supported
-        ? "Enhanced mode active: manual Popover + CSS Anchor Positioning."
-        : "Basic fallback active: native controls remain usable; no legacy popup positioning engine is loaded.";
-
-    for (const id of ["city", "doctor", "specialties"]) {
-      Combobox.getOrCreateInstance(document.getElementById(id), baseOptions);
-    }
-
-    const tags = Combobox.getOrCreateInstance(document.getElementById("tags"), {
-      ...baseOptions,
-      create: true,
-      createFilter(value) {
-        const term = value.trim();
-        if (term.length <= 2) return false;
-        if (term !== "" && !Number.isNaN(Number(term))) return false;
-        return true;
-      },
-    });
-
-    const priorities = Combobox.getOrCreateInstance(document.getElementById("priorities"), {
-      ...baseOptions,
-      selectionOrder: "selected",
-    });
-
-    const orderOutput = document.getElementById("order-output");
-    const renderOrder = () => {
-      orderOutput.textContent = priorities.getSelectedValues().join(" → ") || "No selection";
-    };
-    document.getElementById("priorities").addEventListener("change", renderOrder);
-    document.getElementById("priorities").addEventListener("combobox:reorder", renderOrder);
-    document.getElementById("move-last-first").addEventListener("click", () => {
-      const values = priorities.getSelectedValues();
-      if (values.length > 1) priorities.move(values.at(-1), 0);
-    });
-    renderOrder();
-
-    const countries = [
-      { value: "be", label: "Belgium" },
-      { value: "fr", label: "France" },
-      { value: "de", label: "Germany" },
-      { value: "nl", label: "Netherlands" },
-      { value: "lu", label: "Luxembourg" },
-      { value: "es", label: "Spain" },
-      { value: "it", label: "Italy" },
-    ];
-
-    Combobox.getOrCreateInstance(document.getElementById("country"), {
-      ...baseOptions,
-      minChars: 1,
-      debounce: 120,
-      shouldLoad(query) {
-        return query.trim().length >= 1;
-      },
-      async load(query, { signal }) {
-        await new Promise((resolve, reject) => {
-          const timer = setTimeout(resolve, 180);
-          signal.addEventListener("abort", () => {
-            clearTimeout(timer);
-            reject(new DOMException("Aborted", "AbortError"));
-          }, { once: true });
-        });
-        const q = query.toLocaleLowerCase();
-        return countries.filter((item) => item.label.toLocaleLowerCase().includes(q));
-      },
-    });
-
-    document.getElementById("add-doctor").addEventListener("click", () => {
-      Combobox.getInstance(document.getElementById("doctor")).select({
-        value: "205",
-        label: "Eva Dupont",
-      });
-    });
-
-    const languages = [
-      { value: "fr", label: "Français" },
-      { value: "en", label: "English" },
-      { value: "nl", label: "Nederlands" },
-      { value: "es", label: "Español" },
-      { value: "de", label: "Deutsch" },
-      { value: "it", label: "Italiano" },
-    ];
-
-    document.getElementById("languages-widget").configure({
-      shouldLoad(query) {
-        return query.trim().length >= 1;
-      },
-      async load(query, { signal }) {
-        await new Promise((resolve, reject) => {
-          const timer = setTimeout(resolve, 150);
-          signal.addEventListener("abort", () => {
-            clearTimeout(timer);
-            reject(new DOMException("Aborted", "AbortError"));
-          }, { once: true });
-        });
-        const q = query.toLocaleLowerCase();
-        return languages.filter((item) => item.label.toLocaleLowerCase().includes(q));
-      },
-    });
-
-    const demoStatus = (message) => {
-      document.querySelector("#guard-status").textContent = message;
-    };
-
-    const confirmDialog = (message) => {
-      const confirmed = window.confirm(message);
-      return Promise.resolve(confirmed);
-    };
-
-    document.getElementById("email-widget").configure({
-      createFilter(value) {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-      },
-      guards: {
-        add({ label }, { combobox }) {
-          const exclusive =
-            (label === "ceo@x.dev" && combobox.getSelectedValues().includes("cto@x.dev")) ||
-            (label === "cto@x.dev" && combobox.getSelectedValues().includes("ceo@x.dev"));
-          if (exclusive) {
-            demoStatus("Cannot email both ceo and cto");
-            return false;
-          }
-          return confirmDialog(`Add ${label}?`);
-        },
-        remove({ item }) {
-          return confirmDialog(`Remove ${item.label}?`);
-        },
-        clear() {
-          return confirmDialog("Remove all emails?");
-        },
-      },
-    });
-    document.getElementById("clear-emails").addEventListener("click", () => {
-      void Combobox.getInstance(document.getElementById("emails")).clear();
-    });
-
-    document.getElementById("toggle-fruit-disabled").addEventListener("click", () => {
-      const select = document.getElementById("fruit");
-      const banana = select.querySelector('option[value="banana"]');
-      banana.toggleAttribute("disabled");
-      Combobox.getInstance(select).refresh();
-    });
-
-    document.getElementById("clear-btn").addEventListener("click", () => {
-      void Combobox.getInstance(document.getElementById("clearable")).clear();
-    });
-
-    document.getElementById("rich-widget").configure({
-      render: {
-        option(item, { selected }) {
-          const node = document.createElement("span");
-          node.append(document.createTextNode(item.label));
-          if (item.data.kind === "favorite") {
-            const badge = document.createElement("b");
-            badge.className = "demo-badge";
-            badge.textContent = "★";
-            node.append(badge);
-          }
-          return node;
-        },
-      },
-    });
-
-    const cityData = [
-      { state: "Texas", city: "Houstan" },
-      { state: "Texas", city: "San Antonio" },
-      { state: "California", city: "Los Angeles" },
-      { state: "California", city: "San Diego" },
-    ];
-    const citiesWidget = document.getElementById("cities-widget");
-    citiesWidget.configure({ searchFields: ["city", "state"] });
-    void citiesWidget.whenReady().then((combo) => combo.setOptions(cityData));
-
-    const events = document.querySelector("#events");
-    const log = [];
-    const record = (name, event) => {
-      const query = event.query ?? event.detail?.query;
-      log.unshift(`${name}${query !== undefined ? ` query=${JSON.stringify(query)}` : ""}`);
-      events.textContent = log.slice(0, 14).join("\n");
-    };
-
-    for (const input of document.querySelectorAll("input[data-combobox], input[filter]")) {
-      input.addEventListener("beforefilter", (event) => record("beforefilter", event));
-      input.addEventListener("filter", (event) => record("filter", event));
-    }
-
-    for (const wrapper of document.querySelectorAll("combo-box, app-combobox")) {
-      wrapper.addEventListener("combobox:ready", (event) => record("combobox:ready", event));
-    }
-
-    for (const source of document.querySelectorAll("[data-combobox], combo-box select, app-combobox select")) {
-      for (const type of [
-        "combobox:beforeopen", "combobox:open", "combobox:beforeclose", "combobox:close",
-        "combobox:beforeload", "combobox:load", "combobox:loaderror",
-        "combobox:beforeselect", "combobox:select",
-        "combobox:beforecreate", "combobox:create", "combobox:createerror",
-        "combobox:guarderror",
-        "combobox:beforeremove", "combobox:remove",
-        "combobox:beforeclear", "combobox:clear",
-        "combobox:beforereorder", "combobox:reorder",
-      ]) {
-        source.addEventListener(type, (event) => record(type, event));
+      // The ESM engine is authoritative over http(s). It is the same cached
+      // module used by ../src/define.js above, so instances stay coherent.
+      let Combobox = null;
+      let defineCombobox = null;
+      if (location.protocol !== "file:") {
+        ({ Combobox, defineCombobox } = await import("../src/index.js"));
+        defineCombobox("app-combobox");
       }
-    }
+
+      // Options assigned before upgrade are picked up during upgrade, in both
+      // modes. This is the imperative surface that needs no engine global.
+      for (const wrapper of document.querySelectorAll("combo-box, app-combobox")) {
+        if (forceNative) wrapper.options = { mode: "fallback" };
+      }
+
+      const stage = document.querySelector("#support-status");
+      if (forceNative) {
+        stage.textContent =
+          "Basic fallback forced: native controls remain authoritative; creatable selects keep only the cheap add-input enhancement.";
+      } else if (Combobox) {
+        stage.textContent = Combobox.supported
+          ? "Enhanced mode active: manual Popover + CSS Anchor Positioning."
+          : "Basic fallback active: native controls remain usable; no legacy popup positioning engine is loaded.";
+      } else {
+        stage.textContent = "file:// mode: declarative <combo-box> demos active via dist/combobox.js.";
+      }
+
+      if (!Combobox) return;
+
+      for (const id of ["city", "doctor", "specialties"]) {
+        Combobox.getOrCreateInstance(document.getElementById(id), baseOptions);
+      }
+
+      const tags = Combobox.getOrCreateInstance(document.getElementById("tags"), {
+        ...baseOptions,
+        create: true,
+        createFilter(value) {
+          const term = value.trim();
+          if (term.length <= 2) return false;
+          if (term !== "" && !Number.isNaN(Number(term))) return false;
+          return true;
+        },
+      });
+
+      const priorities = Combobox.getOrCreateInstance(document.getElementById("priorities"), {
+        ...baseOptions,
+        selectionOrder: "selected",
+      });
+
+      const orderOutput = document.getElementById("order-output");
+      const renderOrder = () => {
+        orderOutput.textContent = priorities.getSelectedValues().join(" → ") || "No selection";
+      };
+      document.getElementById("priorities").addEventListener("change", renderOrder);
+      document.getElementById("priorities").addEventListener("combobox:reorder", renderOrder);
+      document.getElementById("move-last-first").addEventListener("click", () => {
+        const values = priorities.getSelectedValues();
+        if (values.length > 1) priorities.move(values.at(-1), 0);
+      });
+      renderOrder();
+
+      const countries = [
+        { value: "be", label: "Belgium" },
+        { value: "fr", label: "France" },
+        { value: "de", label: "Germany" },
+        { value: "nl", label: "Netherlands" },
+        { value: "lu", label: "Luxembourg" },
+        { value: "es", label: "Spain" },
+        { value: "it", label: "Italy" },
+      ];
+
+      Combobox.getOrCreateInstance(document.getElementById("country"), {
+        ...baseOptions,
+        minChars: 1,
+        debounce: 120,
+        shouldLoad(query) {
+          return query.trim().length >= 1;
+        },
+        async load(query, { signal }) {
+          await new Promise((resolve, reject) => {
+            const timer = setTimeout(resolve, 180);
+            signal.addEventListener("abort", () => {
+              clearTimeout(timer);
+              reject(new DOMException("Aborted", "AbortError"));
+            }, { once: true });
+          });
+          const q = query.toLocaleLowerCase();
+          return countries.filter((item) => item.label.toLocaleLowerCase().includes(q));
+        },
+      });
+
+      document.getElementById("add-doctor").addEventListener("click", () => {
+        Combobox.getInstance(document.getElementById("doctor")).select({
+          value: "205",
+          label: "Eva Dupont",
+        });
+      });
+
+      const languages = [
+        { value: "fr", label: "Français" },
+        { value: "en", label: "English" },
+        { value: "nl", label: "Nederlands" },
+        { value: "es", label: "Español" },
+        { value: "de", label: "Deutsch" },
+        { value: "it", label: "Italiano" },
+      ];
+
+      document.getElementById("languages-widget").configure({
+        shouldLoad(query) {
+          return query.trim().length >= 1;
+        },
+        async load(query, { signal }) {
+          await new Promise((resolve, reject) => {
+            const timer = setTimeout(resolve, 150);
+            signal.addEventListener("abort", () => {
+              clearTimeout(timer);
+              reject(new DOMException("Aborted", "AbortError"));
+            }, { once: true });
+          });
+          const q = query.toLocaleLowerCase();
+          return languages.filter((item) => item.label.toLocaleLowerCase().includes(q));
+        },
+      });
+
+      const demoStatus = (message) => {
+        document.querySelector("#guard-status").textContent = message;
+      };
+
+      const confirmDialog = (message) => {
+        const confirmed = window.confirm(message);
+        return Promise.resolve(confirmed);
+      };
+
+      document.getElementById("email-widget").configure({
+        createFilter(value) {
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+        },
+        guards: {
+          add({ label }, { combobox }) {
+            const exclusive =
+              (label === "ceo@x.dev" && combobox.getSelectedValues().includes("cto@x.dev")) ||
+              (label === "cto@x.dev" && combobox.getSelectedValues().includes("ceo@x.dev"));
+            if (exclusive) {
+              demoStatus("Cannot email both ceo and cto");
+              return false;
+            }
+            return confirmDialog(`Add ${label}?`);
+          },
+          remove({ item }) {
+            return confirmDialog(`Remove ${item.label}?`);
+          },
+          clear() {
+            return confirmDialog("Remove all emails?");
+          },
+        },
+      });
+      document.getElementById("clear-emails").addEventListener("click", () => {
+        void Combobox.getInstance(document.getElementById("emails")).clear();
+      });
+
+      document.getElementById("toggle-fruit-disabled").addEventListener("click", () => {
+        const select = document.getElementById("fruit");
+        const banana = select.querySelector('option[value="banana"]');
+        banana.toggleAttribute("disabled");
+        Combobox.getInstance(select).refresh();
+      });
+
+      document.getElementById("clear-btn").addEventListener("click", () => {
+        void Combobox.getInstance(document.getElementById("clearable")).clear();
+      });
+
+      document.getElementById("rich-widget").configure({
+        render: {
+          option(item, { selected }) {
+            const node = document.createElement("span");
+            node.append(document.createTextNode(item.label));
+            if (item.data.kind === "favorite") {
+              const badge = document.createElement("b");
+              badge.className = "demo-badge";
+              badge.textContent = "★";
+              node.append(badge);
+            }
+            return node;
+          },
+        },
+      });
+
+      const cityData = [
+        { state: "Texas", city: "Houstan" },
+        { state: "Texas", city: "San Antonio" },
+        { state: "California", city: "Los Angeles" },
+        { state: "California", city: "San Diego" },
+      ];
+      const citiesWidget = document.getElementById("cities-widget");
+      citiesWidget.configure({ searchFields: ["city", "state"] });
+      void citiesWidget.whenReady().then((combo) => combo.setOptions(cityData));
+
+      const events = document.querySelector("#events");
+      const log = [];
+      const record = (name, event) => {
+        const query = event.query ?? event.detail?.query;
+        log.unshift(`${name}${query !== undefined ? ` query=${JSON.stringify(query)}` : ""}`);
+        events.textContent = log.slice(0, 14).join("\n");
+      };
+
+      for (const input of document.querySelectorAll("input[data-combobox], input[filter]")) {
+        input.addEventListener("beforefilter", (event) => record("beforefilter", event));
+        input.addEventListener("filter", (event) => record("filter", event));
+      }
+
+      for (const wrapper of document.querySelectorAll("combo-box, app-combobox")) {
+        wrapper.addEventListener("combobox:ready", (event) => record("combobox:ready", event));
+      }
+
+      for (const source of document.querySelectorAll("[data-combobox], combo-box select, app-combobox select")) {
+        for (const type of [
+          "combobox:beforeopen", "combobox:open", "combobox:beforeclose", "combobox:close",
+          "combobox:beforeload", "combobox:load", "combobox:loaderror",
+          "combobox:beforeselect", "combobox:select",
+          "combobox:beforecreate", "combobox:create", "combobox:createerror",
+          "combobox:guarderror",
+          "combobox:beforeremove", "combobox:remove",
+          "combobox:beforeclear", "combobox:clear",
+          "combobox:beforereorder", "combobox:reorder",
+        ]) {
+          source.addEventListener(type, (event) => record(type, event));
+        }
+      }
+    })().catch((error) => {
+      console.error("Demo failed to initialize:", error);
+    });
   </script>
 </body>
 </html>

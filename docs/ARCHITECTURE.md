@@ -31,7 +31,7 @@ For a select this is the declared `<option>` / `<optgroup>` catalogue. For an in
 
 It represents durable source data, including labels, disabled state, optgroups and initial selections.
 
-External mutants are reconciled at an explicit `sync()` by default. The opt-in `observeSource` option adds an automatic, debounced MutationObserver (structural `<option>`/`<optgroup>` changes plus `selected`/`disabled` and source state attributes) that calls `sync()` once per batch while skipping the component's own mutations — a convenience that never replaces the explicit contract.
+External mutants are reconciled at an explicit `sync()` — the only implemented path. **Planned (Phase 2, not yet built):** the opt-in `observeSource` option adds an automatic, debounced MutationObserver (structural `<option>`/`<optgroup>` changes plus `selected`/`disabled` and source state attributes) that calls `sync()` once per batch while skipping the component's own mutations — a convenience that never replaces the explicit contract.
 
 ### Result store
 
@@ -98,7 +98,7 @@ For multiple select, chips are projections of selected native options.
 - It is an autonomous custom element that simply contains the native source.
 - The source — first direct child `<select>`, else first direct child `<input list>` — stays the only value/validation owner.
 - The element is **not** form-associated and adds no hidden serialized state; no Shadow DOM, so labels, forms and reset keep working through the normal tree.
-- Registration is explicit (`defineCombobox()`); loading the scripts never touches the global `customElements` registry.
+- Registration is explicit and centralized: engine modules never touch `customElements` on load — `src/define.js` (`defineCombobox()`), an app-level `defineCombobox("my-tag")`, or the generated classic build are the only ways it happens.
 - It runs the exact same `Combobox` engine via `getOrCreateInstance` — it is not a second implementation.
 
 ```html
@@ -107,7 +107,7 @@ For multiple select, chips are projections of selected native options.
 </combo-box>
 ```
 
-The transformation is identical to the imperative path above; the wrapper only owns the upgrade/dispose lifecycle. Options come from wrapper attributes (mapped) plus JS via `configure()`, and any `data-*` on the native source keeps working — so the `data-combobox` contract and the wrapper coexist while migration is progressive. Child lookup is direct-children only; a source nested in another element is not found.
+The transformation is identical to the imperative path above; the wrapper only owns the upgrade/dispose lifecycle. Options come from wrapper attributes (mapped) plus JS via `configure()`, and the legacy source-level `data-*` subset (`data-create`, `data-placeholder`, `data-match`, `data-max`, `data-separator`) keeps working — so the `data-combobox` contract and the wrapper coexist while migration is progressive. No general `data-*` → option mapping exists. Child lookup is direct-children only; a source nested in another element is not found.
 
 Fallback: without JS or on unsupported browsers the browser sees an unknown element wrapping a fully functional native control.
 

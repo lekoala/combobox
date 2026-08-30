@@ -85,7 +85,12 @@ Child lookup is **direct children only**: a source nested inside another element
 | `allow-empty-option` | `allowEmptyOption: true` |
 | `debounce` | `debounce` |
 
-Boolean attributes accept `="false"` to turn off. The legacy `data-separator` attribute on the native source is supported for migration only; canonical separators live on `<combo-box separators="…">` or in JS. A matching `data-*` attribute on the native source is supported too, because the source may be reused imperatively. Wrapper options (`_options`) take precedence over both.
+Boolean attributes accept `="false"` to turn off. A fixed **legacy subset** of `data-*`
+attributes on the native source is supported for migration only and so sources can be
+reused imperatively without a wrapper: `data-create`, `data-placeholder`, `data-match`,
+`data-max`, `data-separator`. There is no general `data-*` → option mapping. Canonical
+configuration lives on `<combo-box>` attributes or in JS; wrapper options (`_options`)
+take precedence over both.
 
 ### Event
 
@@ -181,7 +186,14 @@ Explicitly replaces the durable native source catalogue. This is intentionally d
 
 ### `sync()`
 
-Refresh from externally-mutated native DOM. The explicit `sync()` contract is the default. Opt-in automatic sync via `observeSource: true` (default `false`): a MutationObserver watches the source `<select>`/`<datalist>` for structural `<option>`/`<optgroup>` changes plus `selected`/`disabled` and source-level `required`/`disabled`/`readonly`/`multiple` attributes, debounces to a single `sync()` per batch, and skips refreshes caused by the component's own mutations. Even with `observeSource` on, `sync()` remains the explicit escape hatch for arbitrary mutations.
+Refresh from externally-mutated native DOM. This is the explicit contract and the only
+one implemented. **Planned (Phase 2, not yet implemented):** opt-in automatic sync via
+`observeSource: true` (default `false`) — a MutationObserver watching the source
+`<select>`/`<datalist>` for structural `<option>`/`<optgroup>` changes plus
+`selected`/`disabled` and source-level `required`/`disabled`/`readonly`/`multiple`
+attributes, debounced to a single `sync()` per batch, skipping refreshes caused by the
+component's own mutations. Even then, `sync()` remains the explicit escape hatch for
+arbitrary mutations. `observeSource` does not exist in `DEFAULTS` yet.
 
 ## Remote
 

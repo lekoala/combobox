@@ -1,3 +1,6 @@
+import { Combobox } from "./combobox.js";
+import { parseSeparators } from "./helpers.js";
+
 /**
  * Lightweight Custom Element owner for the Combobox enhancement engine.
  *
@@ -8,7 +11,7 @@
  * - no automatic registration: call defineCombobox() explicitly
  * - JS options may be assigned before custom-element registration
  */
-class ComboBoxElement extends HTMLElement {
+export class ComboBoxElement extends HTMLElement {
   static observedAttributes = [
     "create",
     "placeholder",
@@ -102,10 +105,8 @@ class ComboBoxElement extends HTMLElement {
       return null;
     }
 
-    // The engine (src/combobox.js) must load before this wrapper. If it is
-    // missing, leave the native source untouched instead of throwing.
-    if (typeof Combobox === "undefined") return null;
-
+    // The engine is imported statically above, so a missing source child is
+    // the only reason to defer enhancement.
     this._sourceObserver?.disconnect();
     this._sourceObserver = null;
 
@@ -164,14 +165,6 @@ class ComboBoxElement extends HTMLElement {
   #resolvedOptions() {
     const attrs = {};
 
-    const parseSeparators =
-      typeof window !== "undefined" && window.ComboboxHelpers?.parseSeparators
-        ? window.ComboboxHelpers.parseSeparators
-        : (value) =>
-            String(value ?? "")
-              .split("|")
-              .filter(Boolean);
-
     if (this.hasAttribute("create")) attrs.create = true;
     if (this.hasAttribute("placeholder")) attrs.placeholder = this.getAttribute("placeholder");
     if (this.hasAttribute("search")) attrs.match = this.getAttribute("search");
@@ -223,7 +216,7 @@ class ComboBoxElement extends HTMLElement {
  * A fresh subclass permits the same base implementation to be registered
  * under another application-specific name when desired.
  */
-function defineCombobox(name = "combo-box", registry = globalThis.customElements) {
+export function defineCombobox(name = "combo-box", registry = globalThis.customElements) {
   if (!registry) return null;
   const existing = registry.get(name);
   if (existing) {
@@ -235,6 +228,3 @@ function defineCombobox(name = "combo-box", registry = globalThis.customElements
   registry.define(name, RegisteredComboBox);
   return RegisteredComboBox;
 }
-
-window.ComboBoxElement = ComboBoxElement;
-window.defineCombobox = defineCombobox;

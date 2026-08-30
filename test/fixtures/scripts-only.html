@@ -5,8 +5,7 @@
   <title>Engine + wrapper scripts only</title>
 </head>
 <body>
-  <script src="../../src/helpers.js"></script>
-  <script src="../../src/combobox.js"></script>
-  <script src="../../src/combo-box.js"></script>
+  <!-- Pure exports: loading the engine must never auto-register <combo-box>. -->
+  <script type="module" src="../../src/index.js"></script>
 </body>
 </html>

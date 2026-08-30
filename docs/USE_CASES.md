@@ -182,7 +182,7 @@ Existing apps initialize controls repeatedly inside newly-rendered scopes.
 Requirements:
 
 - idempotent `getOrCreateInstance`;
-- convenient `init(scope)` shape (final signature TODO);
+- type-dispatched `init(root, selector?, options?)` — implemented (`init(selector)`, `init(root, selector)`, `init(root | [element, …])`);
 - `dispose()` cleans all listeners/generated DOM and restores native controls;
 - `sync()` handles application-driven option changes;
 - optional MutationObserver must batch changes and preserve focus if adopted.

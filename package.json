@@ -5,16 +5,24 @@
   "description": "Native-first <combo-box> combobox/filterable-select",
   "type": "module",
   "packageManager": "bun@1.4.0",
+  "exports": {
+    ".": "./src/index.js",
+    "./define": "./src/define.js",
+    "./combobox.css": "./src/combobox.css"
+  },
   "scripts": {
+    "build": "bun build src/define.js --outfile=dist/combobox.js --format=iife",
     "dev": "node test/server.js",
-    "test": "bun run test:unit && bun run test:browser",
+    "test": "bun run test:unit && bun run test:browser && bun run test:dist",
     "test:unit": "bun test test/unit",
-    "test:browser": "playwright test",
-    "test:browser:headed": "playwright test --headed",
-    "test:syntax": "node --check src/combobox.js && node --check src/combo-box.js && node --check src/helpers.js",
+    "test:browser": "playwright test test/browser",
+    "test:browser:headed": "playwright test test/browser --headed",
+    "test:dist": "playwright test test/dist",
+    "pretest:dist": "bun run build",
+    "test:syntax": "node --check src/combobox.js && node --check src/combo-box.js && node --check src/helpers.js && node --check src/index.js && node --check src/define.js",
     "lint": "biome check src test playwright.config.js",
     "format": "biome format --write src test playwright.config.js",
-    "check": "bun run test:syntax && bun run lint && bun run test:unit && bun run test:browser"
+    "check": "bun run test:syntax && bun run lint && bun run test:unit && bun run build && bun run test:browser && bun run test:dist"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",

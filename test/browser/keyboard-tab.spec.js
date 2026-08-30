@@ -1,13 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { modernSupported, setup } from "./helpers.js";
 
 const FEATURES = "/test/fixtures/features.html";
 
-async function modernSupported(page) {
-  return page.evaluate(() => window.Combobox?.supported === true);
-}
-
 test.beforeEach(async ({ page }) => {
-  await page.goto(FEATURES);
+  await setup(page, FEATURES);
 });
 
 test("default tabSelect (false): Tab moves focus out without selecting", async ({ page }) => {

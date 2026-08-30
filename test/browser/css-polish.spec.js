@@ -1,10 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-
-async function modernSupported(page) {
-  return page.evaluate(() => window.Combobox?.supported === true);
-}
+import { modernSupported, setup } from "./helpers.js";
 
 function shotsDir() {
   return path.join(process.cwd(), ".temp", "screens");
@@ -19,7 +16,7 @@ async function capture(page, name) {
 
 test("no horizontal overflow in controls, picker or document at 320px", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const initial = await page.evaluate(() => ({
@@ -61,14 +58,14 @@ test("no horizontal overflow in controls, picker or document at 320px", async ({
   expect(noResults.emptyHeight).toBeGreaterThanOrEqual(38);
 
   await page.keyboard.press("Escape");
-  await page.goto("/?native=1");
+  await setup(page, "/?native=1");
   const fallback = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(fallback).toBeLessThanOrEqual(0);
   await capture(page, "11-fallback-320.png");
 });
 
 test("picker adopts the control typography instead of the page font", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   await page.locator("#city").click();
@@ -92,7 +89,7 @@ test("picker adopts the control typography instead of the page font", async ({ p
 });
 
 test("input combobox and single-select control share geometry", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const geometry = await page.evaluate(() => {
@@ -116,7 +113,7 @@ test("input combobox and single-select control share geometry", async ({ page })
 });
 
 test("chips stay compact and remove is a real hit target", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const geometry = await page.evaluate(() => {
@@ -144,7 +141,7 @@ test("chips stay compact and remove is a real hit target", async ({ page }) => {
 });
 
 test("long chip labels truncate instead of widening the control", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const overflow = await page.evaluate(async () => {
@@ -173,7 +170,7 @@ test("long chip labels truncate instead of widening the control", async ({ page 
 });
 
 test("long option labels truncate without horizontal picker scroll", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const overflow = await page.evaluate(async () => {
@@ -206,7 +203,7 @@ test("long option labels truncate without horizontal picker scroll", async ({ pa
 });
 
 test("rtl mirrors chips and keeps remove at the inline start", async ({ page }) => {
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   const rtl = await page.evaluate(() => {
@@ -233,7 +230,7 @@ test("rtl mirrors chips and keeps remove at the inline start", async ({ page }) 
 
 test("screenshot catalog for manual review", async ({ page }) => {
   test.skip(!process.env.CSS_SHOTS, "Set CSS_SHOTS=1 to write screenshots");
-  await page.goto("/");
+  await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   await capture(page, "01-page-light.png");
@@ -260,7 +257,7 @@ test("screenshot catalog for manual review", async ({ page }) => {
   await expect(page.locator(".cb-popover:visible")).toHaveCount(1);
   await capture(page, "05-create-row.png");
 
-  await page.goto("/?native=1");
+  await setup(page, "/?native=1");
   await expect(page.locator(".cb-popover")).toHaveCount(0);
   await capture(page, "06-fallback.png");
 });

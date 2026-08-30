@@ -11,7 +11,13 @@ We should copy **coverage ideas**, not their implementation architecture or test
 
 ### Browser tests — primary
 
-Use Playwright against real browsers. Required for:
+Use Playwright against real browsers. The behavioral suite in `test/browser` targets the
+**ESM source** (`src/…`) directly; the generated bundle only gets dedicted smoke tests in
+`test/dist` (self-contained iife, no globals, self-registering `<combo-box>`, a `file://`
+page). Tests reach the engine in the page via the harness bridge in
+`test/browser/helpers.js` (`exposeEsm`), never via a library global.
+
+Required for:
 
 - focus/blur;
 - Popover state/top layer;

@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
-import vm from "node:vm";
-
-const source = await readFile(new URL("../../src/helpers.js", import.meta.url), "utf8");
-const sandbox = { window: {} };
-vm.runInNewContext(source, sandbox);
-const { normalize, toItem, parseSeparators, splitTokens, rankByScore, reconcileSelected, moveValueInOrder } =
-  sandbox.window.ComboboxHelpers;
+import {
+  moveValueInOrder,
+  normalize,
+  parseSeparators,
+  rankByScore,
+  reconcileSelected,
+  splitTokens,
+  toItem,
+} from "../../src/helpers.js";
 
 test("normalize strips accents and lowercases", () => {
   expect(normalize("Liège")).toBe("liege");

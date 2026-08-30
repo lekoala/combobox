@@ -17,32 +17,34 @@ Working project identity is intentionally boring: repository `combobox`, npm pac
 
 ## POC vs publishable package
 
-The POC keeps `window.Combobox`, `window.ComboBoxElement`, and `window.defineCombobox` so `demo/index.html` works directly under `file://`. It uses two classic source files: the engine and the Custom Element wrapper.
+The POC reached its final shape: the whole source tree is **pure ESM with zero
+`window.*`/`globalThis.*`** and the classic `file://` path is handled by one generated
+artifact, never by hand-maintained duplicate files.
 
-**Decision (Phase 0, implementation in Phase 8):** the package entry is ESM; the classic global files are a generated release artifact, never a hand-maintained second implementation.
+**Decision (implemented):** the package entry is ESM; `src/define.js` is the only
+side-effect entry and the single source of the generated classic build.
 
 Final export contract:
 
-- `src/index.js` — ESM barrel: `export { Combobox }` (`default` too), `ComboBoxElement`, `defineCombobox`, plus the pure helpers (`normalize`, `toItem`, `parseSeparators`, `splitTokens`) from `src/helpers.js`.
-- `src/combobox.js` and `src/combo-box.js` switch to named exports; the `window.*` globals exist only in the generated global build.
-- A release-only global build (single-file `dist/combobox.js` exposing `window.Combobox` + `window.ComboBoxElement` + `window.defineCombobox` + `window.ComboboxHelpers`) keeps the `file://` demo and classic `<script>` consumers working without a server.
+- `src/index.js` — ESM barrel: `export { Combobox }` (`default` too), `ComboBoxElement`, `defineCombobox`, plus the pure helpers (`normalize`, `toItem`, `parseSeparators`, `splitTokens`, `rankByScore`, `reconcileSelected`, `moveValueInOrder`) from `src/helpers.js`. Importing it **never registers** anything.
+- `src/define.js` — side-effect entry that calls `defineCombobox()`; importing `@lekoala/combobox/define` registers `<combo-box>`.
+- `dist/combobox.js` (`bun run build`, from `src/define.js`) — a self-contained iife classic script that registers `<combo-box>` and nothing else, keeping `file://` and classic `<script>` consumers working without a server. No globals are leaked.
 - `./combobox.css` ships as a subpath export.
 - Types are generated from checked JSDoc; no TypeScript source/transpilation.
 
-Candidate `package.json` shape:
+`package.json` shape:
 
 ```json
 {
   "type": "module",
   "exports": {
-    ".": {
-      "types": "./types/combobox.d.ts",
-      "import": "./src/index.js"
-    },
-    "./combobox.css": "./src/combobox.css",
-    "./dist/combobox.js": "./dist/combobox.js"
+    ".": "./src/index.js",
+    "./define": "./src/define.js",
+    "./combobox.css": "./src/combobox.css"
   },
-  "sideEffects": ["*.css"]
+  "scripts": {
+    "build": "bun build src/define.js --outfile=dist/combobox.js --format=iife"
+  }
 }
 ```
 
@@ -69,7 +71,8 @@ Before v1, document the actual tested browser floor based on the feature gate an
 - [x] GitHub Actions starter workflow.
 - [x] working repo/npm/tag naming: `combobox` / `@lekoala/combobox` / `<combo-box>`.
 - [x] freeze Phase 0 API questions.
-- [ ] convert the two POC globals to final ESM exports without changing the engine/wrapper split (Phase 8).
+- [x] convert the POC source to pure ESM exports + generated classic build (`src/define.js` → `dist/combobox.js`) with zero globals.
+- [x] browser suite targets the ESM source; `test/dist` smoke-tests the bundle.
 - [ ] create generated types/checkJs setup.
 - [ ] implement full P0 browser-test matrix.
 - [ ] test current Chromium + Firefox + WebKit and document support policy.

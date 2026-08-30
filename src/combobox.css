@@ -286,6 +286,7 @@
   font: inherit;
   text-align: start;
   cursor: pointer;
+  user-select: none;
 }
 
 .cb-option-label {

@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { setup } from "./helpers.js";
 
 const FEATURES = "/test/fixtures/features.html";
 
 test.beforeEach(async ({ page }) => {
-  await page.goto(FEATURES);
+  await setup(page, FEATURES);
 });
 
 test("init(selector) enhances and returns one instance per source", async ({ page }) => {

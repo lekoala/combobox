@@ -1,45 +1,16 @@
+import {
+  moveValueInOrder,
+  normalize,
+  parseSeparators,
+  rankByScore,
+  reconcileSelected,
+  splitTokens,
+  toItem,
+} from "./helpers.js";
+
 const instances = new WeakMap();
 let uid = 0;
 let openCombobox = null;
-
-// src/helpers.js must load first: it provides normalize, toItem and the
-// separator/tokenizer primitives via the global ComboboxHelpers namespace.
-const { normalize, toItem, parseSeparators, splitTokens, rankByScore, reconcileSelected, moveValueInOrder } =
-  typeof window !== "undefined" && window.ComboboxHelpers
-    ? window.ComboboxHelpers
-    : {
-        normalize: (v) => String(v ?? "").toLocaleLowerCase(),
-        toItem: (r) => ({ value: r, label: r }),
-        parseSeparators: () => [],
-        splitTokens: () => ({ done: [], rest: String() }),
-        rankByScore: (items, score) =>
-          items
-            .map((item, index) => ({ item, index, score: score(item, index) }))
-            .filter((entry) => entry.score !== false && entry.score !== null)
-            .sort((a, b) => b.score - a.score || a.index - b.index)
-            .map((entry) => entry.item),
-        reconcileSelected: (values, order) => {
-          const remaining = new Set(values);
-          const result = [];
-          for (const value of order) {
-            if (remaining.has(value)) {
-              result.push(value);
-              remaining.delete(value);
-            }
-          }
-          result.push(...remaining);
-          return result;
-        },
-        moveValueInOrder: (list, value, index) => {
-          const order = [...list];
-          const from = order.indexOf(String(value));
-          if (from < 0) return null;
-          const to = Math.max(0, Math.min(Number(index), order.length - 1));
-          if (from === to) return null;
-          order.splice(to, 0, ...order.splice(from, 1));
-          return { order, from, to };
-        },
-      };
 
 const DEFAULTS = {
   create: false,
@@ -59,7 +30,7 @@ const DEFAULTS = {
   maxItems: 0, // 0 = unlimited: cap on selected values, never on rendering
   maxOptions: 0, // 0 = unlimited: cap on rendered options only
   separators: [],
-  tokenize: null, // custom tokenizer seam for paste and separators
+  tokenize: null, // custom seam: (value, ctx) => { tokens: string[], rest?: string }
   closeOnSelect: undefined, // default: single closes, multiple stays open
   createOnBlur: false,
   autoselectFirst: false,
@@ -135,6 +106,48 @@ function setContent(element, content) {
 }
 
 /**
+ * Snapshot a set of attributes on an element we do not own so `dispose()` can
+ * restore the authored state exactly. The returned object has a `restore()`
+ * method: attributes that were absent are removed, those that had a value are
+ * written back. This makes upgrade/dispose symmetry impossible to forget.
+ */
+function captureAttributes(element, names) {
+  const original = new Map(names.map((name) => [name, element.getAttribute(name)]));
+  return {
+    restore() {
+      for (const [name, value] of original) {
+        if (value === null) element.removeAttribute(name);
+        else element.setAttribute(name, value);
+      }
+    },
+  };
+}
+
+// Every attribute the engine may touch on an input it does not own (the source
+// input for input+datalist, or an authored filter input). Snapshot before
+// mutation, restore on dispose().
+const INPUT_ATTRS = [
+  "list",
+  "name",
+  "type",
+  "autocomplete",
+  "spellcheck",
+  "placeholder",
+  "hidden",
+  "tabindex",
+  "role",
+  "aria-autocomplete",
+  "aria-expanded",
+  "aria-controls",
+  "aria-activedescendant",
+  "aria-invalid",
+  "aria-label",
+  "aria-labelledby",
+  "aria-required",
+  "aria-describedby",
+];
+
+/**
  * Native-first combobox / filterable-select skeleton.
  *
  * The source element is always the form-value owner:
@@ -147,7 +160,7 @@ function setContent(element, content) {
  *   <input filter="select-id" hidden>
  * or data-filter-input="input-id" on the select.
  */
-class Combobox {
+export class Combobox {
   static supported = supportsModernCombobox();
 
   /**
@@ -217,7 +230,6 @@ class Combobox {
     this.isMultiple = this.isSelect && element.multiple;
     this.abortController = new AbortController();
     this.loadController = null;
-    this.loadTimer = null;
     this.activeIndex = -1;
     this.filteredItems = [];
     // Remote/custom results are deliberately transient. The native select is
@@ -260,13 +272,16 @@ class Combobox {
     };
 
     this.original = {
-      list: null,
-      autocomplete: null,
-      tabindex: null,
-      filterInputHidden: null,
+      // explicit filter input
       filterInputPlaceholder: null,
+      // detached datalist position marker
       datalistPlaceholder: null,
+      // <label> elements whose id the engine invented for aria-labelledby
+      inventedLabels: [],
     };
+    // Attribute snapshots so dispose() restores anything the engine touched.
+    this.sourceSnapshot = null;
+    this.inputSnapshot = null;
 
     this.datalist = null;
     this.boundLabels = [];
@@ -397,8 +412,7 @@ class Combobox {
       throw new TypeError(`No datalist found for #${listId}`);
     }
 
-    this.original.list = listId;
-    this.original.autocomplete = this.source.getAttribute("autocomplete");
+    this.inputSnapshot = captureAttributes(this.source, INPUT_ATTRS);
 
     // In enhanced mode the datalist is a data source only. Detach it so the UA
     // picker can never flash/race our popover. dispose() restores it exactly.
@@ -415,7 +429,7 @@ class Combobox {
 
   #enhanceSelect() {
     this.source.classList.add("cb-source-hidden");
-    this.original.tabindex = this.source.getAttribute("tabindex");
+    this.sourceSnapshot = captureAttributes(this.source, ["aria-hidden", "tabindex"]);
     this.source.tabIndex = -1;
     this.source.setAttribute("aria-hidden", "true");
 
@@ -463,7 +477,7 @@ class Combobox {
     }
 
     if (input instanceof HTMLInputElement) {
-      this.original.filterInputHidden = input.hidden;
+      this.inputSnapshot = captureAttributes(input, INPUT_ATTRS);
       this.original.filterInputPlaceholder = document.createComment(`combobox-filter-input-${this.id}`);
       input.before(this.original.filterInputPlaceholder);
       input.hidden = false;
@@ -471,6 +485,8 @@ class Combobox {
     }
 
     this.ownsInput = true;
+    // An owned control is disposed with the wrapper: there is nothing to restore.
+    this.inputSnapshot = null;
     return document.createElement("input");
   }
 
@@ -478,7 +494,10 @@ class Combobox {
     if (this.source.id) {
       this.boundLabels = Array.from(document.querySelectorAll(`label[for="${CSS.escape(this.source.id)}"]`));
       const labelIds = this.boundLabels.map((label, index) => {
-        if (!label.id) label.id = `combobox-label-${this.id}-${index}`;
+        if (!label.id) {
+          label.id = `combobox-label-${this.id}-${index}`;
+          this.original.inventedLabels.push({ label, id: label.id });
+        }
         return label.id;
       });
       if (labelIds.length) this.input.setAttribute("aria-labelledby", labelIds.join(" "));
@@ -680,48 +699,25 @@ class Combobox {
   #bind() {
     const signal = this.abortController.signal;
 
-    this.input.addEventListener(
-      "focus",
-      () => {
-        if (this.isSelect && !this.isMultiple && this.source.selectedOptions.length) this.input.select();
-        const query = this.isSelect && !this.isMultiple ? "" : this.input.value;
-        this.search(query, { show: true, reason: "focus" });
-      },
-      { signal },
-    );
-
-    this.input.addEventListener(
-      "input",
-      (event) => {
-        // Separator tokens are consumed as they complete (typing or paste).
-        // IME composition feeds search but never tokenizes/creates.
-        if (this.isMultiple && !event.isComposing && this.#separatorsActive()) {
-          void this.#handleTokenInput();
-          return;
-        }
-        this.search(this.input.value, { show: true, reason: "input" });
-      },
-      { signal },
-    );
-
-    this.input.addEventListener(
-      "compositionstart",
-      () => {
-        this.composing = true;
-      },
-      { signal },
-    );
-    this.input.addEventListener(
-      "compositionend",
-      () => {
-        this.composing = false;
-      },
-      { signal },
-    );
-
-    this.input.addEventListener("keydown", (event) => this.#onKeyDown(event), { signal });
+    // Persistent listeners go through #handleEvent so no per-render closure is
+    // ever added. #renderList/#renderChips stay listener-free.
+    this.input.addEventListener("focus", this, { signal });
+    this.input.addEventListener("input", this, { signal });
+    this.input.addEventListener("compositionstart", this, { signal });
+    this.input.addEventListener("compositionend", this, { signal });
+    this.input.addEventListener("keydown", this, { signal });
+    this.input.addEventListener("blur", this, { signal });
 
     this.listbox.addEventListener("pointerdown", (event) => event.preventDefault(), { signal });
+    this.listbox.addEventListener("pointermove", this, { signal });
+    this.listbox.addEventListener("click", this, { signal });
+
+    if (this.chips) {
+      this.chips.addEventListener("keydown", this, { signal });
+      this.chips.addEventListener("click", this, { signal });
+    }
+
+    this.control?.addEventListener("click", this, { signal });
 
     document.addEventListener(
       "pointerdown",
@@ -733,44 +729,6 @@ class Combobox {
         this.hide();
       },
       { capture: true, signal },
-    );
-
-    this.input.addEventListener(
-      "blur",
-      () => {
-        queueMicrotask(async () => {
-          const active = document.activeElement;
-          // Blur caused by internal interaction (picker click, adornment,
-          // chip removal, clear) never closes and never blur-creates.
-          const stillInside =
-            active === this.input ||
-            (this.popover?.contains(active) ?? false) ||
-            (this.control && active && this.control.contains(active));
-          if (this.isOpen() && stillInside) return;
-
-          if (this.isOpen() || this.options.createOnBlur) {
-            if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing) {
-              const value = this.input.value;
-              this.suppressReopen = true;
-              try {
-                if (this.#separatorsActive()) {
-                  const result = await this.#processTokens(value, { final: true });
-                  if (result?.consumed) this.input.value = result.rest;
-                } else if (value.trim()) {
-                  this.input.value = "";
-                  await this.#createItem(value.trim());
-                }
-              } finally {
-                this.suppressReopen = false;
-              }
-              this.refresh();
-            }
-            if (!this.isMultiple) this.#syncSingleLabel();
-            this.hide();
-          }
-        });
-      },
-      { signal },
     );
 
     this.popover.addEventListener(
@@ -828,7 +786,127 @@ class Combobox {
     }
   }
 
-  #onKeyDown(event) {
+  /** Single entry point for all listeners bound with `this` as the handler. */
+  handleEvent(event) {
+    if (event.currentTarget === this.input) return this.#onInputEvent(event);
+    if (event.currentTarget === this.control) return this.#onControlEvent(event);
+    if (event.currentTarget === this.listbox) return this.#onListboxEvent(event);
+    if (event.currentTarget === this.chips) return this.#onChipsEvent(event);
+  }
+
+  #onInputEvent(event) {
+    switch (event.type) {
+      case "focus": {
+        if (this.isSelect && !this.isMultiple && this.source.selectedOptions.length) this.input.select();
+        const query = this.isSelect && !this.isMultiple ? "" : this.input.value;
+        this.search(query, { show: true, reason: "focus" });
+        return;
+      }
+      case "input": {
+        // Separator tokens are consumed as they complete (typing or paste).
+        // IME composition feeds search but never tokenizes/creates.
+        if (this.isMultiple && !event.isComposing && this.#separatorsActive()) {
+          void this.#handleTokenInput();
+          return;
+        }
+        this.search(this.input.value, { show: true, reason: "input" });
+        return;
+      }
+      case "compositionstart":
+        this.composing = true;
+        return;
+      case "compositionend":
+        this.composing = false;
+        return;
+      case "keydown":
+        return this.#onInputKeyDown(event);
+      case "blur":
+        return this.#onInputBlur(event);
+    }
+  }
+
+  #onControlEvent(event) {
+    if (event.target.closest("button")) return;
+    this.input.focus();
+  }
+
+  #onListboxEvent(event) {
+    if (event.type === "pointermove") {
+      const option = event.target.closest(".cb-option[data-index]");
+      if (option) this.#setActive(Number(option.dataset.index));
+      return;
+    }
+    if (event.type === "click") {
+      const option = event.target.closest(".cb-option");
+      if (!option) return;
+      if (option.classList.contains("cb-create")) {
+        const query = this.input.value.trim();
+        if (query) void this.#createItem(query);
+        return;
+      }
+      const item = this.visibleItems[Number(option.dataset.index)];
+      if (item) this.#selectItem(item);
+    }
+  }
+
+  #onChipsEvent(event) {
+    if (event.type === "click") {
+      const remove = event.target.closest(".cb-chip-remove");
+      if (!remove) return;
+      const value = remove.closest(".cb-chip")?.dataset.value;
+      if (value == null) return;
+      void this.remove(value).then((removed) => {
+        if (removed) this.input.focus();
+      });
+      return;
+    }
+    if (event.type === "keydown") {
+      const chip = event.target.closest(".cb-chip");
+      if (!chip) return;
+      const value = chip.dataset.value;
+      const item = this.getSelectedItems().find((entry) => entry.value === value) || {
+        value,
+        label: value,
+      };
+      this.#onChipKeyDown(event, item);
+    }
+  }
+
+  #onInputBlur() {
+    queueMicrotask(async () => {
+      const active = document.activeElement;
+      // Blur caused by internal interaction (picker click, adornment,
+      // chip removal, clear) never closes and never blur-creates.
+      const stillInside =
+        active === this.input ||
+        (this.popover?.contains(active) ?? false) ||
+        (this.control && active && this.control.contains(active));
+      if (this.isOpen() && stillInside) return;
+
+      if (this.isOpen() || this.options.createOnBlur) {
+        if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing) {
+          const value = this.input.value;
+          this.suppressReopen = true;
+          try {
+            if (this.#separatorsActive()) {
+              const result = await this.#processTokens(value, { final: true });
+              if (result?.consumed) this.input.value = result.rest;
+            } else if (value.trim()) {
+              this.input.value = "";
+              await this.#createItem(value.trim());
+            }
+          } finally {
+            this.suppressReopen = false;
+          }
+          this.refresh();
+        }
+        if (!this.isMultiple) this.#syncSingleLabel();
+        this.hide();
+      }
+    });
+  }
+
+  #onInputKeyDown(event) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
       if (!this.isOpen()) this.search(this.input.value, { show: true, reason: "keyboard" });
@@ -1164,8 +1242,7 @@ class Combobox {
         previousGroup = item.group;
       }
 
-      const option = document.createElement("button");
-      option.type = "button";
+      const option = document.createElement("div");
       option.className = "cb-option";
       option.id = `combobox-option-${this.id}-${index}`;
       option.role = "option";
@@ -1173,7 +1250,6 @@ class Combobox {
       option.dataset.index = String(index);
       option.setAttribute("aria-selected", String(Boolean(item.selected)));
       if (item.disabled) {
-        option.disabled = true;
         option.setAttribute("aria-disabled", "true");
       }
 
@@ -1186,18 +1262,12 @@ class Combobox {
       label.className = "cb-option-label";
       setContent(label, rendered ?? item.label);
       option.append(label);
-
-      option.addEventListener("pointermove", () => this.#setActive(index), {
-        signal: this.abortController.signal,
-      });
-      option.addEventListener("click", () => this.#selectItem(item), { signal: this.abortController.signal });
       this.listbox.append(option);
     }
 
     if (!this.filteredItems.length) {
       if (this.#canCreate(this.input.value)) {
-        const create = document.createElement("button");
-        create.type = "button";
+        const create = document.createElement("div");
         create.className = "cb-option cb-create";
         create.tabIndex = -1;
         create.role = "option";
@@ -1207,9 +1277,6 @@ class Combobox {
         createLabel.className = "cb-option-label";
         setContent(createLabel, rendered ?? this.options.createLabel(query));
         create.append(createLabel);
-        create.addEventListener("click", () => this.#createItem(query), {
-          signal: this.abortController.signal,
-        });
         this.listbox.append(create);
       } else {
         const empty = document.createElement("div");
@@ -1251,9 +1318,6 @@ class Combobox {
       chip.className = "cb-chip";
       chip.tabIndex = -1;
       chip.dataset.value = item.value;
-      chip.addEventListener("keydown", (event) => this.#onChipKeyDown(event, item), {
-        signal: this.abortController.signal,
-      });
 
       const label = document.createElement("span");
       label.className = "cb-chip-label";
@@ -1267,16 +1331,6 @@ class Combobox {
         remove.className = "cb-chip-remove";
         remove.textContent = "×";
         remove.setAttribute("aria-label", `Remove ${item.label}`);
-        remove.addEventListener(
-          "click",
-          (event) => {
-            event.stopPropagation();
-            void this.remove(item.value).then((removed) => {
-              if (removed) this.input.focus();
-            });
-          },
-          { signal: this.abortController.signal },
-        );
         chip.append(remove);
       }
 
@@ -1309,7 +1363,7 @@ class Combobox {
 
   #onChipKeyDown(event, item) {
     const chips = Array.from(this.chips.querySelectorAll(".cb-chip"));
-    const current = event.currentTarget;
+    const current = event.target.closest(".cb-chip");
     const index = chips.indexOf(current);
 
     if (
@@ -1548,13 +1602,19 @@ class Combobox {
     return this.isMultiple && Array.isArray(this.options.separators) && this.options.separators.length > 0;
   }
 
-  /** Resolve the input value into token entries. Honors the optional `tokenize` seam. */
+  /**
+   * Resolve the input value into token entries. Honors the optional `tokenize`
+   * seam: `tokenize(value, ctx) => { tokens: string[], rest?: string }`.
+   * `tokens` are complete tokens to consume; `rest` is the trailing
+   * incomplete text that must keep living in the input (defaults to `""`).
+   */
   #resolveTokens(value, final = false) {
     const custom = this.options.tokenize;
     if (typeof custom === "function") {
-      const tokens = custom(value, { combobox: this, source: this.source, input: this.input });
-      const entries = Array.isArray(tokens) ? tokens.map((text) => ({ text: String(text), sep: "" })) : [];
-      return { entries, rest: final ? "" : String(value ?? "") };
+      const result = custom(value, { combobox: this, source: this.source, input: this.input });
+      const tokens = result && Array.isArray(result.tokens) ? result.tokens : [];
+      const entries = tokens.map((text) => ({ text: String(text), sep: "" }));
+      return { entries, rest: final ? "" : String(result?.rest ?? "") };
     }
 
     const { done, rest } = splitTokens(value, this.options.separators);
@@ -1861,20 +1921,25 @@ class Combobox {
       item.option?.removeAttribute("data-active-option");
     }
 
+    // <label> ids invented by #copyAccessibleName are stripped again unless the
+    // application has since reused them.
+    for (const { label, id } of this.original.inventedLabels) {
+      if (label.id === id) label.removeAttribute("id");
+    }
+
+    // Restore every attribute the engine touched on elements it does not own.
     if (this.isSelect) {
       this.control?.remove();
       this.source.classList.remove("cb-source-hidden");
-      this.source.removeAttribute("aria-hidden");
-      if (this.original.tabindex === null) this.source.removeAttribute("tabindex");
-      else this.source.setAttribute("tabindex", this.original.tabindex);
+      this.sourceSnapshot?.restore();
 
       // A placeholder that was consumed by a previous dispose() has no parent.
       // Restoring must also work when the whole wrapper subtree is detached.
       if (!this.ownsInput && this.input && this.original.filterInputPlaceholder?.parentNode) {
-        this.input.classList.remove("cb-input");
         this.original.filterInputPlaceholder.replaceWith(this.input);
-        this.input.hidden = Boolean(this.original.filterInputHidden);
       }
+      this.input?.classList.remove("cb-input");
+      this.inputSnapshot?.restore();
     } else {
       this.source.classList.remove("cb-text-control");
       this.source.style.removeProperty("anchor-name");
@@ -1883,9 +1948,7 @@ class Combobox {
       if (this.original.datalistPlaceholder?.parentNode) {
         this.original.datalistPlaceholder.replaceWith(this.datalist);
       }
-      if (this.original.list) this.source.setAttribute("list", this.original.list);
-      if (this.original.autocomplete === null) this.source.removeAttribute("autocomplete");
-      else this.source.setAttribute("autocomplete", this.original.autocomplete);
+      this.inputSnapshot?.restore();
     }
   }
 }
@@ -1899,4 +1962,4 @@ class Combobox {
 // - If native customizable select multiple becomes interoperable, chips can
 //   remain script-owned while the picker/listbox implementation shrinks.
 
-window.Combobox = Combobox;
+export default Combobox;

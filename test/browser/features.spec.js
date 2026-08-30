@@ -1,17 +1,14 @@
 import { expect, test } from "@playwright/test";
+import { modernSupported, setup } from "./helpers.js";
 
 const FEATURES = "/test/fixtures/features.html";
-
-async function modernSupported(page) {
-  return page.evaluate(() => window.Combobox?.supported === true);
-}
 
 function control(id) {
   return `#${id} + .cb-control .cb-input`;
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto(FEATURES);
+  await setup(page, FEATURES);
 });
 
 test("guards.add: refusal blocks creation, allowance creates", async ({ page }) => {
@@ -412,7 +409,7 @@ test("separator tokenize custom seam is honored", async ({ page }) => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), {
       create: true,
       separators: [","],
-      tokenize: (value) => value.split("+").filter(Boolean),
+      tokenize: (value) => ({ tokens: value.split("+").filter(Boolean), rest: "" }),
     });
   });
 
@@ -425,4 +422,30 @@ test("separator tokenize custom seam is honored", async ({ page }) => {
   }));
   expect(state.selected).toContain("alpha");
   expect(state.selected).toContain("beta");
+});
+
+test("custom tokenize keeps the declared rest in the input", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  await page.evaluate(() => {
+    Combobox.getOrCreateInstance(document.getElementById("tags"), {
+      create: true,
+      separators: [","],
+      tokenize: (value) => {
+        const parts = value.split("+");
+        return { tokens: parts.slice(0, 1), rest: parts.slice(1).join("+") };
+      },
+    });
+  });
+
+  const input = page.locator(control("tags"));
+  await input.fill("alpha+beta");
+  await page.waitForTimeout(80);
+
+  const state = await page.evaluate(() => ({
+    selected: Array.from(document.getElementById("tags").selectedOptions, (o) => o.value),
+    inputValue: document.querySelector("#tags + .cb-control .cb-input").value,
+  }));
+  expect(state.selected).toContain("alpha");
+  expect(state.selected).not.toContain("beta");
+  expect(state.inputValue).toBe("beta");
 });

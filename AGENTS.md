@@ -10,7 +10,9 @@ Build a small, native-first combobox/filterable-select enhancer. Prefer browser/
 - Generated search/filter inputs are interaction controls and MUST NOT have a `name`.
 - `input+datalist` means free-form text; `select` means constrained values.
 - `<select multiple>` is the multiple-value model. Do not invent a hidden serialized state.
-- `<combo-box>` is a declarative lifecycle boundary only: the contained `<select>`/`<input list>` stays the value owner. It is never auto-registered and has no shadow root.
+- `<combo-box>` is a declarative lifecycle boundary only: the contained `<select>`/`<input list>` stays the value owner. `src/` is pure ESM with zero `window.*`/`globalThis.*`. Importing `src/index.js`/`combobox.js`/`combo-box.js` must never touch `customElements`; only `src/define.js` (and the classic build generated from it) registers the element. Test-only globals are confined to the Playwright harness (`test/browser/helpers.js`).
+- Anything the engine mutates on an element it does **not** own (filter input, source input/select, `<label>`) must be snapshot/restored exactly by `dispose()`: attributes via one `captureAttributes(...).restore()` snapshot, invented `<label>` ids stripped again.
+- The custom `tokenize` seam returns `{ tokens: string[], rest?: string }`: `tokens` are complete and consumed, `rest` is the trailing incomplete text that must keep living in the input (default `""`). An array-returning tokenizer is not a valid contract.
 - Keep catalogue order, result order, and selection order separate.
 - Remote results are transient. Do not append every remote result to the native select; materialize a native option when a remote item is selected.
 - Enhanced picker = Popover top layer + CSS Anchor Positioning. Do not add `getBoundingClientRect()` placement, global scroll/resize positioning listeners, `dropdownParent`, or modal-specific positioning hacks.
@@ -58,7 +60,7 @@ Creation: `createFilter`, sync/async `create`, `beforecreate/create/createerror`
 
 Value/API: `select`, `remove`, `clear`, `addOption`, `setOptions`, `sync`, `getSelectedValues`, `getSelectedItems`, `move`.
 
-Element/registration: `defineCombobox(name = "combo-box", registry)`, `upgrade`, `configure`, `whenReady`, `dispose`. Registration is always explicit; the scripts must never call `customElements.define` on load.
+Element/registration: `defineCombobox(name = "combo-box", registry)`, `upgrade`, `configure`, `whenReady`, `dispose`. Registration is always explicit: the engine modules never call `customElements.define` on load — `src/define.js` is the designated side-effect entry and the sole input to the generated classic build.
 
 Lifecycle: `init`, `getInstance`, `getOrCreateInstance`, `show`, `hide`, `dispose`.
 
@@ -79,13 +81,18 @@ Lifecycle: `init`, `getInstance`, `getOrCreateInstance`, `show`, `hide`, `dispos
 bun install
 bun run lint
 bun run test:unit
+bun run build
 bun run test:browser
+bun run test:dist
 bun run check
 ```
 
-`check` = syntax + lint + unit + browser.
+`check` = syntax + lint + unit + build + browser + dist smoke. The behavioral browser
+suite targets the ESM source; only `test/dist` exercises the generated bundle.
 
-The demo can also be opened directly from `demo/index.html`.
+The demo (`demo/index.html`) runs from ESM over http(s). For `file://` it needs
+`bun run build` first (the classic build self-registers `<combo-box>` with zero globals;
+JS-only demo sections degrade to native controls under `file://`).
 
 ## Definition of done for a feature
 
