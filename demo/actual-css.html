@@ -6,7 +6,7 @@
   <title>Combobox × Actual CSS — theme bridge demo</title>
   <meta name="description" content="@lekoala/combobox loaded locally and skinned entirely with Actual CSS tokens: controls, removable badge chips, picker and states follow the framework, the theme switcher included.">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/actual-css@0.4.2/dist/actual.full.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lekoala/actual-css@0.4.2/demo/assets/actual-themes.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lekoala/actual-css@0.4.2/site/assets/actual-themes.min.css">
   <link rel="stylesheet" href="../dist/combobox.css">
   <style>
     /* ------------------------------------------------------------------ */
@@ -109,27 +109,10 @@
       line-height: var(--line-height);
     }
 
-    /* The remove button is a text "×" by default. Re-draw it with Actual's
-       own --icon-close SVG token so it is geometrically centered and
-       follows the chip ink color (falls back to the text glyph). */
+    /* The core supplies a font-independent SVG; only its ink needs mapping. */
     .actual-combobox .cb-chip-remove {
       color:
         color-mix(in oklab, var(--primary) var(--soft-fg-mix), var(--text));
-    }
-
-    @supports (mask: url("")) {
-      .actual-combobox .cb-chip-remove {
-        font-size: 0;
-        background-color: currentColor;
-        -webkit-mask: var(--icon-close) center / 1rem no-repeat;
-        mask: var(--icon-close) center / 1rem no-repeat;
-      }
-
-      .actual-combobox .cb-chip-remove:hover,
-      .actual-combobox .cb-chip-remove:focus-visible {
-        background-color: currentColor;
-        opacity: 0.7;
-      }
     }
 
     /* 5. Picker — the popover renders in the top layer, appended to
@@ -471,14 +454,6 @@
   color: color-mix(in oklab, var(--primary) var(--soft-fg-mix), var(--text));
 }
 
-@supports (mask: url("")) {
-  .actual-combobox .cb-chip-remove {
-    font-size: 0;
-    background-color: currentColor;
-    mask: var(--icon-close) center / 1rem no-repeat;
-  }
-}
-
 .cb-popover {
   --cb-picker-bg: var(--surface-raised);
   border-color: var(--border);
@@ -500,7 +475,7 @@
     <footer class="page-note">
       <span>
         Loaded from jsDelivr, pinned: <code>actual-css@0.4.2/dist/actual.full.min.css</code> and
-        <code>gh/lekoala/actual-css@0.4.2/demo/assets/actual-themes.min.css</code>.
+        <code>gh/lekoala/actual-css@0.4.2/site/assets/actual-themes.min.css</code>.
       </span>
       <span>Combobox enhanced from native <code>&lt;input&gt;</code>/<code>&lt;select&gt;</code> — the source owns the form value.</span>
     </footer>

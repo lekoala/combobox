@@ -4,8 +4,10 @@ import Combobox, {
   type ComboboxOptions,
   defineCombobox,
 } from "@lekoala/combobox";
+import frMessages from "@lekoala/combobox/locales/fr";
 
 const item: ComboboxItem = { value: "react", label: "React" };
+void frMessages;
 
 const options: ComboboxOptions = {
   match: "fuzzy",

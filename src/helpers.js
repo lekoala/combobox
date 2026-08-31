@@ -56,7 +56,7 @@
  * @param {string} key
  * @returns {boolean}
  */
-function hasOwn(object, key) {
+export function hasOwn(object, key) {
   return Object.hasOwn(object, key);
 }
 

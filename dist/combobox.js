@@ -121,10 +121,7 @@
     return true;
   }
 
-  // src/combobox.js
-  var instances = new WeakMap;
-  var uid = 0;
-  var openCombobox = null;
+  // src/messages.js
   var DEFAULT_MESSAGES = {
     noResults: "No results",
     loading: "Loading…",
@@ -132,6 +129,17 @@
     create: (query) => `Create “${query}”`,
     position: (label, position, total) => `${label} position ${position} of ${total}`
   };
+  function getDefaultMessages() {
+    return { ...DEFAULT_MESSAGES };
+  }
+  function setDefaultMessages(messages) {
+    Object.assign(DEFAULT_MESSAGES, messages);
+  }
+
+  // src/combobox.js
+  var instances = new WeakMap;
+  var uid = 0;
+  var openCombobox = null;
   var DEFAULTS = {
     create: false,
     allowEmptyOption: false,
@@ -167,16 +175,13 @@
   function supportsModernCombobox() {
     return typeof HTMLElement.prototype.showPopover === "function" && typeof HTMLElement.prototype.hidePopover === "function" && CSS.supports("position-area: bottom") && CSS.supports("inline-size: anchor-size(width)") && CSS.supports("position-try: flip-block");
   }
-  function hasOwn2(object, key) {
-    return Object.hasOwn(object, key);
-  }
   function emit(target, type, detail = {}, { cancelable = false } = {}) {
     const event = new CustomEvent(type, {
       bubbles: true,
       cancelable,
       detail
     });
-    if (hasOwn2(detail, "query")) {
+    if (hasOwn(detail, "query")) {
       Object.defineProperty(event, "query", {
         configurable: true,
         enumerable: true,
@@ -250,6 +255,12 @@
 
   class Combobox {
     static supported = supportsModernCombobox();
+    static getDefaultMessages() {
+      return getDefaultMessages();
+    }
+    static setDefaultMessages(messages) {
+      setDefaultMessages(messages);
+    }
     static init(rootOrSelector = document, selectorOrOptions = null, maybeOptions = {}) {
       const targets = [];
       let options = {};
@@ -2167,7 +2178,7 @@
       });
     }
     #upgradeProperty(name) {
-      if (!Object.hasOwn(this, name))
+      if (!hasOwn(this, name))
         return;
       const value = Reflect.get(this, name);
       Reflect.deleteProperty(this, name);

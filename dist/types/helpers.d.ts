@@ -44,6 +44,46 @@ export type SplitResult = {
     rest: string;
 };
 /**
+ * Canonical combobox item. `value`/`label` are the serialized payload; the
+ * remaining keys mirror source metadata the engine reads back. Applications
+ * may hang their own payload on items (label/value fields are honored by the
+ * engine, a `data-*` mapping is not).
+ * @typedef {Record<string, any> & {
+ *   value: string,
+ *   label: string,
+ *   disabled?: boolean,
+ *   selected?: boolean,
+ *   group?: string,
+ *   option?: HTMLOptionElement | null,
+ *   data?: Record<string, string | undefined>,
+ *   title?: string,
+ * }} ComboboxItem
+ */
+/**
+ * Field mapping used to convert plain data objects into canonical items.
+ * @typedef {Object} ItemFields
+ * @property {string} [labelField]
+ * @property {string} [valueField]
+ */
+/**
+ * A completed separator-delimited token.
+ * @typedef {Object} Token
+ * @property {string} text
+ * @property {string} sep The separator that terminated the token
+ */
+/**
+ * Result of a tokenization pass.
+ * @typedef {Object} SplitResult
+ * @property {Token[]} done Completed tokens
+ * @property {string} rest Trailing unterminated text that must stay in the input
+ */
+/**
+ * @param {object} object
+ * @param {string} key
+ * @returns {boolean}
+ */
+export declare function hasOwn(object: object, key: string): boolean;
+/**
  * @param {*} value
  * @returns {string}
  */

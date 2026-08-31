@@ -54,13 +54,7 @@ export type AttributeSnapshot = {
      */
     restore: () => void;
 };
-export type Messages = {
-    noResults?: string;
-    loading?: string;
-    loadError?: string;
-    create?: (query: string, context?: ComboboxContext) => string;
-    position?: (label: string, position: number, total: number, context?: ComboboxContext) => string;
-};
+export type Messages = import("./messages.js").Messages;
 export type RenderMap = {
     option?: ItemRenderer;
     group?: TextRenderer;
@@ -165,16 +159,10 @@ export type ViewState = {
  *   was absent, rewrites what had a value)
  */
 /**
- * Screen-reader / UI status messages. Defaults are merged so the label
- * producers (`create`, `position`) are always functions; the plain status
- * strings (`noResults`, `loading`, `loadError`) are literal text rendered by
- * `setContent` (rich DOM rows use the `render.*` hooks instead).
- * @typedef {Object} Messages
- * @property {string} [noResults]
- * @property {string} [loading]
- * @property {string} [loadError]
- * @property {(query: string, context?: ComboboxContext) => string} [create]
- * @property {(label: string, position: number, total: number, context?: ComboboxContext) => string} [position]
+ * UI status messages (noResults/loading/loadError text, create/position label
+ * producers). See messages.js for the canonical catalog and the locale
+ * registry.
+ * @typedef {import("./messages.js").Messages} Messages
  */
 /**
  * Optional DOM-representation hooks. `option`/`group`/`item`/`create`/
@@ -369,6 +357,24 @@ export declare class Combobox {
     /** @type {HTMLElement | null} */
     status: HTMLElement | null;
     static supported: boolean;
+    /**
+     * Read the current default UI messages. Returns a shallow copy; mutating
+     * the result does not affect the engine.
+     * @returns {Messages}
+     */
+    static getDefaultMessages(): Messages;
+    /**
+     * Merge application or locale-provided UI text into the default messages.
+     * Called by the shipped `locales/*` modules on import. Only comboboxes
+     * created *after* this call see the new text: instances resolve their
+     * messages as a snapshot at construction time. Per-instance `messages`
+     * options always take precedence over these defaults. Missing keys keep
+     * their current translation, and producer keys (`create`, `position`) stay
+     * functions.
+     * @param {Partial<Messages>} messages
+     * @returns {void}
+     */
+    static setDefaultMessages(messages: Partial<Messages>): void;
     /**
      * Discover and enhance combobox sources. This is a discovery/creation API
      * only: an element that already has an instance is returned as-is and never

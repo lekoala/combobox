@@ -38,6 +38,10 @@
       "import": "./src/define.js"
     },
     "./combobox.css": "./src/combobox.css",
+    "./locales/*": {
+      "types": "./dist/types/locales/*.d.ts",
+      "import": "./src/locales/*"
+    },
     "./dist/combobox.js": "./dist/combobox.js",
     "./dist/combobox.min.js": "./dist/combobox.min.js",
     "./dist/combobox.css": "./dist/combobox.css",

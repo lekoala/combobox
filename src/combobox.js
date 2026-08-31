@@ -1,5 +1,6 @@
 import {
   fuzzyMatch,
+  hasOwn,
   moveValueInOrder,
   normalize,
   rankByScore,
@@ -7,6 +8,7 @@ import {
   splitTokens,
   toItem,
 } from "./helpers.js";
+import { DEFAULT_MESSAGES, getDefaultMessages, setDefaultMessages } from "./messages.js";
 
 /* ---------------------------------------------------------------------- */
 /* Public type contracts                                                  */
@@ -105,17 +107,8 @@ let uid = 0;
 /** @type {Combobox | null} */
 let openCombobox = null;
 
-// Generated UI text, centralized for i18n. `render` is the DOM-representation
-// seam and stays separate; behavior options are above it.
-/** @type {Messages} */
-const DEFAULT_MESSAGES = {
-  noResults: "No results",
-  loading: "Loading…",
-  loadError: "Failed to load results",
-  create: (query) => `Create “${query}”`,
-  position: (label, position, total) => `${label} position ${position} of ${total}`,
-};
-
+// Generated UI text lives in messages.js (`render` is the DOM-representation
+// seam and stays separate; behavior options are above it).
 const DEFAULTS = {
   create: false,
   allowEmptyOption: false,
@@ -157,15 +150,6 @@ function supportsModernCombobox() {
     CSS.supports("inline-size: anchor-size(width)") &&
     CSS.supports("position-try: flip-block")
   );
-}
-
-/**
- * @param {object} object
- * @param {string} key
- * @returns {boolean}
- */
-function hasOwn(object, key) {
-  return Object.hasOwn(object, key);
 }
 
 /**
@@ -299,16 +283,10 @@ const INPUT_ATTRS = [
  */
 
 /**
- * Screen-reader / UI status messages. Defaults are merged so the label
- * producers (`create`, `position`) are always functions; the plain status
- * strings (`noResults`, `loading`, `loadError`) are literal text rendered by
- * `setContent` (rich DOM rows use the `render.*` hooks instead).
- * @typedef {Object} Messages
- * @property {string} [noResults]
- * @property {string} [loading]
- * @property {string} [loadError]
- * @property {(query: string, context?: ComboboxContext) => string} [create]
- * @property {(label: string, position: number, total: number, context?: ComboboxContext) => string} [position]
+ * UI status messages (noResults/loading/loadError text, create/position label
+ * producers). See messages.js for the canonical catalog and the locale
+ * registry.
+ * @typedef {import("./messages.js").Messages} Messages
  */
 
 /**
@@ -434,6 +412,30 @@ const INPUT_ATTRS = [
  */
 export class Combobox {
   static supported = supportsModernCombobox();
+
+  /**
+   * Read the current default UI messages. Returns a shallow copy; mutating
+   * the result does not affect the engine.
+   * @returns {Messages}
+   */
+  static getDefaultMessages() {
+    return getDefaultMessages();
+  }
+
+  /**
+   * Merge application or locale-provided UI text into the default messages.
+   * Called by the shipped `locales/*` modules on import. Only comboboxes
+   * created *after* this call see the new text: instances resolve their
+   * messages as a snapshot at construction time. Per-instance `messages`
+   * options always take precedence over these defaults. Missing keys keep
+   * their current translation, and producer keys (`create`, `position`) stay
+   * functions.
+   * @param {Partial<Messages>} messages
+   * @returns {void}
+   */
+  static setDefaultMessages(messages) {
+    setDefaultMessages(messages);
+  }
 
   /**
    * Discover and enhance combobox sources. This is a discovery/creation API

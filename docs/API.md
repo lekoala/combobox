@@ -188,6 +188,37 @@ new Combobox(select, {
 
 `placeholder` deliberately stays top-level: it maps to the `<combo-box placeholder="…">` attribute and is structural input state, not generated text. `render` stays separate from `messages` — messages are the accessible/bypassable text fallback, renderers return DOM.
 
+#### Localization
+
+Shipped base translations live in `src/locales/<lang>.js` and are importable through the `@lekoala/combobox/locales/*` subpaths. Importing one applies it to the engine defaults as a side effect:
+
+```js
+import "@lekoala/combobox/locales/fr";       // application-level default becomes French
+// or: await import("data-grid-component/locales/fr");
+```
+
+```html
+<script type="module" src="https://unpkg.com/@lekoala/combobox/locales/fr.js"></script>
+```
+
+Available locales: `en`, `fr`, `nl`, `de`, `es`, `it`, `pt` (European Portuguese), `ru`, `zh-CN`.
+
+Semantics (mirroring data-grid):
+
+- A locale only affects comboboxes created **after** the import: instances snapshot their `messages` at construction time. Existing instances keep their current text — reconfigure them explicitly with `options.messages` or re-create them.
+- Per-instance `messages` always win over the locale defaults.
+- `placeholder` is intentionally **not** part of the locales: it is structural input state and stays application-authored.
+
+Programmatic control (re-exported from `src/index.js`):
+
+```js
+import { Combobox } from "@lekoala/combobox";
+Combobox.getDefaultMessages();              // shallow copy of the current catalog
+Combobox.setDefaultMessages({ noResults: "Custom" }); // merge; missing keys keep current values
+```
+
+`setDefaultMessages` merges (partial objects are fine) and never replaces the producer functions unless a replacement is provided. It does not refresh already-created instances — same contract as the locale imports.
+
 ### Deliberately not config options
 
 No `fixed`, `dropdownParent`, `width`, `server`, `queryParam`, `serverDataKey`, `allowHtml`, Bootstrap modal options, or plugin registry.

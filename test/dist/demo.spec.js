@@ -86,3 +86,19 @@ test("query-builder demo turns a suggestion into application state", async ({ pa
   }));
   expect(colors.filter).not.toBe(colors.group);
 });
+
+test("Actual CSS bridge keeps SVG chip removal visible and functional", async ({ page }) => {
+  await page.goto("/demo/actual-css.html");
+
+  const remove = page.locator("#skills + .cb-control .cb-chip-remove").first();
+  await expect(remove).toBeVisible();
+  const geometry = await remove.evaluate((button) => ({
+    button: button.getBoundingClientRect().width,
+    icon: button.querySelector("svg").getBoundingClientRect().width,
+  }));
+  expect(geometry.button).toBeGreaterThan(0);
+  expect(geometry.icon).toBeGreaterThan(0);
+
+  await remove.click();
+  await expect(page.locator("#skills + .cb-control .cb-chip")).toHaveCount(2);
+});

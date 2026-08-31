@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -297,38 +297,38 @@
 </head>
 <body>
   <main>
-    <a href="./index.html">← Démo principale</a>
+    <a href="./index.html">← Main demo</a>
     <h1>Scoped search / query builder</h1>
     <p>
-      La combobox gère la requête, les suggestions et le clavier. Les tokens et
-      leur sérialisation restent entièrement possédés par l’application.
+      The combobox owns the query, the suggestions and the keyboard. The tokens
+      and their serialization stay entirely application-owned.
     </p>
 
     <form class="query-card" id="search-form">
-      <label for="query">Rechercher</label>
+      <label for="query">Search</label>
       <div class="query-composer">
         <combo-box class="query-builder" id="query-builder" max-options="9">
           <span class="query-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <title>Rechercher</title>
+              <title>Search</title>
               <circle cx="11" cy="11" r="7"></circle>
               <path d="m20 20-4-4"></path>
             </svg>
           </span>
           <span class="query-tokens" id="query-tokens"></span>
-          <input id="query" name="query" list="query-fields" placeholder="Rechercher…">
+          <input id="query" name="query" list="query-fields" placeholder="Search…">
           <datalist id="query-fields">
-            <option value="name" label="Nom"></option>
-            <option value="address" label="Adresse"></option>
-            <option value="company" label="Société associée" data-expandable="true"></option>
+            <option value="name" label="Name"></option>
+            <option value="address" label="Address"></option>
+            <option value="company" label="Associated company" data-expandable="true"></option>
             <option value="email" label="Email"></option>
-            <option value="phone" label="Téléphone fixe/mobile"></option>
-            <option value="tag" label="Étiquette"></option>
-            <option value="salesperson" label="Vendeur" data-expandable="true"></option>
-            <option value="properties" label="Propriétés" data-expandable="true" data-query="false"></option>
-            <option value="custom" label="Filtre personnalisé…" data-kind="custom" data-query="false"></option>
+            <option value="phone" label="Landline / mobile"></option>
+            <option value="tag" label="Tag"></option>
+            <option value="salesperson" label="Salesperson" data-expandable="true"></option>
+            <option value="properties" label="Properties" data-expandable="true" data-query="false"></option>
+            <option value="custom" label="Custom filter…" data-kind="custom" data-query="false"></option>
           </datalist>
-          <button class="query-action" id="picker-toggle" type="button" aria-label="Ouvrir les filtres, regroupements et favoris" aria-expanded="false">
+          <button class="query-action" id="picker-toggle" type="button" aria-label="Open filters, groupings and favorites" aria-expanded="false">
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <path d="M2.5 5.5h11L8 11z" fill="currentColor"></path>
             </svg>
@@ -338,23 +338,23 @@
         <div class="query-menu" id="query-menu" popover="auto">
           <div class="query-menu-grid">
             <section class="query-menu-column">
-              <h2>⏷ &nbsp;Filtres</h2>
-              <button type="button" data-scope="people">Personnes</button>
-              <button type="button" data-scope="companies">Sociétés</button>
+              <h2>⏷ &nbsp;Filters</h2>
+              <button type="button" data-scope="people">People</button>
+              <button type="button" data-scope="companies">Companies</button>
               <hr>
-              <button type="button" data-scope="customer-invoices">Factures clients</button>
-              <button type="button" data-scope="supplier-invoices">Factures fournisseurs</button>
+              <button type="button" data-scope="customer-invoices">Customer invoices</button>
+              <button type="button" data-scope="supplier-invoices">Supplier invoices</button>
             </section>
             <section class="query-menu-column">
-              <h2>▰ &nbsp;Regrouper par</h2>
-              <button type="button" data-group="salesperson">Vendeur</button>
-              <button type="button" data-group="company">Société</button>
-              <button type="button" data-group="country">Pays</button>
-              <button type="button" data-group="properties">Propriétés&nbsp; ▾</button>
+              <h2>▰ &nbsp;Group by</h2>
+              <button type="button" data-group="salesperson">Salesperson</button>
+              <button type="button" data-group="company">Company</button>
+              <button type="button" data-group="country">Country</button>
+              <button type="button" data-group="properties">Properties&nbsp; ▾</button>
             </section>
             <section class="query-menu-column">
-              <h2>★ &nbsp;Favoris</h2>
-              <button type="button" id="save-search">Enregistrer la recherche actuelle</button>
+              <h2>★ &nbsp;Favorites</h2>
+              <button type="button" id="save-search">Save current search</button>
             </section>
           </div>
         </div>
@@ -362,23 +362,23 @@
 
       <input id="filters-value" name="filters" type="hidden">
       <p class="query-help">
-        Tapez par exemple « Martin », puis choisissez « Nom ». La flèche ouvre
-        un second popover applicatif : la combobox ne connaît ni filtres, ni
-        regroupements, ni favoris.
+        Type e.g. “Martin”, then pick “Name”. The chevron opens a second,
+        application-level popover: the combobox knows nothing about filters,
+        groupings or favorites.
       </p>
       <pre class="query-state" id="query-state" aria-live="polite"></pre>
     </form>
 
     <dialog class="query-dialog" id="filter-dialog">
       <div class="query-dialog-body">
-        <h2>Modifier le filtre</h2>
+        <h2>Edit filter</h2>
         <label>
-          Valeur
+          Value
           <input id="filter-dialog-value" autocomplete="off">
         </label>
         <div class="query-dialog-actions">
-          <button id="filter-dialog-cancel" type="button">Annuler</button>
-          <button class="primary" id="filter-dialog-save" type="button">Enregistrer</button>
+          <button id="filter-dialog-cancel" type="button">Cancel</button>
+          <button class="primary" id="filter-dialog-save" type="button">Save</button>
         </div>
       </div>
     </dialog>
@@ -397,7 +397,7 @@
     let editedFilterIndex = -1;
 
     const state = {
-      scope: { value: "people", label: "Personnes" },
+      scope: { value: "people", label: "People" },
       filters: [],
       groupBy: null,
       favorite: false,
@@ -438,11 +438,11 @@
           }
 
           const action = document.createElement("span");
-          action.append("Rechercher ");
+          action.append("Search ");
           const field = document.createElement("strong");
           field.textContent = item.label;
           action.append(field);
-          if (item.data.query !== "false") action.append(" pour :");
+          if (item.data.query !== "false") action.append(" for:");
 
           const value = document.createElement("span");
           value.className = "query-option-value";
@@ -487,7 +487,7 @@
           const edit = document.createElement("button");
           edit.type = "button";
           edit.className = "query-token-edit";
-          edit.setAttribute("aria-label", `Modifier le filtre ${token.label}`);
+          edit.setAttribute("aria-label", `Edit filter ${token.label}`);
           edit.append(makeIcon("m4 14.5-.5 3 3-.5L16 7.5 12.5 4 4 14.5ZM11 5.5l3.5 3.5"));
           edit.addEventListener("click", () => {
             editedFilterIndex = token.index;
@@ -505,7 +505,7 @@
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "query-token-remove";
-        remove.setAttribute("aria-label", `Retirer ${label.textContent}`);
+        remove.setAttribute("aria-label", `Remove ${label.textContent}`);
         remove.append(makeIcon("m4 4 12 12m0-12L4 16"));
         remove.addEventListener("click", () => {
           if (token.kind === "scope") state.scope = null;
@@ -548,7 +548,7 @@
       event.preventDefault();
       const item = event.detail.item;
       if (item.data.kind === "custom") {
-        state.filters.push({ field: "custom", label: "Personnalisé", query });
+        state.filters.push({ field: "custom", label: "Custom", query });
       } else {
         state.filters.push({
           field: item.value,
@@ -565,10 +565,10 @@
     source.addEventListener("input", renderState);
 
     const groupLabels = {
-      salesperson: "Vendeur",
-      company: "Société",
-      country: "Pays",
-      properties: "Propriétés",
+      salesperson: "Salesperson",
+      company: "Company",
+      country: "Country",
+      properties: "Properties",
     };
 
     pickerToggle.addEventListener("click", () => {
@@ -588,10 +588,10 @@
       if (!button) return;
       if (button.dataset.scope) {
         const labels = {
-          people: "Personnes",
-          companies: "Sociétés",
-          "customer-invoices": "Factures clients",
-          "supplier-invoices": "Factures fournisseurs",
+          people: "People",
+          companies: "Companies",
+          "customer-invoices": "Customer invoices",
+          "supplier-invoices": "Supplier invoices",
         };
         state.scope = { value: button.dataset.scope, label: labels[button.dataset.scope] };
       }

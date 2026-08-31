@@ -1,5 +1,5 @@
 import { Combobox } from "./combobox.js";
-import { booleanAttribute, parseInteger, parseList, parseSeparators } from "./helpers.js";
+import { booleanAttribute, hasOwn, parseInteger, parseList, parseSeparators } from "./helpers.js";
 
 /**
  * @typedef {import("./combobox.js").ComboboxOptions} ComboboxOptions
@@ -289,7 +289,7 @@ export class ComboBoxElement extends HTMLElement {
    * @param {string} name
    */
   #upgradeProperty(name) {
-    if (!Object.hasOwn(this, name)) return;
+    if (!hasOwn(this, name)) return;
     // Reflect keeps the object index dynamic without aliasing `this` (which
     // Biome flags) or widening the element type with a cast per access.
     const value = Reflect.get(this, name);
