@@ -1,10 +1,12 @@
 # @lekoala/combobox
 
-A small native-first combobox/filterable-select library that replaces the overlapping responsibilities of `bootstrap5-tags` and `bootstrap5-autocomplete`.
+A small native-first combobox and filterable-select library built around native form controls, Popover, CSS Anchor Positioning, and progressive enhancement.
 
-The project deliberately starts from browser primitives and Open UI concepts, while using Tom Select and Select2 as functional regression checklists rather than architectural templates. Working identity is intentionally boring: npm package `@lekoala/combobox`, engine class `Combobox`, primary element `<combo-box>`.
+The project deliberately starts from browser primitives and Open UI concepts. Working identity is intentionally boring: npm package `@lekoala/combobox`, engine class `Combobox`, primary element `<combo-box>`.
 
 > **Status:** v0.1.0. The source is pure ESM in `src/` with **zero globals**; a generated classic build (`dist/combobox.js`, from `src/define.js`) covers `file://` and classic `<script>` consumers. CSS Anchor Positioning + the Popover API are the only modern-feature floor; older engines degrade to native controls.
+
+Migrating from `bootstrap5-tags` or `bootstrap5-autocomplete`? See [Migrating to Combobox](docs/MIGRATION.md).
 
 ## Core idea
 
@@ -31,7 +33,7 @@ Modern mode uses:
 - native `input` + `change` events for integration;
 - `AbortSignal` + promises for async work.
 
-There is intentionally **no legacy JavaScript positioning engine** and **no global `window.*` API**.
+There is intentionally **no JavaScript positioning engine** and **no global `window.*` API**.
 
 ## Usage surfaces
 
@@ -152,7 +154,7 @@ For the initial library:
 - no built-in drag/drop of chips;
 - no virtual caret between chips;
 - no checkbox-picker mode;
-- no Select2-style adapter/decorator architecture;
+- no adapter/decorator architecture;
 - no JavaScript dropdown geometry fallback.
 
 Reordering **is** a core data concern; drag/drop is merely one possible UI for calling `move()` and therefore stays outside the core.
@@ -173,7 +175,7 @@ dist/combobox.js          generated classic build (bun run build, gitignored)
 docs/ARCHITECTURE.md      invariants and internal model
 docs/API.md               proposed public API/events
 docs/USE_CASES.md         real application scenarios
-docs/MIGRATION.md         old libraries -> new design
+docs/MIGRATION.md         migrating from bootstrap5-tags/autocomplete
 docs/TESTING.md           exhaustive test plan + reference suites
 docs/ROADMAP.md           implementation phases
 test/unit/helpers.test.js pure-helper unit tests (bun, ESM source)

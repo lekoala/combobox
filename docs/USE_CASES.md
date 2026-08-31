@@ -1,6 +1,6 @@
 # Important use cases
 
-These scenarios should drive implementation and tests. They include the common paths from the two existing libraries plus integration cases that appeared in a real Select2 application.
+These scenarios should drive implementation and tests.
 
 ## UC1 — Free-form autocomplete
 
@@ -42,11 +42,11 @@ Requirements:
 - search remains focused while options/results refresh;
 - Arrow Left/Right keyboard access to chips;
 - max selections can prevent further additions without making existing chips impossible to remove;
-- duplicate labels with different values remain distinguishable by value identity.
+- duplicate labels and duplicate values remain distinguishable by native option identity.
 
 ## UC4 — Creatable tags
 
-Requirements inherited from `bootstrap5-tags` and Select2/Tom Select:
+Requirements:
 
 - blank/whitespace is not created;
 - creation validation is separate (`createFilter`);

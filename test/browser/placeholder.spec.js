@@ -7,7 +7,7 @@ test.beforeEach(async ({ page }) => {
   await setup(page, HTML);
 });
 
-test("the legacy disabled+hidden empty placeholder never becomes a chip", async ({ page }) => {
+test("a disabled+hidden empty placeholder never becomes a chip", async ({ page }) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tagplace");

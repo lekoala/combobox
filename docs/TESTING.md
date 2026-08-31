@@ -1,11 +1,8 @@
 # Test plan
 
-The test strategy is intentionally derived from two mature regression corpora:
-
-- Tom Select: `test/tests/interaction.js`, `config-load.js`, `events.js`, `validation.js`, `xss.js`, `a11y.js`, `api.js`, `optgroups.js`.
-- Select2: `tests/data/tags-tests.js`, `tokenizer-tests.js`, `maximumSelectionLength-tests.js`, `minimumInputLength-tests.js`, `maximumInputLength-tests.js`, `tests/integration/dom-changes.js`, selection/dropdown/results accessibility and focus tests, allow-clear and keyboard tests.
-
-We should copy **coverage ideas**, not their implementation architecture or test code.
+The test strategy is derived from mature combobox regression corpora and prior-art
+issue histories (see REFERENCES.md). We copy **coverage ideas**, not their
+implementation architecture or test code.
 
 ## Test levels
 
@@ -58,7 +55,7 @@ Do not use happy-dom/jsdom as a substitute for browser interaction tests.
 - [x] repeated init/dispose does not duplicate listeners/DOM.
 - [x] dynamic fragment initialization works with final scoped-init API (`init(root, selector)`, `init(root | [element, …])`, idempotence without reconfiguration).
 
-Reference lesson: Select2 DOM-integration suite exercises source mutation and update behavior; Tom Select interaction tests verify label focus and original option identity.
+Prior-art lessons this pan closes: source-mutation updates, label focus and original-option identity regressions.
 
 ## B. Progressive fallback
 
@@ -88,7 +85,7 @@ Coverage: `test/browser/matrix.spec.js` (auto enhanced/fallback per engine, forc
 - [x] single closes after select by default; multiple default policy tested once decided.
 - [x] no open/close event duplication.
 
-Tom Select interaction tests explicitly cover close-after-select variants, Escape, reopen-after-close and keeping focus while interacting with dropdown content.
+Prior-art coverage confirms close-after-select variants, Escape, reopen-after-close and keeping focus while interacting with picker content are the cases that regress.
 
 ## D. Keyboard picker navigation
 
@@ -105,7 +102,7 @@ Tom Select interaction tests explicitly cover close-after-select variants, Escap
 - [x] Tab behavior explicitly tested once policy is fixed (`tabSelect` option; default native traversal, opt-in commit, IME-safe).
 - [x] label click focuses enhanced input.
 
-Select2 search-a11y tests are particularly useful for `aria-activedescendant` and `aria-controls` lifecycle; Tom Select tests cover arrows through optgroups.
+Prior-art accessibility corpora cover the `aria-activedescendant`/`aria-controls` lifecycle and arrows through optgroups.
 
 ## E. Multiple chip keyboard navigation
 
@@ -118,7 +115,7 @@ Select2 search-a11y tests are particularly useful for `aria-activedescendant` an
 - [x] focus lands predictably after removal.
 - [ ] normal Left/Right editing inside non-empty search is untouched.
 
-We explicitly do **not** test or implement Tom Select's virtual caret-between-items behavior.
+We explicitly do **not** test or implement virtual caret positions between chips/items.
 
 ## F. Native source/value integrity
 
@@ -132,7 +129,7 @@ We explicitly do **not** test or implement Tom Select's virtual caret-between-it
 - [x] unselected remote results do not accumulate as options (`remote.spec.js`).
 - [x] input-backed combobox leaves arbitrary text as source value (`xss.spec.js` hostile-input case).
 
-Tom Select has direct regression tests for preserving original option elements and disabled options; Select2's AJAX model supports the “materialize selected result, not every remote result” lesson.
+Prior-art regressions cover preserving original option elements and disabled options; the transient-remote-results model means only the selected result is ever materialized.
 
 ## G. Native event semantics
 
@@ -144,7 +141,7 @@ Tom Select has direct regression tests for preserving original option elements a
 - [ ] event detail contains item/query/context expected.
 - [x] create/load error events expose error without unhandled state corruption (`combobox:createerror`, `combobox:loaderror`, `combobox:guarderror` in `features.spec.js`/`remote.spec.js`).
 
-Tom Select's events suite specifically verifies `input` before `change`, single firing, disabled values and no event when value is unchanged.
+The event suite verifies `input` before `change`, single firing, disabled values and no event when the value is unchanged.
 
 ## H. Local filtering
 
@@ -171,7 +168,7 @@ Tom Select's events suite specifically verifies `input` before `change`, single 
 - [x] `<combo-box>` attributes are the canonical declarative surface (booleans honor `="false"`, numbers/enums/short lists, `declarative.spec.js`).
 - [x] `tab-select` and `search-fields` attributes map (`declarative.spec.js`, `combobox-element.spec.js`).
 - [x] JS options win over wrapper attributes (`declarative.spec.js`).
-- [x] legacy `data-*` config on the source is ignored — no third way (`declarative.spec.js`).
+- [x] source `data-*` attributes are application metadata, never configuration — no third way (`declarative.spec.js`).
 - [x] item `data-*` is application metadata consumed by `searchFields` (`fuzzy.spec.js`); an explicit filter input uses the structural `filter="select-id"` link (`source-adapters.spec.js`).
 
 ## I. `beforefilter` / app-owned filtering
@@ -183,7 +180,7 @@ Tom Select's events suite specifically verifies `input` before `change`, single 
 - [ ] manual apply does not recursively fire beforefilter.
 - [ ] focus remains in search input during result replacement.
 
-This maps to the Open UI direction and also covers the focus-stability concern present in Select2 DOM-change tests.
+This maps to the Open UI direction and also covers the focus-stability concern from result-cache implementations.
 
 ## J. Remote loading
 
@@ -204,7 +201,7 @@ Coverage lives in `test/browser/remote.spec.js` (`test/fixtures/remote.html`).
 - [x] clearing query drops stale remote result store as designed.
 - [x] transient results stay out of the native catalogue; selecting a result materializes exactly that native option (single and multiple).
 
-Tom Select `config-load.js` covers preload/loading/no-results and query churn; our AbortSignal design should be stricter about races.
+Prior-art load coverage addresses preload/loading/no-results and query churn; our AbortSignal design is deliberately stricter about stale-response races.
 
 ## K. Creation / tags
 
@@ -221,7 +218,7 @@ Tom Select `config-load.js` covers preload/loading/no-results and query churn; o
 - [ ] selected created item survives sync as expected.
 - [ ] persistence/removal policy for temporary created options is explicitly decided.
 
-Select2 tags tests cover trim/null, duplicate matching, tag insertion and cleanup; Tom Select also tests created option persistence behavior.
+Prior-art tag coverage addresses trim/null, duplicate matching, tag insertion and cleanup, and created-option persistence behavior.
 
 ## L. Tokenization / paste (P0 parity)
 
@@ -234,7 +231,7 @@ Select2 tags tests cover trim/null, duplicate matching, tag insertion and cleanu
 - [x] custom tokenizer can preserve quoted separator text (`tokenize` seam + `rest` handling, `features.spec.js`).
 - [ ] composition/IME input is not tokenized mid-composition.
 
-Select2's tokenizer suite includes the important “createTag returns null must not cut the term” and quoted-token cases.
+Tokenizer coverage must include the “a refused token must not cut the remaining term” and quoted-token cases.
 
 ## M. Clear / remove / guards
 
@@ -263,7 +260,7 @@ Covered by `test/browser/order.spec.js` (fixture `test/fixtures/order.html`).
 
 The pure order model is covered by unit tests (`reconcileSelected` — order ∩ selection, native-order append for unknowns, never resurrecting deselected values; `moveValueInOrder` — clamped from/to, fresh array, no-op/unknown → `null`). Those unit tests do **not** replace the DOM/FormData integration proof above: chips rendering, catalogue order stability and ordered FormData stay as browser tests.
 
-Tom Select has a regression test that physically reorders selected options; our test should deliberately prove we **do not need to** mutate catalogue order.
+A prior-art regression physically reorders selected `<option>`s; our tests deliberately prove we **do not need to** mutate catalogue order.
 
 ## O. Optgroups
 
@@ -283,7 +280,7 @@ Tom Select has a regression test that physically reorders selected options; our 
 - [x] update disabled/required/read-only after init → refresh/sync reflects it.
 - [x] syncing while search focused preserves focus/query unless contract says otherwise.
 
-These mirror concrete Select2 `tests/integration/dom-changes.js` cases.
+These mirror the concrete DOM-change regression scenarios captured in REFERENCES.md.
 
 ## Q. Forms / validation
 
@@ -298,7 +295,7 @@ These mirror concrete Select2 `tests/integration/dom-changes.js` cases.
 - [ ] generated search inputs never appear in FormData.
 - [x] ordered mode serializes intended order (`order.spec.js` ordered FormData with repeated entries).
 
-Tom Select validation tests cover required state transitions and input pattern validation.
+Prior-art validation coverage: required-state transitions and input-pattern validation.
 
 ## R. Accessibility state
 
@@ -335,7 +332,7 @@ Verify no execution. Renderer Node paths must make unsafe application behavior e
 
 Covered by `test/browser/xss.spec.js` (fixture `test/fixtures/xss.html`): hostile labels/values/optgroup labels/`data-*`/remote items/create text/state messages render as literal text via `textContent`, `window.__xss` + `pageerror` prove no execution, no `<script|img|svg>` nodes generated, no attribute breakout, datalist options stay literal.
 
-Tom Select has a dedicated XSS suite for original values, group labels, option labels/values and custom templates; match that coverage at minimum.
+Prior-art security corpora cover original values, group labels, option labels/values and custom templates; match that coverage at minimum.
 
 ## T. Layout/browser regressions
 
@@ -351,7 +348,7 @@ Tom Select has a dedicated XSS suite for original values, group labels, option l
 - [x] forced-colors/high contrast: picker rows and chips stay distinguishable and visible (`visual.spec.js`; engines without the `forced-colors` media query are skipped).
 - [x] zoom: at 200% zoom the picker stays anchored, internally contained and within the document (`visual.spec.js`).
 
-These cover multiple historical issues from both existing libraries that should disappear with top-layer + Anchor rather than become special cases.
+These scenarios ensure top-layer + Anchor Positioning handles difficult layout contexts without container-specific positioning code.
 
 ## U. Performance sanity
 
@@ -362,7 +359,7 @@ No virtualization target, but avoid pathological work:
 - [ ] filtering avoids unnecessary DOM reconstruction when future profiling justifies optimization.
 - [x] remote searches do not grow native select catalogue indefinitely (`remote.spec.js` transient-results test).
 
-Select2 has a DOM-change regression using 4000 options and asserts one selection update; use it as a batching sanity reference, not a virtualization requirement.
+A prior-art regression batches 4000 option mutations into one selection update; use it as a batching sanity reference, not a virtualization requirement.
 
 ---
 

@@ -2,7 +2,7 @@
 
 ## Repository purpose
 
-A small native-first combobox/filterable-select enhancer, replacing the overlapping use cases of the two Bootstrap-era libraries while remaining independent from Bootstrap JS.
+A small native-first combobox/filterable-select enhancer built on native form controls, independent from Bootstrap JS.
 
 ## Suggested project metadata
 
@@ -56,7 +56,7 @@ Unsupported browser policy:
 
 - native controls remain fully form-functional;
 - cheap non-picker enhancements are allowed;
-- no legacy positioning engine is bundled.
+- no JavaScript positioning engine is bundled.
 
 Before v1, document the actual tested browser floor based on the feature gate and current stable browser matrix rather than a guessed version list.
 
@@ -76,7 +76,7 @@ Before v1, document the actual tested browser floor based on the feature gate an
 - [ ] create generated types/checkJs setup.
 - [x] implement full P0 browser-test matrix (browser suite spans Chromium/Firefox/WebKit; `check` stays Chromium-only, `test:browser:matrix`/`test:matrix` cover Firefox+WebKit).
 - [x] test current Chromium + Firefox + WebKit and document support policy (Playwright 1.55 bundles Firefox >139 and WebKit 26.x, which both satisfy the Popover + CSS Anchor feature gate, so the enhanced picker exercises on all three engines).
-- [ ] write legacy migration examples once API is frozen.
+- [ ] refresh `docs/MIGRATION.md` examples once the API freezes.
 
 ## Development commands
 

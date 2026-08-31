@@ -56,7 +56,7 @@ to the first matching selectable option.
 
 A native multiple select has selected values but does not naturally model “chosen in this order”. Keep that separately only when `selectionOrder: "selected"` is requested.
 
-This avoids the common Select2 workaround of detaching and appending `<option>` elements merely to encode display order.
+This avoids the common workaround of detaching and appending `<option>` elements merely to encode display order.
 
 ## 3. DOM shape
 
@@ -120,6 +120,24 @@ The transformation is identical to the imperative path above; the wrapper only o
 
 ## Declarative configuration policy
 
+Configuration comes from exactly four clearly separated layers:
+
+```text
+Native source
+  └─ form semantics and values
+
+<combo-box>
+  └─ serializable declarative configuration
+
+JavaScript options/configure()
+  └─ programmatic and functional configuration
+
+option.dataset
+  └─ application metadata
+```
+
+No source-level `data-*` configuration API exists; the native source stays purely a form/options carrier.
+
 The declarative contract follows Data Grid's split between structure and configuration:
 
 | Type of config | HTML | JS |
@@ -138,7 +156,7 @@ The declarative contract follows Data Grid's split between structure and configu
 | score/sort/filter functions | ❌ | ✅ |
 | structured objects | generally ❌ | ✅ |
 
-`data-*` on source items is **application metadata** (`item.data`, e.g. feeding the `search-fields` attribute), never combobox configuration. An explicit filter input is declared structurally with a liaison attribute on the input itself: `<input filter="select-id" hidden>`. There is no legacy `data-*` compatibility layer.
+`data-*` on source items is **application metadata** (`item.data`, e.g. feeding the `search-fields` attribute), never combobox configuration. An explicit filter input is declared structurally with a liaison attribute on the input itself: `<input filter="select-id" hidden>`. No source-level `data-*` configuration API exists.
 
 Fallback: without JS or on unsupported browsers the browser sees an unknown element wrapping a fully functional native control.
 

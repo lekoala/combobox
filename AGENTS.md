@@ -2,7 +2,7 @@
 
 ## Mission
 
-Build a small, native-first combobox/filterable-select enhancer. Prefer browser/platform primitives over compatibility machinery. Preserve the useful real-world capabilities of `bootstrap5-tags` and `bootstrap5-autocomplete` without recreating Tom Select or Select2.
+Build a small, native-first combobox/filterable-select enhancer. Prefer browser/platform primitives, native form semantics, and a compact declarative API over compatibility machinery or framework-specific abstractions.
 
 ## Invariants
 
@@ -25,7 +25,7 @@ Build a small, native-first combobox/filterable-select enhancer. Prefer browser/
 - `guards` distinguish `false` from a rejection. `false` is a voluntary refusal and mutates nothing. A rejected promise is an application error: surface it to the programmatic caller, and on user interaction at least a generic error path/documentation. A user cancelling a confirmation dialog must resolve `false`, not reject.
 - Tokenized/separator creation is strictly sequential: per token, existing → select, else `canCreate` → guard → create → select, then the next token. Never `Promise.all` a batch. `maxItems` is re-evaluated between tokens. A trailing incomplete token stays in the input.
 - `maxOptions` is a rendering cap only. `results.length` may be 500 with `maxOptions: 20`; at most 20 options render. `0` means no cap. `loadMore()` may enrich the result store but must never bypass `maxOptions`; a pagination UI is a separate concept.
-- The JavaScript API and `<combo-box>` attributes are the **two** canonical configuration surfaces. `<combo-box>` attributes expose simple serializable behavior declaratively (booleans honor `="false"`); JavaScript options expose the same configuration plus functions and structured behavior. Native form semantics (name, multiple, required, disabled, optgroup, selected) remain on the enhanced `<input>`/`<select>`. `data-*` attributes on source items are application metadata exposed via `item.data`, never combobox configuration; there is no generic `data-*` → option mapping and no legacy `data-*` compat layer.
+- The JavaScript API and `<combo-box>` attributes are the **two** canonical configuration surfaces. `<combo-box>` attributes expose simple serializable behavior declaratively (booleans honor `="false"`); JavaScript options expose the same configuration plus functions and structured behavior. Native form semantics (name, multiple, required, disabled, optgroup, selected) remain on the enhanced `<input>`/`<select>`. `data-*` attributes on source items are application metadata exposed via `item.data`, never combobox configuration; there is no generic `data-*` → option mapping and no source-level `data-*` configuration API.
 - `createOnBlur` means actually leaving the combobox. A blur caused by internal interaction (picker click, adornment action, chip removal, clear) must never create input. IME composition (`isComposing`) also blocks blur-creation.
 - `maxItems` never corrects pre-existing native state at init/refresh. Six selected options with `max-items="5"` keep all six; the cap only blocks future additions. This matters for server-rendered content and form reset.
 - `labelField`/`valueField` map data objects only; real `<option>` elements are already canonical `{ value, label }` and are not reinterpreted.
@@ -69,7 +69,7 @@ Lifecycle: `init`, `getInstance`, `getOrCreateInstance`, `show`, `hide`, `dispos
 
 - Keep the implementation readable before making it clever.
 - Prefer a small helper with an explicit contract over a new generic abstraction.
-- Do not preserve an old option merely for API nostalgia; classify it in `docs/MIGRATION.md` first.
+- Do not add aliases or compatibility options without a concrete current use case.
 - When behavior changes, update the relevant docs and add/adjust a browser test in the same change.
 - Test the native source state, not only generated DOM.
 - Any bug involving focus, keyboard, popover state, forms, validation, browser layout, IME, or ARIA needs a real-browser regression test.

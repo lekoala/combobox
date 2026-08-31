@@ -1,6 +1,19 @@
-# Migration audit: existing libraries → Combobox
+# Migrating to Combobox
 
-This is a design migration, not a compatibility layer. Preserve use cases, not every historical option name.
+This guide helps applications move from `bootstrap5-tags` or `bootstrap5-autocomplete` to `@lekoala/combobox`. Combobox is a new API, not a compatibility layer. Preserve use cases, not every historical option name.
+
+## At a glance
+
+```html
+<!-- data-fuzzy="true" -->
+<combo-box search="fuzzy">
+
+<!-- data-max="2" -->
+<combo-box max-items="2">
+
+<!-- data-allow-new="true" -->
+<combo-box create>
+```
 
 ## Migration is documentation, not runtime compatibility
 

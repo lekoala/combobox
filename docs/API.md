@@ -98,8 +98,8 @@ JavaScript options expose the same configuration plus functions and structured
 behavior. Native form semantics stay on the enhanced `<input>`/`<select>`.
 `data-*` attributes on **source items** are application metadata exposed as
 `item.data` (e.g. they feed `search-fields="label,email"`), never combobox
-configuration — there is no generic `data-*` → option mapping and no legacy
-`data-*` layer. Wrapper options (`_options`) take precedence over markup.
+configuration — there is no generic `data-*` → option mapping and no
+source-level `data-*` configuration API. Wrapper options (`_options`) take precedence over markup.
 
 ### Event
 
@@ -275,7 +275,7 @@ A failed `load` (non-abort rejection) shows the same `.cb-empty` family as loadi
 
 Returns false when typed text must not be offered/accepted as a new option.
 
-Example copied from a real Select2 integration requirement:
+Example from a real application requirement:
 
 ```js
 createFilter(value) {
@@ -377,7 +377,7 @@ Navigation keys always operate on the filtered, rendered window (`maxOptions`), 
 - `ArrowLeft` on an empty search focuses the last chip; `Backspace` on an empty search removes the last selected entry through the normal guarded/`beforeremove` path.
 - On a focused chip: `ArrowLeft`/`ArrowRight` move between chips, `Home`/`End` jump to first/last, and moving past the last returns to the search input.
 - `Delete` / `Backspace` on a focused chip removes it and refocuses the neighbor (or the input when the list empties); `Escape` returns to the search input.
-- Arrow/handoff keys are physical: in RTL layouts they keep DOM-index semantics while the layout flows right-to-left via logical CSS (matching Select2/TomSelect and the legacy libraries).
+- Arrow/handoff keys are physical: in RTL layouts they keep DOM-index semantics while the layout flows right-to-left via logical CSS.
 
 ## Value operations
 
@@ -395,7 +395,7 @@ combo.getSelectedItems();
 For a `<select>`, **option identity is the `HTMLOptionElement`**; `option.value` is only
 the serialized payload. Three `<option value="2">` in the catalogue are three distinct
 choices — each selectable once, each kept as its own chip, each serialized into FormData.
-This replaces legacy `allowSame` entirely: the catalogue decides how many copies exist,
+This replaces any notion of a same-value toggle entirely: the catalogue decides how many copies exist,
 and nothing magically makes a single option selectable twice.
 
 - `select({value, label})` is the external-create seam: if no selectable catalogue option
@@ -551,10 +551,10 @@ Resolved:
 - async guards for create/remove/clear: `guards: { add, remove, clear }` — `false` refuses, rejected promises surface via `combobox:guarderror`;
 - tokenizer: separators splitter + optional `tokenize` seam, sequential token consumption, IME-safe;
 - `maxOptions` (rendered) vs `maxItems` (selected): independent options;
-- `closeOnSelect` defaults (single closes, multiple stays open) and `autoselectFirst` (default `false`, divergence from `bootstrap5-tags` documented);
+- `closeOnSelect` defaults (single closes, multiple stays open) and `autoselectFirst` (default `false`: selection requires ArrowDown);
 - `labelField`/`valueField` data-object mapping;
 - `init(root, selector?, options?)`: type-dispatched overloads, discovery/creation only, idempotent (returned instance is never reconfigured);
-- `tabSelect`: JS option, default `false`; when enabled Tab commits like Enter and only `preventDefault()`s when a commit is possible; IME composition falls through to native Tab (divergence from `bootstrap5-autocomplete` documented);
+- `tabSelect`: JS option, default `false`; when enabled Tab commits like Enter and only `preventDefault()`s when a commit is possible; IME composition falls through to native Tab.
 - ordered-mode keyboard reorder: `Alt+ArrowLeft/Right` and `Alt+Home/End` on a focused chip, status-region position announcement, implementation in Phase 6;
 - automatic DOM sync: opt-in `observeSource` (default `false`), debounced `sync()`, internal mutations suppressed (implemented in Phase 2; programmatic `.selected` changes and `multiple` toggles are intentionally out of the observer — see `sync()`);
 - ESM export shape: see PROJECT_SETUP.md — implementation in Phase 8.

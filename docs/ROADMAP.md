@@ -115,5 +115,4 @@ Full ESM source with zero globals; behavioral suite stays on the source, the bun
 - [ ] generated `.d.ts` or JSDoc type generation — explicitly **deferred**: not part of the v1 gate;
 - [x] no transpilation — ESM + generated classic `dist/combobox.js` only;
 - [ ] minification as release artifact only — deferred with the build tooling;
-- [x] migration guide from both legacy packages (`docs/MIGRATION.md`, incl. the demo migration tour);
-- [ ] mark legacy packages maintenance-only with pointer to new library — outside this repository.
+- [x] migration guide for users of previous packages shipped as a standalone document (`docs/MIGRATION.md`, incl. the demo migration tour) — not a v1 blocker.

@@ -39,9 +39,9 @@ Particularly useful test files reviewed:
 - `tests/selection/search-a11y-tests.js` — aria-activedescendant and aria-controls lifecycle.
 - other suites worth mining during implementation: maximum/minimum input/selection length, allowClear, focusing, openOnKeyDown, results accessibility, infiniteScroll (contract ideas only; virtualization itself is not a goal).
 
-## Existing libraries being rationalized
+## Prior art and regression sources
 
 - https://github.com/lekoala/bootstrap5-tags
 - https://github.com/lekoala/bootstrap5-autocomplete
 
-Their real-world capabilities and issue history are inputs to `MIGRATION.md`; they are not APIs that must be preserved verbatim.
+These projects and their issue histories informed the initial use-case and regression matrix (`docs/MIGRATION.md`, `docs/TESTING.md`). They do not define Combobox's public API.

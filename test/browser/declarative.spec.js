@@ -7,10 +7,12 @@ test.beforeEach(async ({ page }) => {
   await setup(page, HTML);
 });
 
-test("legacy data-* attributes on the source are ignored (no third way)", async ({ page }) => {
+test("data-* attributes on the source are application metadata, never configuration (no third way)", async ({
+  page,
+}) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
   const state = await page.evaluate(() => {
-    const combo = Combobox.getOrCreateInstance(document.getElementById("legacy"));
+    const combo = Combobox.getOrCreateInstance(document.getElementById("sourcedata"));
     return {
       create: combo.options.create,
       placeholder: combo.options.placeholder,
