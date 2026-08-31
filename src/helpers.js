@@ -175,6 +175,17 @@ export function booleanAttribute(element, name) {
 }
 
 /**
+ * Parse a count-like `<combo-box>` attribute. `null` and non-integer values
+ * (e.g. `"banana"` or `"2.5"`) yield `undefined` so the caller can omit the
+ * option and let the DEFAULTS value apply instead of spreading `NaN`.
+ */
+export function parseInteger(raw) {
+  if (raw == null) return undefined;
+  const number = Number(raw);
+  return Number.isInteger(number) ? number : undefined;
+}
+
+/**
  * Very light subsequence fuzzy match, used by `match: "fuzzy"`.
  *
  * Contract: both `str` and `lookup` must already be normalized (case/accent

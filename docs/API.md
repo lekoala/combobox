@@ -67,6 +67,13 @@ Child lookup is **direct children only**: a source nested inside another element
 
 ### Observed attributes
 
+The table below is driven by a single `OPTION_ATTRIBUTES` schema in
+`src/combo-box.js`: presence in that schema means the attribute is observed
+and maps to an engine option. Numeric attributes (`min-chars`, `max-items`,
+`max-options`, `debounce`) accept integers only; an invalid or non-integer
+attribute value is ignored and the DEFAULTS value applies instead of a `NaN`
+leaking into the engine.
+
 | Attribute | Option |
 |---|---|
 | `create` | `create: true` |

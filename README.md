@@ -91,7 +91,7 @@ happens implicitly — `import "@lekoala/combobox"` does not register anything, 
 must opt in via `@lekoala/combobox/define`, an explicit `defineCombobox()`, or the
 classic build.
 
-Attributes map to options (`create`, `placeholder`, `search`, `min-chars`, `max-items`, `max-options`, `selection-order`, `separators`, `create-on-blur`, `close-on-select`, `autoselect-first`, `tab-select`, `search-fields`, `label-field`, `value-field`, `load-on-empty`, `allow-empty-option`, `debounce`). JavaScript-only behavior (remote `load`, `create`, renderers, async `guards`) is passed through `<element>.configure({ ... })`. See [Element API](docs/API.md#element-and-registration). `data-*` on source items is application metadata only — there is no `data-*` configuration surface.
+Attributes map to options (`create`, `placeholder`, `search`, `min-chars`, `max-items`, `max-options`, `selection-order`, `separators`, `create-on-blur`, `close-on-select`, `autoselect-first`, `tab-select`, `search-fields`, `label-field`, `value-field`, `load-on-empty`, `allow-empty-option`, `debounce`; numeric attributes take integers, invalid values fall back to defaults). JavaScript-only behavior (remote `load`, `create`, renderers, async `guards`) is passed through `<element>.configure({ ... })`. See [Element API](docs/API.md#element-and-registration). `data-*` on source items is application metadata only — there is no `data-*` configuration surface.
 
 ## Progressive fallback
 

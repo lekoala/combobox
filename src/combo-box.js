@@ -1,5 +1,38 @@
 import { Combobox } from "./combobox.js";
-import { booleanAttribute, parseList, parseSeparators } from "./helpers.js";
+import { booleanAttribute, parseInteger, parseList, parseSeparators } from "./helpers.js";
+
+/**
+ * Declarative surface: the canonical mapping of `<combo-box>` attributes to
+ * engine options. This schema drives both `observedAttributes` and the option
+ * resolver, so anything listed here is part of the HTML API — nothing is
+ * inferred from `DEFAULTS`. `option` overrides the default kebab→camelCase
+ * name; `parse` is an explicit converter; `type` selects a built-in converter
+ * (`boolean`, `integer`, otherwise raw string).
+ */
+const OPTION_ATTRIBUTES = {
+  create: { type: "boolean" },
+  placeholder: {},
+  search: { option: "match" },
+  "min-chars": { type: "integer" },
+  "max-items": { type: "integer" },
+  "max-options": { type: "integer" },
+  "selection-order": {},
+  separators: { parse: parseSeparators },
+  "create-on-blur": { type: "boolean" },
+  "close-on-select": { type: "boolean" },
+  "autoselect-first": { type: "boolean" },
+  "tab-select": { type: "boolean" },
+  "search-fields": { parse: parseList },
+  "label-field": {},
+  "value-field": {},
+  "load-on-empty": { type: "boolean" },
+  "allow-empty-option": { type: "boolean" },
+  debounce: { type: "integer" },
+};
+
+function camelCase(name) {
+  return name.replace(/-([a-z])/g, (_, char) => char.toUpperCase());
+}
 
 /**
  * Lightweight Custom Element owner for the Combobox enhancement engine.
@@ -12,26 +45,9 @@ import { booleanAttribute, parseList, parseSeparators } from "./helpers.js";
  * - JS options may be assigned before custom-element registration
  */
 export class ComboBoxElement extends HTMLElement {
-  static observedAttributes = [
-    "create",
-    "placeholder",
-    "search",
-    "min-chars",
-    "max-items",
-    "max-options",
-    "selection-order",
-    "separators",
-    "create-on-blur",
-    "close-on-select",
-    "autoselect-first",
-    "tab-select",
-    "search-fields",
-    "label-field",
-    "value-field",
-    "load-on-empty",
-    "allow-empty-option",
-    "debounce",
-  ];
+  static get observedAttributes() {
+    return Object.keys(OPTION_ATTRIBUTES);
+  }
 
   constructor() {
     super();
@@ -167,27 +183,20 @@ export class ComboBoxElement extends HTMLElement {
   #resolvedOptions() {
     const attrs = {};
 
-    const bool = (name) => booleanAttribute(this, name);
-
-    if (this.hasAttribute("create")) attrs.create = bool("create");
-    if (this.hasAttribute("placeholder")) attrs.placeholder = this.getAttribute("placeholder");
-    if (this.hasAttribute("search")) attrs.match = this.getAttribute("search");
-    if (this.hasAttribute("min-chars")) attrs.minChars = Number(this.getAttribute("min-chars"));
-    if (this.hasAttribute("max-items")) attrs.maxItems = Number(this.getAttribute("max-items"));
-    if (this.hasAttribute("max-options")) attrs.maxOptions = Number(this.getAttribute("max-options"));
-    if (this.hasAttribute("selection-order")) attrs.selectionOrder = this.getAttribute("selection-order");
-    if (this.hasAttribute("separators")) attrs.separators = parseSeparators(this.getAttribute("separators"));
-    if (this.hasAttribute("create-on-blur")) attrs.createOnBlur = bool("create-on-blur");
-    if (this.hasAttribute("close-on-select")) attrs.closeOnSelect = bool("close-on-select");
-    if (this.hasAttribute("autoselect-first")) attrs.autoselectFirst = bool("autoselect-first");
-    if (this.hasAttribute("tab-select")) attrs.tabSelect = bool("tab-select");
-    if (this.hasAttribute("search-fields"))
-      attrs.searchFields = parseList(this.getAttribute("search-fields"));
-    if (this.hasAttribute("label-field")) attrs.labelField = this.getAttribute("label-field");
-    if (this.hasAttribute("value-field")) attrs.valueField = this.getAttribute("value-field");
-    if (this.hasAttribute("load-on-empty")) attrs.loadOnEmpty = bool("load-on-empty");
-    if (this.hasAttribute("allow-empty-option")) attrs.allowEmptyOption = bool("allow-empty-option");
-    if (this.hasAttribute("debounce")) attrs.debounce = Number(this.getAttribute("debounce"));
+    for (const [attribute, config] of Object.entries(OPTION_ATTRIBUTES)) {
+      if (!this.hasAttribute(attribute)) continue;
+      const raw = this.getAttribute(attribute);
+      const value = config.parse
+        ? config.parse(raw)
+        : config.type === "boolean"
+          ? booleanAttribute(this, attribute)
+          : config.type === "integer"
+            ? parseInteger(raw)
+            : raw;
+      // undefined means the attribute was authored with a value that does not
+      // convert (e.g. an integer option got "banana") — skip it so DEFAULTS wins.
+      if (value !== undefined) attrs[config.option ?? camelCase(attribute)] = value;
+    }
 
     // JS wins over markup for behavior that needs an explicit override.
     return { ...attrs, ...this._options };

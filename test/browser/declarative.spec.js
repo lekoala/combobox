@@ -61,3 +61,29 @@ test("JS options win over wrapper attributes", async ({ page }) => {
   expect(state.fromAttr).toBe(3);
   expect(state.afterConfigure).toBe(9);
 });
+
+test("invalid numeric attributes fall back to DEFAULTS instead of spreading NaN", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(() => document.getElementById("invnum").combobox.options);
+  expect(state.minChars).toBe(2);
+  expect(state.maxItems).toBe(0);
+  expect(state.debounce).toBe(200);
+  expect(state.maxItems).not.toBeNaN();
+  expect(state.debounce).not.toBeNaN();
+});
+
+test("changing an observed attribute rebuilds with the re-parsed option", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const wrap = document.getElementById("prio");
+    const before = wrap.combobox.options.maxItems;
+    wrap.setAttribute("max-items", "8");
+    wrap.setAttribute("create", "");
+    // attributeChangedCallback schedules a rebuild on a microtask; let it land.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return { before, afterMax: wrap.combobox.options.maxItems, afterCreate: wrap.combobox.options.create };
+  });
+  expect(state.before).toBe(3);
+  expect(state.afterMax).toBe(8);
+  expect(state.afterCreate).toBe(true);
+});

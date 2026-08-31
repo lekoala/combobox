@@ -144,7 +144,7 @@ The declarative contract follows Data Grid's split between structure and configu
 |---|---|---|
 | native form semantics (name, multiple, required, disabled, optgroup, selected) | ✅ native attributes | rarely |
 | boolean | ✅ `<combo-box foo>` (honors `="false"`) | ✅ |
-| number | ✅ `max-items="5"` | ✅ |
+| number | ✅ `max-items="5"` (integers; invalid values fall back to defaults) | ✅ |
 | enum | ✅ `search="fuzzy"` | ✅ |
 | short string | ✅ | ✅ |
 | short list | ✅ `search-fields="label,email"` | ✅ array |
