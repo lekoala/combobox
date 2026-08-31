@@ -299,23 +299,18 @@ export class ComboBoxElement extends HTMLElement {
 }
 
 /**
- * Explicit registration avoids surprising the global CustomElementRegistry.
- * A fresh subclass permits the same base implementation to be registered
- * under another application-specific name when desired.
- * @param {string} [name]
- * @param {CustomElementRegistry} [registry]
- * @returns {typeof ComboBoxElement | null}
+ * Register <combo-box> once in the global CustomElementRegistry.
+ * The official component name is fixed: a repeated call is an idempotent
+ * no-op and a foreign element already owning the name is left untouched.
+ * For an application-specific tag name, subclass the exported ComboBoxElement
+ * and register natively:
+ *
+ *   customElements.define("my-tag", class extends ComboBoxElement {});
+ *
+ * @returns {typeof ComboBoxElement}
  */
-export function defineCombobox(name = "combo-box", registry = globalThis.customElements) {
-  if (!registry) return null;
-  const existing = registry.get(name);
-  if (existing) {
-    if (existing.prototype instanceof ComboBoxElement)
-      return /** @type {typeof ComboBoxElement} */ (existing);
-    throw new DOMException(`Custom element "${name}" is already defined`, "NotSupportedError");
-  }
-
-  const RegisteredComboBox = class extends ComboBoxElement {};
-  registry.define(name, RegisteredComboBox);
-  return RegisteredComboBox;
+export function defineCombobox() {
+  const registry = globalThis.customElements;
+  if (!registry.get("combo-box")) registry.define("combo-box", ComboBoxElement);
+  return ComboBoxElement;
 }

@@ -2140,19 +2140,11 @@
       Reflect.set(this, name, value);
     }
   }
-  function defineCombobox(name = "combo-box", registry = globalThis.customElements) {
-    if (!registry)
-      return null;
-    const existing = registry.get(name);
-    if (existing) {
-      if (existing.prototype instanceof ComboBoxElement)
-        return existing;
-      throw new DOMException(`Custom element "${name}" is already defined`, "NotSupportedError");
-    }
-    const RegisteredComboBox = class extends ComboBoxElement {
-    };
-    registry.define(name, RegisteredComboBox);
-    return RegisteredComboBox;
+  function defineCombobox() {
+    const registry = globalThis.customElements;
+    if (!registry.get("combo-box"))
+      registry.define("combo-box", ComboBoxElement);
+    return ComboBoxElement;
   }
 
   // src/define.js

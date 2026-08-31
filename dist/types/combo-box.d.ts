@@ -98,12 +98,15 @@ export declare class ComboBoxElement extends HTMLElement {
     dispose(): void;
 }
 /**
- * Explicit registration avoids surprising the global CustomElementRegistry.
- * A fresh subclass permits the same base implementation to be registered
- * under another application-specific name when desired.
- * @param {string} [name]
- * @param {CustomElementRegistry} [registry]
- * @returns {typeof ComboBoxElement | null}
+ * Register <combo-box> once in the global CustomElementRegistry.
+ * The official component name is fixed: a repeated call is an idempotent
+ * no-op and a foreign element already owning the name is left untouched.
+ * For an application-specific tag name, subclass the exported ComboBoxElement
+ * and register natively:
+ *
+ *   customElements.define("my-tag", class extends ComboBoxElement {});
+ *
+ * @returns {typeof ComboBoxElement}
  */
-export declare function defineCombobox(name?: string, registry?: CustomElementRegistry): typeof ComboBoxElement | null;
+export declare function defineCombobox(): typeof ComboBoxElement;
 //# sourceMappingURL=combo-box.d.ts.map

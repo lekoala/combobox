@@ -78,11 +78,20 @@ only (still no `window.Combobox`; the element is the whole surface):
 <combo-box><select>…</select></combo-box>
 ```
 
-`defineCombobox()` is also exported for custom names and stays idempotent:
+`defineCombobox()` is exported and stays idempotent — the second call returns
+the same constructor:
 
 ```js
 import { defineCombobox } from "@lekoala/combobox";
-defineCombobox("app-combobox");
+defineCombobox();                 // registers <combo-box>
+```
+
+The official name is fixed. An application-specific tag is native subclassing
+on the exported `ComboBoxElement`:
+
+```js
+import { ComboBoxElement } from "@lekoala/combobox";
+customElements.define("app-combobox", class extends ComboBoxElement {});
 ```
 
 `<combo-box>` is an autonomous custom element with no Shadow DOM; it is **not**

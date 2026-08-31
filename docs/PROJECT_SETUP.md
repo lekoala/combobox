@@ -13,7 +13,7 @@ A small native-first combobox/filterable-select enhancer built on native form co
 - Styling: small structural CSS; Bootstrap 5-compatible skin can use Bootstrap variables/classes without coupling JS to Bootstrap.
 - CI: syntax/lint + real-browser tests.
 
-Working project identity is intentionally boring: repository `combobox`, npm package `@lekoala/combobox`, primary element `<combo-box>`, engine class `Combobox`. The tag registration remains explicit so applications can choose another custom-element name if the global registry already contains `combo-box`.
+Working project identity is intentionally boring: repository `combobox`, npm package `@lekoala/combobox`, primary element `<combo-box>`, engine class `Combobox`. The tag registration remains explicit so applications can choose another custom-element name if the global registry already contains `combo-box` (by subclassing the exported `ComboBoxElement`).
 
 ## POC vs publishable package
 

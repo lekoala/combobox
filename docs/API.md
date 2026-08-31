@@ -39,15 +39,22 @@ The engine is wrapped by an autonomous custom element `<combo-box>` (no Shadow D
 Importing the library never registers anything. Register explicitly:
 
 ```js
-defineCombobox();                 // "combo-box"
-defineCombobox("app-combobox");   // same engine under an application namespace
+defineCombobox(); // registers <combo-box>, idempotent
 ```
 
-`defineCombobox(name = "combo-box", registry = globalThis.customElements)`:
+`defineCombobox()`:
+- registers `<combo-box>` with `ComboBoxElement` in the global `customElements`;
+- is idempotent — the second call returns the same constructor and never throws;
+- returns the `ComboBoxElement` constructor for convenience.
 
-- returns the registered constructor;
-- is idempotent for an already registered name owned by this library — the same class comes back;
-- throws `NotSupportedError` if the name is already owned by a different element.
+The official component name is fixed. An application-specific tag is native
+subclassing on the exported class:
+
+```js
+import { ComboBoxElement } from "@lekoala/combobox";
+
+customElements.define("app-combobox", class extends ComboBoxElement {});
+```
 
 ### Instance surface
 

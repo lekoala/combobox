@@ -33,7 +33,8 @@ const element = document.createElement("combo-box") as ComboBoxElement;
 element.configure({ maxItems: 5 });
 const instance = element.upgrade();
 void instance;
-defineCombobox("app-combobox");
+defineCombobox();
+customElements.define("app-combobox", class extends ComboBoxElement {});
 
 void ComboBoxElement;
 void combo;

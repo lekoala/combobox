@@ -61,7 +61,7 @@ Creation: `createFilter`, sync/async `create`, `beforecreate/create/createerror`
 
 Value/API: `select`, `remove`, `clear`, `addOption`, `setOptions`, `sync`, `getSelectedValues`, `getSelectedItems`, `move`.
 
-Element/registration: `defineCombobox(name = "combo-box", registry)`, `upgrade`, `configure`, `whenReady`, `dispose`. Registration is always explicit: the engine modules never call `customElements.define` on load — `src/define.js` is the designated side-effect entry and the sole input to the generated classic build.
+Element/registration: `defineCombobox()`, `upgrade`, `configure`, `whenReady`, `dispose`. The official name is fixed to `combo-box`; an application-specific tag is a native subclass of the exported `ComboBoxElement`. Registration is always explicit: the engine modules never call `customElements.define` on load — `src/define.js` is the designated side-effect entry and the sole input to the generated classic build.
 
 Lifecycle: `init`, `getInstance`, `getOrCreateInstance`, `show`, `hide`, `dispose`.
 

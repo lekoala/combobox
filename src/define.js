@@ -9,8 +9,11 @@
  * Importing "@lekoala/combobox" (index.js) never registers anything; a consumer
  * who wants the declarative element must opt in via any of:
  *   import "@lekoala/combobox/define";
- *   import { defineCombobox } from "@lekoala/combobox"; defineCombobox("my-tag");
+ *   import { defineCombobox } from "@lekoala/combobox"; defineCombobox();
  *   <script src="dist/combobox.js"></script>   // classic / file://
+ *
+ * The name is always "combo-box". For another tag, subclass the exported
+ * ComboBoxElement and register natively in application code.
  */
 import { defineCombobox } from "./combo-box.js";
 

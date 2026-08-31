@@ -107,7 +107,7 @@ For multiple select, chips are projections of selected native options.
 - It is an autonomous custom element that simply contains the native source.
 - The source — first direct child `<select>`, else first direct child `<input list>` — stays the only value/validation owner.
 - The element is **not** form-associated and adds no hidden serialized state; no Shadow DOM, so labels, forms and reset keep working through the normal tree.
-- Registration is explicit and centralized: engine modules never touch `customElements` on load — `src/define.js` (`defineCombobox()`), an app-level `defineCombobox("my-tag")`, or the generated classic build are the only ways it happens.
+- Registration is explicit and centralized: engine modules never touch `customElements` on load — `src/define.js` (`defineCombobox()`), an app-level subclass of the exported `ComboBoxElement`, or the generated classic build are the only ways it happens.
 - It runs the exact same `Combobox` engine via `getOrCreateInstance` — it is not a second implementation.
 
 ```html

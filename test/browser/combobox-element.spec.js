@@ -33,23 +33,43 @@ test("loading the engine exports never auto-registers nor leaks globals", async 
   expect(state.registeredCustom).toBeUndefined();
 });
 
-test("defineCombobox registers default and custom names and is idempotent", async ({ page }) => {
+test("defineCombobox registers combo-box once and is idempotent", async ({ page }) => {
   await setup(page, ELEMENTS_HTML);
 
   const state = await page.evaluate(() => {
-    const defaultClass = defineCombobox("combo-box");
-    const again = defineCombobox("combo-box");
-    const customClass = defineCombobox("app-combobox");
+    const first = defineCombobox();
+    const again = defineCombobox();
     return {
-      sameClass: defaultClass === again,
-      registeredDefault: customElements.get("combo-box") === defaultClass,
-      registeredCustom: customElements.get("app-combobox") === customClass,
+      sameClass: first === again,
+      registered: customElements.get("combo-box") === first,
+      isBaseClass: first === window.ComboBoxElement,
     };
   });
 
   expect(state.sameClass).toBe(true);
-  expect(state.registeredDefault).toBe(true);
-  expect(state.registeredCustom).toBe(true);
+  expect(state.registered).toBe(true);
+  expect(state.isBaseClass).toBe(true);
+});
+
+test("a custom tag name is an app-level subclass of the exported ComboBoxElement", async ({ page }) => {
+  await setup(page, ELEMENTS_HTML);
+
+  const state = await page.evaluate(() => {
+    const CustomCombo = class extends window.ComboBoxElement {};
+    customElements.define("my-combobox", CustomCombo);
+    const wrap = document.createElement("my-combobox");
+    wrap.innerHTML = `<select><option value="1">One</option></select>`;
+    document.body.append(wrap);
+    return wrap.whenReady().then((combobox) => ({
+      registered: customElements.get("my-combobox") === CustomCombo,
+      upgraded: combobox !== null && combobox === wrap.combobox,
+      isInstance: wrap instanceof window.ComboBoxElement,
+    }));
+  });
+
+  expect(state.registered).toBe(true);
+  expect(state.upgraded).toBe(true);
+  expect(state.isInstance).toBe(true);
 });
 
 test("existing markup upgrades and attributes map to engine options", async ({ page }) => {
