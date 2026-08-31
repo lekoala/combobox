@@ -45,3 +45,44 @@ test("demo page works directly from file:// via the dist bundle", async ({ page 
   expect(state.upgraded).toBe(true);
   expect(state.formUsable).toBe(true);
 });
+
+test("query-builder demo turns a suggestion into application state", async ({ page }) => {
+  await page.goto("/demo/query-builder.html");
+
+  const input = page.locator("#query");
+  await input.fill("Martin");
+  await page.locator(".cb-popover:visible .cb-option", { hasText: "Nom" }).click();
+
+  await expect(page.locator(".query-token-field .query-token-key-label")).toHaveText("Nom");
+  await expect(page.locator(".query-token-field .query-token-value")).toHaveText("Martin");
+  await expect(input).toHaveValue("");
+  const state = await page.locator("#filters-value").inputValue();
+  expect(JSON.parse(state)).toEqual({
+    scope: "people",
+    filters: [{ field: "name", label: "Nom", query: "Martin" }],
+    groupBy: null,
+    favorite: false,
+  });
+
+  const tokenWidth = await page
+    .locator(".query-token-field")
+    .evaluate((token) => token.getBoundingClientRect().width);
+  await page.locator(".query-token-field").hover();
+  const hoveredWidth = await page
+    .locator(".query-token-field")
+    .evaluate((token) => token.getBoundingClientRect().width);
+  expect(Math.abs(hoveredWidth - tokenWidth)).toBeLessThan(0.5);
+  await page.locator(".query-token-edit").click();
+  await page.locator("#filter-dialog-value").fill("Dubois");
+  await page.locator("#filter-dialog-save").click();
+  await expect(page.locator(".query-token-field .query-token-value")).toHaveText("Dubois");
+
+  await page.locator("#picker-toggle").click();
+  await page.locator('#query-menu button[data-group="salesperson"]').click();
+  await expect(page.locator(".query-token-group .query-token-value")).toHaveText("Vendeur");
+  const colors = await page.evaluate(() => ({
+    filter: getComputedStyle(document.querySelector(".query-token-field .query-token-key")).backgroundColor,
+    group: getComputedStyle(document.querySelector(".query-token-group .query-token-key")).backgroundColor,
+  }));
+  expect(colors.filter).not.toBe(colors.group);
+});

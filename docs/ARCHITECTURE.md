@@ -138,7 +138,7 @@ option.dataset
 
 No source-level `data-*` configuration API exists; the native source stays purely a form/options carrier.
 
-The declarative contract follows Data Grid's split between structure and configuration:
+The declarative contract splits structure from configuration: the native source declares the *what* (options, labels, form semantics), while `<combo-box>` attributes and JS options declare the *how* (behavior).
 
 | Type of config | HTML | JS |
 |---|---|---|
@@ -349,4 +349,4 @@ selection.js          chips/order/formdata
 events.js             event helpers/operation guards
 ```
 
-The current POC intentionally keeps these as visible sections in one file until the contracts stabilize; `helpers.js` is already extracted so the pure functions can be unit-tested without a DOM shim.
+The current implementation intentionally keeps these as visible sections in one file until the contracts stabilize; `helpers.js` is already extracted so the pure functions can be unit-tested without a DOM shim.

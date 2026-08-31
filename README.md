@@ -113,7 +113,7 @@ If Popover + the required CSS Anchor features are unavailable, native controls s
 
 Use `?native=1` in the demo to force this mode.
 
-## Try the POC
+## Try the demo
 
 `demo/index.html` always loads the generated classic `dist/combobox.js`, so after a single
 `bun run sync` it works identically over `http(s)` and directly from `file://`, validating
@@ -138,12 +138,64 @@ The demo covers:
 15. rich renderers returning DOM `Node`s with hostile string data;
 16. application-authored clear affordance calling `clear()`;
 17. `label-field`/`value-field`/`search-fields` over data objects;
-18. form reset restoring the native selection and chips;
-19. declarative fuzzy search (`search="fuzzy"` + `search-fields` over `<option data-*>` metadata + `tab-select`, no JS).
+18. declarative fuzzy search (`search="fuzzy"` + `search-fields` over `<option data-*>` metadata + `tab-select`, no JS);
+19. form reset restoring the native selection and chips;
 
 The demo also ships `demo/actual-css.html`, a standalone theme-bridge page that skins the
 combobox entirely with Actual CSS tokens (controls, removable badge chips, picker, states and a
 theme switcher) — no adapter package, just shared CSS contracts.
+
+`demo/query-builder.html` shows the minimal scoped-search composition: an
+input-backed combobox provides action suggestions while the application owns
+its scope/filter tokens and serialized filter state.
+
+Chip sizing is CSS-owned and proportional. One font-size token scales the
+label, spacing, remove target and icon together; the radius remains separately
+themeable:
+
+```css
+combo-box.compact { --cb-chip-font-size: 0.75em; }
+combo-box.comfortable { --cb-chip-font-size: 1em; }
+combo-box.large { --cb-chip-font-size: 1.125em; }
+combo-box.pills { --cb-chip-border-radius: 999px; }
+```
+
+Appearance is orthogonal to size:
+
+```css
+combo-box.solid {
+  --cb-chip-bg: #6d28d9;
+  --cb-chip-color: white;
+}
+
+combo-box.outline {
+  --cb-chip-bg: transparent;
+  --cb-chip-color: #6d28d9;
+  --cb-chip-border-color: currentColor;
+  --cb-chip-border-width: 1px;
+}
+```
+
+For per-item tones, return a marker node from `render.item`; modern `:has()`
+can then theme the generated chip without copying application `data-*` onto it:
+
+```js
+render: {
+  item(item) {
+    const label = document.createElement("span");
+    label.className = `tag-tone-${item.data.tone}`;
+    label.textContent = item.label;
+    return label;
+  },
+}
+```
+
+```css
+.cb-chip:has(.tag-tone-success) {
+  --cb-chip-bg: #dcfce7;
+  --cb-chip-color: #15803d;
+}
+```
 
 ## Important architecture contracts
 
@@ -156,7 +208,7 @@ theme switcher) — no adapter package, just shared CSS contracts.
 7. **Rendering is safe by default.** Strings become text. Rich rendering returns DOM `Node`s; there is no global `allowHtml` switch.
 8. **Bootstrap is a skin, not a dependency.** The JS should not depend on Bootstrap JS or positioning utilities.
 
-See [Architecture](docs/ARCHITECTURE.md), [API](docs/API.md), [Use cases](docs/USE_CASES.md), [Project setup](docs/PROJECT_SETUP.md), and [References](docs/REFERENCES.md).
+See [Architecture](docs/ARCHITECTURE.md), [API](docs/API.md), [Use cases](docs/USE_CASES.md), and [References](docs/REFERENCES.md).
 
 ## Explicit non-goals
 
@@ -201,7 +253,6 @@ docs/API.md               proposed public API/events
 docs/USE_CASES.md         real application scenarios
 docs/MIGRATION.md         migrating from bootstrap5-tags/autocomplete
 docs/TESTING.md           exhaustive test plan + reference suites
-docs/ROADMAP.md           implementation phases
 test/unit/helpers.test.js pure-helper unit tests (bun, ESM source)
 test/browser/*.spec.js    Playwright behavioral suite (ESM source)
 test/dist/*.spec.js       Playwright smoke tests for the dist bundle

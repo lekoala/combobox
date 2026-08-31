@@ -161,7 +161,8 @@
     sort: null,
     score: null,
     filter: null,
-    render: {}
+    render: {},
+    anchor: null
   };
   function supportsModernCombobox() {
     return typeof HTMLElement.prototype.showPopover === "function" && typeof HTMLElement.prototype.hidePopover === "function" && CSS.supports("position-area: bottom") && CSS.supports("inline-size: anchor-size(width)") && CSS.supports("position-try: flip-block");
@@ -202,6 +203,16 @@
       element.textContent = String(content);
     }
   }
+  function createRemoveIcon() {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 20 20");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M4 4l12 12m0-12L4 16");
+    svg.append(path);
+    return svg;
+  }
   function captureAttributes(element, names) {
     const original = new Map(names.map((name) => [name, element.getAttribute(name)]));
     return {
@@ -233,7 +244,8 @@
     "aria-label",
     "aria-labelledby",
     "aria-required",
-    "aria-describedby"
+    "aria-describedby",
+    "style"
   ];
 
   class Combobox {
@@ -322,6 +334,8 @@
       this.ownsInput = false;
       this.fallbackControl = null;
       this.control = null;
+      this.anchor = null;
+      this.anchorSnapshot = null;
       this.input = null;
       this.chips = null;
       this.datalist = null;
@@ -341,6 +355,12 @@
           this.datalist = view.datalist;
           this.inputSnapshot = view.inputSnapshot;
           this.sourceSnapshot = view.sourceSnapshot;
+          const requestedAnchor = this.options.anchor;
+          this.anchor = requestedAnchor instanceof HTMLElement ? requestedAnchor : view.control || view.input;
+          if (this.anchor !== view.control && this.anchor !== view.input) {
+            this.anchorSnapshot = captureAttributes(this.anchor, ["style"]);
+          }
+          this.anchor.style.setProperty("anchor-name", this.anchorName);
           const picker = this.#createPicker();
           this.popover = picker.popover;
           this.listbox = picker.listbox;
@@ -467,7 +487,6 @@
       datalist.before(datalistPlaceholder);
       datalist.remove();
       source.classList.add("cb-text-control");
-      source.style.setProperty("anchor-name", this.anchorName);
       return {
         control: null,
         input: source,
@@ -484,7 +503,6 @@
       source.setAttribute("aria-hidden", "true");
       const control = document.createElement("div");
       control.className = `cb-control ${this.isMultiple ? "cb-control-multiple" : "cb-control-single"}`;
-      control.style.setProperty("anchor-name", this.anchorName);
       const chips = document.createElement("span");
       chips.className = "cb-chips";
       control.append(chips);
@@ -777,7 +795,7 @@
         if (!this.isOpen())
           return;
         const path = event.composedPath();
-        const control = this.isSelect ? this.control : this.#inputEl();
+        const control = this.anchor || this.control || this.#inputEl();
         if (path.includes(control) || path.includes(this.#popoverEl()))
           return;
         this.hide();
@@ -917,7 +935,7 @@
     #onInputBlur() {
       queueMicrotask(async () => {
         const active = document.activeElement;
-        const stillInside = active === this.#inputEl() || (this.#popoverEl()?.contains(active) ?? false) || this.control && active && this.control.contains(active);
+        const stillInside = active === this.#inputEl() || (this.#popoverEl()?.contains(active) ?? false) || this.anchor && active && this.anchor.contains(active) || this.control && active && this.control.contains(active);
         if (this.isOpen() && stillInside)
           return;
         if (this.isOpen() || this.options.createOnBlur) {
@@ -1060,6 +1078,20 @@
       });
       if (show)
         this.show();
+    }
+    setQuery(value, { show = true, reason = "api" } = {}) {
+      const query = String(value ?? "");
+      if (this.mode === "fallback") {
+        this.query = query;
+        if (!this.isSelect)
+          this.source.value = query;
+        return Promise.resolve();
+      }
+      this.#inputEl().value = query;
+      return this.search(query, { show, reason });
+    }
+    clearQuery({ show = false, reason = "api" } = {}) {
+      return this.setQuery("", { show, reason });
     }
     applyFilter(query = "", { show = false } = {}) {
       if (this.mode !== "enhanced")
@@ -1332,7 +1364,7 @@
           const remove = document.createElement("button");
           remove.type = "button";
           remove.className = "cb-chip-remove";
-          remove.textContent = "×";
+          remove.append(createRemoveIcon());
           remove.setAttribute("aria-label", `Remove ${item.label}`);
           chip.append(remove);
         }
@@ -1478,11 +1510,9 @@
       let option = null;
       if (this.isSelect) {
         option = item.option instanceof HTMLOptionElement ? item.option : this.#findSelectableOption(item.value);
-        if (!option && materialize)
-          option = this.addOption(item);
-        if (!option || option.disabled)
+        if (option?.disabled || !option && !materialize)
           return false;
-        const unchanged = this.isMultiple ? option.selected : this.#selectSource().selectedOptions[0] === option;
+        const unchanged = option ? this.isMultiple ? option.selected : this.#selectSource().selectedOptions[0] === option : false;
         if (unchanged) {
           if (!this.isMultiple)
             this.hide();
@@ -1491,7 +1521,8 @@
         if (this.isMultiple && this.options.maxItems > 0 && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
           return false;
         }
-        item = { ...item, option, selected: true };
+        if (option)
+          item = { ...item, option, selected: true };
       } else if (this.source.value === item.value) {
         this.hide();
         return false;
@@ -1503,7 +1534,10 @@
       if (before.defaultPrevented)
         return false;
       if (this.isSelect) {
+        if (!option)
+          option = this.addOption(item);
         const selectOption = option;
+        item = { ...item, option: selectOption, selected: true };
         if (this.isMultiple) {
           selectOption.selected = true;
           this.#rememberSelection(selectOption);
@@ -1936,6 +1970,7 @@
       if (openCombobox === this)
         openCombobox = null;
       this.#popoverEl()?.remove();
+      this.anchorSnapshot?.restore();
       if (this.isSelect || this.datalist instanceof HTMLDataListElement) {
         for (const item of this.#sourceItems()) {
           item.option?.removeAttribute("data-filtered");
@@ -1957,7 +1992,6 @@
         this.inputSnapshot?.restore();
       } else {
         this.source.classList.remove("cb-text-control");
-        this.source.style.removeProperty("anchor-name");
         const datalist = this.datalist;
         if (datalist && this.original.datalistPlaceholder?.parentNode) {
           this.original.datalistPlaceholder.replaceWith(datalist);

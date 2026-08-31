@@ -217,3 +217,21 @@ Requirements:
 - create fallback input is unnamed;
 - creating through fallback mutates the select and emits native value events;
 - advanced features may legitimately be unavailable rather than half-emulated.
+
+## UC14 — Scoped search / query builder
+
+The application owns scope and filter tokens; the combobox owns only
+`query → suggestions → keyboard navigation → chosen action`.
+
+Requirements:
+
+- use an `input+datalist` source so the remaining query stays free-form and is
+  still the native form-value owner;
+- treat field suggestions as actions by cancelling `combobox:beforeselect`;
+- clear or replace visible text through `clearQuery()` / `setQuery()`;
+- keep application tokens distinct from selected-value `.cb-chip` elements;
+- an authored shell may be passed as `anchor` so its buttons and tokens form
+  one interaction/positioning region;
+- cancelling `beforeselect` never materializes a transient native option.
+
+See `demo/query-builder.html` for a progressively tokenized implementation.

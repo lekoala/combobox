@@ -10,7 +10,7 @@
 - Custom Elements: https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements
 - DOM `handleEvent` / EventListener pattern: https://webreflection.medium.com/dom-handleevent-a-cross-platform-standard-since-year-2000-5bf17287fd38
 
-The POC follows the concepts and progressive direction, not unstable experimental syntax verbatim.
+The library follows the concepts and progressive direction, not unstable experimental syntax verbatim.
 
 ## Functional references
 

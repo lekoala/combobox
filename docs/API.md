@@ -1,6 +1,6 @@
 # Proposed API
 
-This documents the intended v1 shape. The POC implements many of these seams already; items marked **TODO** are contract placeholders, not promises that behavior is complete.
+This documents the intended v1 shape. The implementation already covers most of these seams; items marked **TODO** are contract placeholders, not promises that behavior is complete.
 
 ## Initialization
 
@@ -159,6 +159,7 @@ source-level `data-*` configuration API. Wrapper options (`_options`) take prece
 
   selectionOrder: "source", // source | selected
   observeSource: false,     // opt-in MutationObserver -> debounced sync()
+  anchor: null,             // optional consumer-authored HTMLElement
 
   render: {
     option: null,
@@ -190,6 +191,13 @@ new Combobox(select, {
 ### Deliberately not config options
 
 No `fixed`, `dropdownParent`, `width`, `server`, `queryParam`, `serverDataKey`, `allowHtml`, Bootstrap modal options, or plugin registry.
+
+`anchor` is the narrow composition seam for a consumer-authored control shell.
+The picker still uses CSS Anchor Positioning, but takes its geometry and its
+internal-interaction boundary from that element. This lets an input-backed
+combobox sit beside application buttons/tokens without teaching the core what
+those adornments mean. The authored `style` attribute is restored exactly by
+`dispose()`.
 
 ## Item shape
 
@@ -229,6 +237,19 @@ Declarative entry: `<combo-box search="fuzzy">`; imperative: `match: "fuzzy"`.
 ### `search(query, options)`
 
 Runs the full `beforefilter → optional load → filter → render` pipeline.
+It deliberately does not assign the interaction input's visible value.
+
+### `setQuery(value, { show = true, reason = "api" })`
+
+Assigns the visible interaction text, synchronizes `combo.query`, then runs the
+normal search pipeline. Like native programmatic value assignment, it does not
+emit `input`/`change`.
+
+### `clearQuery({ show = false, reason = "api" })`
+
+Equivalent to `setQuery("")`, with a closed picker staying closed by default.
+It is intended for action-like results that transform application state from a
+cancellable `combobox:beforeselect` handler.
 
 ### `applyFilter(query, { show })`
 
@@ -482,7 +503,7 @@ beforefilter           cancellable, event.query
 filter
 ```
 
-The POC also exposes the query in `event.detail.query`.
+It also exposes the query in `event.detail.query`.
 
 ### Loading
 
@@ -569,6 +590,6 @@ Resolved:
 - `labelField`/`valueField` data-object mapping;
 - `init(root, selector?, options?)`: type-dispatched overloads, discovery/creation only, idempotent (returned instance is never reconfigured);
 - `tabSelect`: JS option, default `false`; when enabled Tab commits like Enter and only `preventDefault()`s when a commit is possible; IME composition falls through to native Tab.
-- ordered-mode keyboard reorder: `Alt+ArrowLeft/Right` and `Alt+Home/End` on a focused chip, status-region position announcement, implementation in Phase 6;
-- automatic DOM sync: opt-in `observeSource` (default `false`), debounced `sync()`, internal mutations suppressed (implemented in Phase 2; programmatic `.selected` changes and `multiple` toggles are intentionally out of the observer — see `sync()`);
-- ESM export shape: see PROJECT_SETUP.md — implementation in Phase 8.
+- ordered-mode keyboard reorder: `Alt+ArrowLeft/Right` and `Alt+Home/End` on a focused chip, status-region position announcement;
+- automatic DOM sync: opt-in `observeSource` (default `false`), debounced `sync()`, internal mutations suppressed (programmatic `.selected` changes and `multiple` toggles are intentionally out of the observer — see `sync()`);
+- ESM export shape: `src/index.js` barrel + `src/define.js` side-effect entry + generated classic `dist/combobox.js` — see README's integration section;

@@ -128,6 +128,9 @@ test("chips stay compact and remove is a real hit target", async ({ page }) => {
       controlHeight: control.getBoundingClientRect().height,
       removeWidth: removeRect.width,
       removeHeight: removeRect.height,
+      removeBorder: getComputedStyle(remove).borderTopWidth,
+      removePadding: getComputedStyle(remove).paddingTop,
+      removeHasSvg: remove.firstElementChild?.localName === "svg",
       removeIsAfterLabel: removeRect.x >= labelRect.x,
       chipRadius: getComputedStyle(chip).borderRadius,
     };
@@ -135,9 +138,90 @@ test("chips stay compact and remove is a real hit target", async ({ page }) => {
 
   expect(geometry.chipHeight).toBeLessThan(geometry.controlHeight);
   expect(geometry.removeWidth).toBeGreaterThanOrEqual(20);
+  expect(geometry.removeWidth).toBeLessThanOrEqual(21);
   expect(geometry.removeHeight).toBeGreaterThanOrEqual(20);
+  expect(geometry.removeHeight).toBeLessThanOrEqual(21);
+  expect(geometry.removeBorder).toBe("0px");
+  expect(geometry.removePadding).toBe("0px");
+  expect(geometry.removeHasSvg).toBe(true);
   expect(geometry.removeIsAfterLabel).toBe(true);
   expect(geometry.chipRadius).not.toBe("999px");
+});
+
+test("chip metrics scale together through --cb-chip-font-size", async ({ page }) => {
+  await setup(page, "/");
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+
+  const geometry = await page.evaluate(() => {
+    const host = document.getElementById("specialties").closest("combo-box");
+    const measure = () => {
+      const chip = host.querySelector(".cb-chip");
+      const remove = chip.querySelector(".cb-chip-remove");
+      const icon = remove.querySelector("svg");
+      return {
+        chip: chip.getBoundingClientRect().height,
+        remove: remove.getBoundingClientRect().height,
+        icon: icon.getBoundingClientRect().height,
+      };
+    };
+
+    host.style.setProperty("--cb-chip-font-size", "0.75em");
+    const small = measure();
+    host.style.setProperty("--cb-chip-font-size", "1.125em");
+    const large = measure();
+    return { small, large };
+  });
+
+  expect(geometry.large.chip).toBeGreaterThan(geometry.small.chip);
+  expect(geometry.large.remove).toBeGreaterThan(geometry.small.remove);
+  expect(geometry.large.icon).toBeGreaterThan(geometry.small.icon);
+  expect(geometry.small.remove).toBeLessThanOrEqual(geometry.small.chip);
+  expect(geometry.large.remove).toBeLessThanOrEqual(geometry.large.chip);
+});
+
+test("chip appearance variables support solid and outline themes", async ({ page }) => {
+  await setup(page, "/");
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+
+  const style = await page.evaluate(() => {
+    const host = document.getElementById("specialties").closest("combo-box");
+    host.style.setProperty("--cb-chip-bg", "transparent");
+    host.style.setProperty("--cb-chip-color", "rgb(109, 40, 217)");
+    host.style.setProperty("--cb-chip-border-color", "currentColor");
+    host.style.setProperty("--cb-chip-border-width", "1px");
+    const computed = getComputedStyle(host.querySelector(".cb-chip"));
+    return {
+      background: computed.backgroundColor,
+      color: computed.color,
+      borderColor: computed.borderTopColor,
+      borderWidth: computed.borderTopWidth,
+    };
+  });
+
+  expect(style.background).toBe("rgba(0, 0, 0, 0)");
+  expect(style.color).toBe("rgb(109, 40, 217)");
+  expect(style.borderColor).toBe(style.color);
+  expect(style.borderWidth).toBe("1px");
+});
+
+test("invalid border and focus ring use --cb-error-color", async ({ page }) => {
+  await setup(page, "/");
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+
+  const style = await page.evaluate(() => {
+    const source = document.getElementById("specialties");
+    const host = source.closest("combo-box");
+    const control = source.nextElementSibling;
+    const input = control.querySelector(".cb-input");
+    host.style.setProperty("--cb-error-color", "rgb(180, 35, 24)");
+    input.setAttribute("aria-invalid", "true");
+    input.focus();
+    const computed = getComputedStyle(control);
+    return { border: computed.borderTopColor, outline: computed.outlineColor };
+  });
+
+  expect(style.border).toBe("rgb(180, 35, 24)");
+  expect(style.outline).toBe("rgb(180, 35, 24)");
 });
 
 test("long chip labels truncate instead of widening the control", async ({ page }) => {

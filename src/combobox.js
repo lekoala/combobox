@@ -146,6 +146,7 @@ const DEFAULTS = {
   score: null,
   filter: null,
   render: {},
+  anchor: null,
 };
 
 function supportsModernCombobox() {
@@ -229,6 +230,19 @@ function setContent(element, content) {
   }
 }
 
+/** Stable, font-independent icon for generated remove buttons. */
+function createRemoveIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 20 20");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", "M4 4l12 12m0-12L4 16");
+  svg.append(path);
+  return svg;
+}
+
 /**
  * Snapshot a set of attributes on an element we do not own so `dispose()` can
  * restore the authored state exactly. The returned object has a `restore()`
@@ -273,6 +287,7 @@ const INPUT_ATTRS = [
   "aria-labelledby",
   "aria-required",
   "aria-describedby",
+  "style",
 ];
 
 /**
@@ -350,6 +365,7 @@ const INPUT_ATTRS = [
  * @property {"source" | "selected"} [selectionOrder]
  * @property {boolean} [observeSource]
  * @property {RenderMap} [render]
+ * @property {HTMLElement} [anchor] Consumer-authored positioning/control region
  * @property {(a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number} [sort]
  * @property {(item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number | false | null} [score]
  * @property {(item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => boolean} [filter]
@@ -386,6 +402,7 @@ const INPUT_ATTRS = [
  *   sort: ((a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number) | null,
  *   score: ((item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number | false | null) | null,
  *   filter: ((item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => boolean) | null,
+ *   anchor: HTMLElement | null,
  * }} ResolvedOptions
  */
 
@@ -593,6 +610,10 @@ export class Combobox {
 
     /** @type {HTMLElement | null} */
     this.control = null;
+    /** @type {HTMLElement | null} */
+    this.anchor = null;
+    /** @type {AttributeSnapshot | null} */
+    this.anchorSnapshot = null;
     /** @type {HTMLInputElement | null} */
     this.input = null;
     /** @type {HTMLElement | null} */
@@ -624,6 +645,13 @@ export class Combobox {
         this.datalist = view.datalist;
         this.inputSnapshot = view.inputSnapshot;
         this.sourceSnapshot = view.sourceSnapshot;
+
+        const requestedAnchor = this.options.anchor;
+        this.anchor = requestedAnchor instanceof HTMLElement ? requestedAnchor : view.control || view.input;
+        if (this.anchor !== view.control && this.anchor !== view.input) {
+          this.anchorSnapshot = captureAttributes(this.anchor, ["style"]);
+        }
+        this.anchor.style.setProperty("anchor-name", this.anchorName);
 
         const picker = this.#createPicker();
         this.popover = picker.popover;
@@ -834,8 +862,6 @@ export class Combobox {
     datalist.remove();
 
     source.classList.add("cb-text-control");
-    source.style.setProperty("anchor-name", this.anchorName);
-
     return {
       control: null,
       input: source,
@@ -860,8 +886,6 @@ export class Combobox {
 
     const control = document.createElement("div");
     control.className = `cb-control ${this.isMultiple ? "cb-control-multiple" : "cb-control-single"}`;
-    control.style.setProperty("anchor-name", this.anchorName);
-
     const chips = document.createElement("span");
     chips.className = "cb-chips";
     control.append(chips);
@@ -1298,7 +1322,7 @@ export class Combobox {
       (event) => {
         if (!this.isOpen()) return;
         const path = event.composedPath();
-        const control = this.isSelect ? /** @type {HTMLElement} */ (this.control) : this.#inputEl();
+        const control = this.anchor || this.control || this.#inputEl();
         if (path.includes(control) || path.includes(this.#popoverEl())) return;
         this.hide();
       },
@@ -1480,6 +1504,7 @@ export class Combobox {
       const stillInside =
         active === this.#inputEl() ||
         (this.#popoverEl()?.contains(active) ?? false) ||
+        (this.anchor && active && this.anchor.contains(active)) ||
         (this.control && active && this.control.contains(active));
       if (this.isOpen() && stillInside) return;
 
@@ -1657,6 +1682,38 @@ export class Combobox {
     });
 
     if (show) this.show();
+  }
+
+  /**
+   * Update the visible interaction text and run the normal search pipeline.
+   * Unlike search(), this keeps the DOM input and `query` in sync. Programmatic
+   * assignment follows the platform and does not dispatch native input/change
+   * events.
+   * @param {*} value
+   * @param {{ show?: boolean, reason?: string }} [options]
+   * @returns {Promise<void>}
+   */
+  setQuery(value, { show = true, reason = "api" } = {}) {
+    const query = String(value ?? "");
+    if (this.mode === "fallback") {
+      this.query = query;
+      if (!this.isSelect) this.source.value = query;
+      return Promise.resolve();
+    }
+
+    this.#inputEl().value = query;
+    return this.search(query, { show, reason });
+  }
+
+  /**
+   * Clear the visible interaction text and run the normal search pipeline.
+   * The picker is not opened when it was closed unless `{ show: true }` is
+   * requested explicitly.
+   * @param {{ show?: boolean, reason?: string }} [options]
+   * @returns {Promise<void>}
+   */
+  clearQuery({ show = false, reason = "api" } = {}) {
+    return this.setQuery("", { show, reason });
   }
 
   /**
@@ -2033,7 +2090,7 @@ export class Combobox {
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "cb-chip-remove";
-        remove.textContent = "×";
+        remove.append(createRemoveIcon());
         remove.setAttribute("aria-label", `Remove ${item.label}`);
         chip.append(remove);
       }
@@ -2259,14 +2316,13 @@ export class Combobox {
       // creates a native option when the value is genuinely absent.
       option =
         item.option instanceof HTMLOptionElement ? item.option : this.#findSelectableOption(item.value);
-      // Materialize without preselection: the exact option is marked selected
-      // below, so the unchanged check above can never short-circuit a real pick.
-      if (!option && materialize) option = this.addOption(item);
-      if (!option || option.disabled) return false;
+      if (option?.disabled || (!option && !materialize)) return false;
 
-      const unchanged = this.isMultiple
-        ? option.selected
-        : this.#selectSource().selectedOptions[0] === option;
+      const unchanged = option
+        ? this.isMultiple
+          ? option.selected
+          : this.#selectSource().selectedOptions[0] === option
+        : false;
       if (unchanged) {
         if (!this.isMultiple) this.hide();
         return false;
@@ -2278,7 +2334,7 @@ export class Combobox {
       ) {
         return false;
       }
-      item = { ...item, option, selected: true };
+      if (option) item = { ...item, option, selected: true };
     } else if (this.source.value === item.value) {
       this.hide();
       return false;
@@ -2296,7 +2352,12 @@ export class Combobox {
     if (before.defaultPrevented) return false;
 
     if (this.isSelect) {
+      // A transient result becomes native state only after beforeselect has
+      // allowed the operation. Cancellation therefore has zero catalogue or
+      // value side effects, as a synchronous `before*` contract promises.
+      if (!option) option = this.addOption(item);
       const selectOption = /** @type {HTMLOptionElement} */ (option);
+      item = { ...item, option: selectOption, selected: true };
       if (this.isMultiple) {
         selectOption.selected = true;
         this.#rememberSelection(selectOption);
@@ -2835,6 +2896,7 @@ export class Combobox {
 
     if (openCombobox === this) openCombobox = null;
     this.#popoverEl()?.remove();
+    this.anchorSnapshot?.restore();
 
     // Cleanup only touches real source options. An init that failed before the
     // datalist resolved (input without a valid `list`) never produced mirror
@@ -2867,7 +2929,6 @@ export class Combobox {
       this.inputSnapshot?.restore();
     } else {
       this.source.classList.remove("cb-text-control");
-      this.source.style.removeProperty("anchor-name");
       // A placeholder that was consumed by a previous dispose() has no parent.
       // Restoring must also work when the whole wrapper subtree is detached.
       const datalist = this.datalist;

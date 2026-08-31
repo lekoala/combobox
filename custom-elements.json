@@ -183,6 +183,21 @@
               "name": "--cb-chip-bg"
             },
             {
+              "name": "--cb-chip-color"
+            },
+            {
+              "name": "--cb-chip-border-color"
+            },
+            {
+              "name": "--cb-chip-border-width"
+            },
+            {
+              "name": "--cb-chip-font-size"
+            },
+            {
+              "name": "--cb-chip-border-radius"
+            },
+            {
               "name": "--cb-picker-bg"
             },
             {

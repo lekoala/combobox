@@ -23,6 +23,12 @@ const options: ComboboxOptions = {
 
 const select = document.querySelector("select") as HTMLSelectElement;
 const combo = new Combobox(select, options);
+void combo.setQuery("doctor", { show: true });
+void combo.clearQuery();
+
+const shell = document.createElement("div");
+const anchored = new Combobox(select, { anchor: shell });
+void anchored;
 
 const combos = Combobox.init(document, "select.combo", options);
 for (const enhanced of combos) {

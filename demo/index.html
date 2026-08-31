@@ -404,6 +404,37 @@
       </section>
 
       <section class="demo-card">
+        <h2>19. Form reset restores initial state</h2>
+        <p class="demo-note">
+          Change selections below (add/remove chips, pick a different team, clear
+          a filter), then press <em>Reset demo values</em>. Every widget returns
+          to the exact server-rendered initial state — the button resets the
+          whole demo form, native source included, and the engine re-syncs from it.
+        </p>
+
+        <label for="team">Team</label>
+        <combo-box id="team-widget" placeholder="Pick a team…">
+          <select id="team" name="team">
+            <option value="alpha">Alpha</option>
+            <option value="beta" selected>Beta</option>
+            <option value="gamma">Gamma</option>
+          </select>
+        </combo-box>
+
+        <label for="topics">Topics</label>
+        <combo-box id="topics-widget" placeholder="Pick topics…">
+          <select id="topics" name="topics[]" multiple>
+            <option value="js" selected>JavaScript</option>
+            <option value="css" selected>CSS</option>
+            <option value="html">HTML</option>
+            <option value="a11y" selected>Accessibility</option>
+          </select>
+        </combo-box>
+
+        <button type="reset" class="demo-reset">Reset demo values</button>
+      </section>
+
+      <section class="demo-card">
         <h2>Event / extension log</h2>
         <p class="demo-note">
           The architecture exposes cancellable “before” events, including the

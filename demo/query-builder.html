@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Query builder · @lekoala/combobox</title>
+  <link rel="stylesheet" href="../dist/combobox.css">
+  <script src="../dist/combobox.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      color: #18202b;
+      background: #f5f7fa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body { margin: 0; }
+
+    main {
+      max-inline-size: 58rem;
+      margin: 4rem auto;
+      padding: 0 1.25rem;
+    }
+
+    h1 { margin-block-end: 0.4rem; }
+    p { color: #667085; }
+    a { color: #175cd3; }
+
+    .query-card {
+      display: grid;
+      gap: 1rem;
+      margin-block-start: 2rem;
+      padding: 1.5rem;
+      border: 1px solid #dfe3e8;
+      border-radius: 0.85rem;
+      background: white;
+      box-shadow: 0 0.5rem 2rem rgb(16 24 40 / 7%);
+    }
+
+    .query-composer { position: relative; }
+
+    .query-builder {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      min-block-size: 3rem;
+      padding: 0.35rem 0.5rem;
+      border: 1px solid #98a2b3;
+      border-radius: 0.55rem;
+      background: white;
+      cursor: text;
+    }
+
+    .query-builder:focus-within {
+      border-color: #1570ef;
+      outline: 3px solid rgb(21 112 239 / 14%);
+    }
+
+    .query-builder .cb-text-control {
+      flex: 1 1 10rem;
+      min-inline-size: 7rem;
+      block-size: 2rem;
+      min-block-size: 2rem;
+      padding: 0.2rem;
+      border: 0;
+      outline: 0;
+    }
+
+    .query-icon {
+      display: grid;
+      place-items: center;
+      flex: 0 0 2rem;
+      inline-size: 2rem;
+      block-size: 2rem;
+      color: #667085;
+    }
+
+    .query-icon svg { inline-size: 1.15rem; block-size: 1.15rem; }
+
+    .query-action,
+    .query-token-remove {
+      display: inline-grid;
+      place-items: center;
+      border: 0;
+      background: transparent;
+      color: #667085;
+      cursor: pointer;
+    }
+
+    .query-action {
+      flex: 0 0 2.35rem;
+      inline-size: 2.35rem;
+      block-size: 2.35rem;
+      border-radius: 0.4rem;
+    }
+
+    .query-action svg { inline-size: 1rem; block-size: 1rem; transition: rotate 120ms ease; }
+    .query-action.is-open svg { rotate: 180deg; }
+
+    .query-action:hover { background: #f2f4f7; }
+
+    .query-tokens { display: contents; }
+
+    .query-token {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.2rem;
+      max-inline-size: 18rem;
+      block-size: 2rem;
+      padding: 0 0.2rem 0 0.65rem;
+      border: 1px solid #d0d5dd;
+      border-radius: 999px;
+      background: #f2f4f7;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    :is(.query-token-field, .query-token-group) {
+      gap: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #f2f4f7;
+      border-color: #d0d5dd;
+      border-radius: 0.4rem;
+    }
+
+    .query-token-key {
+      align-self: stretch;
+      display: inline-grid;
+      place-items: center;
+      min-inline-size: 2.6rem;
+      block-size: 100%;
+      padding-inline: 0.65rem;
+      background: #74456b;
+      color: white;
+      font-weight: 700;
+    }
+
+    .query-token-value {
+      display: inline-flex;
+      align-items: center;
+      block-size: 100%;
+      padding-inline: 0.65rem 0.35rem;
+    }
+    .query-token-group .query-token-key { background: #008c95; }
+    .query-token-key svg { inline-size: 1rem; block-size: 1rem; }
+    .query-token-group .query-token-value { background: #e6f4f5; }
+
+    .query-token-edit {
+      display: grid;
+      grid-area: 1 / 1;
+      place-items: center;
+      inline-size: 100%;
+      block-size: 100%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: white;
+      font: inherit;
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .query-token-key-label {
+      display: inline-grid;
+      grid-area: 1 / 1;
+      place-items: center;
+      pointer-events: none;
+    }
+
+    .query-token-field:hover .query-token-key-label,
+    .query-token-key:focus-within .query-token-key-label { opacity: 0; }
+
+    .query-token-field:hover .query-token-edit,
+    .query-token-key:focus-within .query-token-edit {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .query-token-label { overflow: hidden; text-overflow: ellipsis; }
+    .query-token-remove { inline-size: 1.6rem; block-size: 1.6rem; border-radius: 50%; }
+    .query-token-remove svg { inline-size: 0.825rem; block-size: 0.825rem; }
+    .query-token-remove:hover { background: rgb(16 24 40 / 9%); color: #101828; }
+
+    .query-option {
+      display: flex;
+      align-items: baseline;
+      gap: 0.35rem;
+      inline-size: 100%;
+    }
+
+    .query-option-expand {
+      flex: 0 0 0.8rem;
+      inline-size: 0.8rem;
+      color: #344054;
+    }
+
+    .query-option-expand[data-visible]::before {
+      display: block;
+      inline-size: 0;
+      block-size: 0;
+      border-block: 0.3rem solid transparent;
+      border-inline-start: 0.42rem solid currentColor;
+      content: "";
+    }
+
+    .query-option-value { color: #74456b; font-style: italic; }
+    .query-option-custom { color: #008c95; }
+
+    .query-menu {
+      position-area: block-end span-inline-start;
+      position-anchor: --query-menu-button;
+      inline-size: min(56rem, calc(100vw - 2rem));
+      margin-block-start: 0.75rem;
+      padding: 1.4rem;
+      border: 1px solid #d0d5dd;
+      border-radius: 0.55rem;
+      background: white;
+      box-shadow: 0 1rem 2rem rgb(16 24 40 / 16%);
+      color: #18202b;
+    }
+
+    .query-menu-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .query-menu-column {
+      display: grid;
+      align-content: start;
+      gap: 0.25rem;
+      padding-inline: 1.25rem;
+      border-inline-start: 1px solid #d0d5dd;
+    }
+
+    .query-menu-column:first-child { padding-inline-start: 0; border: 0; }
+    .query-menu-column:last-child { padding-inline-end: 0; }
+    .query-menu h2 { margin: 0 0 0.7rem; font-size: 1rem; }
+
+    .query-menu button {
+      padding: 0.45rem 0.5rem;
+      border: 0;
+      border-radius: 0.35rem;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: start;
+      cursor: pointer;
+    }
+
+    .query-menu button:hover { background: #f2f4f7; }
+    .query-menu hr { inline-size: 100%; margin-block: 0.65rem; border: 0; border-block-start: 1px solid #d0d5dd; }
+    #picker-toggle { anchor-name: --query-menu-button; }
+
+    .query-state {
+      min-block-size: 5rem;
+      margin: 0;
+      padding: 0.85rem 1rem;
+      border-radius: 0.55rem;
+      background: #101828;
+      color: #d1e9ff;
+      font: 0.875rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    .query-help { margin: 0; font-size: 0.92rem; }
+
+    .query-dialog {
+      inline-size: min(28rem, calc(100vw - 2rem));
+      padding: 0;
+      border: 1px solid #d0d5dd;
+      border-radius: 0.7rem;
+      box-shadow: 0 1.5rem 3rem rgb(16 24 40 / 22%);
+    }
+
+    .query-dialog::backdrop { background: rgb(16 24 40 / 40%); }
+    .query-dialog-body { display: grid; gap: 1rem; padding: 1.25rem; }
+    .query-dialog h2 { margin: 0; font-size: 1.15rem; }
+    .query-dialog label { display: grid; gap: 0.35rem; }
+    .query-dialog input { padding: 0.65rem; border: 1px solid #98a2b3; border-radius: 0.4rem; font: inherit; }
+    .query-dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+    .query-dialog-actions button { padding: 0.5rem 0.8rem; border: 1px solid #d0d5dd; border-radius: 0.4rem; background: white; cursor: pointer; }
+    .query-dialog-actions .primary { border-color: #74456b; background: #74456b; color: white; }
+
+    @media (max-width: 38rem) {
+      main { margin-block: 2rem; }
+      .query-builder { flex-wrap: wrap; }
+      .query-builder .cb-text-control { flex-basis: 12rem; }
+      .query-menu-grid { grid-template-columns: 1fr; }
+      .query-menu-column { padding: 1rem 0; border: 0; border-block-start: 1px solid #d0d5dd; }
+      .query-menu-column:first-child { padding-block-start: 0; border: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <a href="./index.html">← Démo principale</a>
+    <h1>Scoped search / query builder</h1>
+    <p>
+      La combobox gère la requête, les suggestions et le clavier. Les tokens et
+      leur sérialisation restent entièrement possédés par l’application.
+    </p>
+
+    <form class="query-card" id="search-form">
+      <label for="query">Rechercher</label>
+      <div class="query-composer">
+        <combo-box class="query-builder" id="query-builder" max-options="9">
+          <span class="query-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <title>Rechercher</title>
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m20 20-4-4"></path>
+            </svg>
+          </span>
+          <span class="query-tokens" id="query-tokens"></span>
+          <input id="query" name="query" list="query-fields" placeholder="Rechercher…">
+          <datalist id="query-fields">
+            <option value="name" label="Nom"></option>
+            <option value="address" label="Adresse"></option>
+            <option value="company" label="Société associée" data-expandable="true"></option>
+            <option value="email" label="Email"></option>
+            <option value="phone" label="Téléphone fixe/mobile"></option>
+            <option value="tag" label="Étiquette"></option>
+            <option value="salesperson" label="Vendeur" data-expandable="true"></option>
+            <option value="properties" label="Propriétés" data-expandable="true" data-query="false"></option>
+            <option value="custom" label="Filtre personnalisé…" data-kind="custom" data-query="false"></option>
+          </datalist>
+          <button class="query-action" id="picker-toggle" type="button" aria-label="Ouvrir les filtres, regroupements et favoris" aria-expanded="false">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M2.5 5.5h11L8 11z" fill="currentColor"></path>
+            </svg>
+          </button>
+        </combo-box>
+
+        <div class="query-menu" id="query-menu" popover="auto">
+          <div class="query-menu-grid">
+            <section class="query-menu-column">
+              <h2>⏷ &nbsp;Filtres</h2>
+              <button type="button" data-scope="people">Personnes</button>
+              <button type="button" data-scope="companies">Sociétés</button>
+              <hr>
+              <button type="button" data-scope="customer-invoices">Factures clients</button>
+              <button type="button" data-scope="supplier-invoices">Factures fournisseurs</button>
+            </section>
+            <section class="query-menu-column">
+              <h2>▰ &nbsp;Regrouper par</h2>
+              <button type="button" data-group="salesperson">Vendeur</button>
+              <button type="button" data-group="company">Société</button>
+              <button type="button" data-group="country">Pays</button>
+              <button type="button" data-group="properties">Propriétés&nbsp; ▾</button>
+            </section>
+            <section class="query-menu-column">
+              <h2>★ &nbsp;Favoris</h2>
+              <button type="button" id="save-search">Enregistrer la recherche actuelle</button>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <input id="filters-value" name="filters" type="hidden">
+      <p class="query-help">
+        Tapez par exemple « Martin », puis choisissez « Nom ». La flèche ouvre
+        un second popover applicatif : la combobox ne connaît ni filtres, ni
+        regroupements, ni favoris.
+      </p>
+      <pre class="query-state" id="query-state" aria-live="polite"></pre>
+    </form>
+
+    <dialog class="query-dialog" id="filter-dialog">
+      <div class="query-dialog-body">
+        <h2>Modifier le filtre</h2>
+        <label>
+          Valeur
+          <input id="filter-dialog-value" autocomplete="off">
+        </label>
+        <div class="query-dialog-actions">
+          <button id="filter-dialog-cancel" type="button">Annuler</button>
+          <button class="primary" id="filter-dialog-save" type="button">Enregistrer</button>
+        </div>
+      </div>
+    </dialog>
+  </main>
+
+  <script type="module">
+    const box = document.getElementById("query-builder");
+    const source = document.getElementById("query");
+    const tokensElement = document.getElementById("query-tokens");
+    const stateElement = document.getElementById("query-state");
+    const filtersInput = document.getElementById("filters-value");
+    const pickerToggle = document.getElementById("picker-toggle");
+    const menu = document.getElementById("query-menu");
+    const filterDialog = document.getElementById("filter-dialog");
+    const filterDialogValue = document.getElementById("filter-dialog-value");
+    let editedFilterIndex = -1;
+
+    const state = {
+      scope: { value: "people", label: "Personnes" },
+      filters: [],
+      groupBy: null,
+      favorite: false,
+    };
+
+    function makeIcon(path) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 20 20");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "2");
+      svg.setAttribute("stroke-linecap", "round");
+      svg.setAttribute("stroke-linejoin", "round");
+      svg.setAttribute("aria-hidden", "true");
+      const shape = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      shape.setAttribute("d", path);
+      svg.append(shape);
+      return svg;
+    }
+
+    box.configure({
+      anchor: box,
+      match(_item, query) {
+        return query.trim().length > 0;
+      },
+      render: {
+        option(item, { query }) {
+          const row = document.createElement("span");
+          row.className = item.data.kind === "custom" ? "query-option query-option-custom" : "query-option";
+
+          const expand = document.createElement("span");
+          expand.className = "query-option-expand";
+          expand.toggleAttribute("data-visible", item.data.expandable === "true");
+
+          if (item.data.kind === "custom") {
+            row.append(expand, item.label);
+            return row;
+          }
+
+          const action = document.createElement("span");
+          action.append("Rechercher ");
+          const field = document.createElement("strong");
+          field.textContent = item.label;
+          action.append(field);
+          if (item.data.query !== "false") action.append(" pour :");
+
+          const value = document.createElement("span");
+          value.className = "query-option-value";
+          value.textContent = item.data.query === "false" ? "" : query;
+          row.append(expand, action, value);
+          return row;
+        },
+      },
+    });
+
+    // configure() may rebuild an instance that upgraded during HTML parsing.
+    await new Promise(requestAnimationFrame);
+    const combo = box.combobox;
+
+    function renderState() {
+      tokensElement.replaceChildren();
+
+      const tokens = [
+        ...(state.scope ? [{ ...state.scope, kind: "scope" }] : []),
+        ...state.filters.map((filter, index) => ({ ...filter, kind: "filter", index })),
+        ...(state.groupBy
+          ? [{ kind: "group", value: state.groupBy, label: "▰", query: groupLabels[state.groupBy] }]
+          : []),
+      ];
+
+      for (const token of tokens) {
+        const element = document.createElement("span");
+        element.className = `query-token query-token-${token.kind === "filter" ? "field" : token.kind}`;
+
+        const label = document.createElement("span");
+        label.className = token.kind === "scope" ? "query-token-label" : "query-token-key";
+        const keyLabel = document.createElement("span");
+        keyLabel.className = "query-token-key-label";
+        if (token.kind === "group") {
+          keyLabel.replaceChildren(makeIcon("M4 6.5 10 3l6 3.5-6 3.5-6-3.5Zm0 3.5 6 3.5 6-3.5M4 13.5 10 17l6-3.5"));
+        } else {
+          keyLabel.textContent = token.label;
+        }
+        label.append(keyLabel);
+
+        if (token.kind === "filter") {
+          const edit = document.createElement("button");
+          edit.type = "button";
+          edit.className = "query-token-edit";
+          edit.setAttribute("aria-label", `Modifier le filtre ${token.label}`);
+          edit.append(makeIcon("m4 14.5-.5 3 3-.5L16 7.5 12.5 4 4 14.5ZM11 5.5l3.5 3.5"));
+          edit.addEventListener("click", () => {
+            editedFilterIndex = token.index;
+            filterDialogValue.value = token.query;
+            filterDialog.showModal();
+            filterDialogValue.focus();
+          });
+          label.append(edit);
+        }
+
+        const value = document.createElement("span");
+        value.className = "query-token-value";
+        value.textContent = token.query ?? "";
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "query-token-remove";
+        remove.setAttribute("aria-label", `Retirer ${label.textContent}`);
+        remove.append(makeIcon("m4 4 12 12m0-12L4 16"));
+        remove.addEventListener("click", () => {
+          if (token.kind === "scope") state.scope = null;
+          else if (token.kind === "filter") state.filters.splice(token.index, 1);
+          else if (token.kind === "group") state.groupBy = null;
+          renderState();
+          combo.input.focus();
+        });
+
+        element.append(label);
+        if (token.kind === "filter" || token.kind === "group") element.append(value);
+        element.append(remove);
+        tokensElement.append(element);
+      }
+
+      filtersInput.value = JSON.stringify({
+        scope: state.scope?.value ?? null,
+        filters: state.filters,
+        groupBy: state.groupBy,
+        favorite: state.favorite,
+      });
+      stateElement.textContent = JSON.stringify(
+        {
+          scope: state.scope,
+          filters: state.filters,
+          groupBy: state.groupBy,
+          favorite: state.favorite,
+          remainingQuery: source.value,
+        },
+        null,
+        2,
+      );
+    }
+
+    source.addEventListener("combobox:beforeselect", (event) => {
+      const query = combo.query.trim();
+      if (!query) return;
+
+      // The result is an application action, not the new value of the input.
+      event.preventDefault();
+      const item = event.detail.item;
+      if (item.data.kind === "custom") {
+        state.filters.push({ field: "custom", label: "Personnalisé", query });
+      } else {
+        state.filters.push({
+          field: item.value,
+          label: item.label,
+          query: item.data.query === "false" ? "" : query,
+        });
+      }
+      renderState();
+      combo.hide();
+      void combo.clearQuery().then(renderState);
+      combo.input.focus();
+    });
+
+    source.addEventListener("input", renderState);
+
+    const groupLabels = {
+      salesperson: "Vendeur",
+      company: "Société",
+      country: "Pays",
+      properties: "Propriétés",
+    };
+
+    pickerToggle.addEventListener("click", () => {
+      combo.hide();
+      if (menu.matches(":popover-open")) menu.hidePopover();
+      else menu.showPopover({ source: pickerToggle });
+    });
+
+    menu.addEventListener("toggle", (event) => {
+      const open = event.newState === "open";
+      pickerToggle.classList.toggle("is-open", open);
+      pickerToggle.setAttribute("aria-expanded", String(open));
+    });
+
+    menu.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      if (button.dataset.scope) {
+        const labels = {
+          people: "Personnes",
+          companies: "Sociétés",
+          "customer-invoices": "Factures clients",
+          "supplier-invoices": "Factures fournisseurs",
+        };
+        state.scope = { value: button.dataset.scope, label: labels[button.dataset.scope] };
+      }
+      if (button.dataset.group) state.groupBy = button.dataset.group;
+      if (button.id === "save-search") state.favorite = true;
+      renderState();
+      menu.hidePopover();
+      combo.input.focus();
+    });
+
+    document.getElementById("filter-dialog-cancel").addEventListener("click", () => {
+      filterDialog.close();
+    });
+
+    document.getElementById("filter-dialog-save").addEventListener("click", () => {
+      if (editedFilterIndex >= 0 && state.filters[editedFilterIndex]) {
+        state.filters[editedFilterIndex].query = filterDialogValue.value;
+        renderState();
+      }
+      filterDialog.close();
+      combo.input.focus();
+    });
+
+    document.getElementById("search-form").addEventListener("submit", (event) => event.preventDefault());
+    renderState();
+  </script>
+</body>
+</html>

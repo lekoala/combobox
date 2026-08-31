@@ -227,6 +227,86 @@ test("transient results stay out of the catalogue; selecting materializes only t
   expect(afterClear.rows).not.toContain("Remote Ten"); // transient result was dropped
 });
 
+test("cancelling beforeselect does not materialize a transient result", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  await page.evaluate(() => {
+    const select = document.getElementById("remote");
+    select.addEventListener("combobox:beforeselect", (event) => event.preventDefault());
+    Combobox.getOrCreateInstance(select, {
+      debounce: 0,
+      minChars: 1,
+      load: async () => [{ value: "action", label: "Run action", type: "action" }],
+    });
+  });
+
+  const input = page.locator(control("remote"));
+  await input.fill("run");
+  await page.locator(".cb-popover:visible .cb-option", { hasText: "Run action" }).click();
+
+  const state = await page.evaluate(() => {
+    const select = document.getElementById("remote");
+    return {
+      value: select.value,
+      catalogue: Array.from(select.options, (option) => option.value),
+    };
+  });
+  expect(state.value).toBe("");
+  expect(state.catalogue).not.toContain("action");
+});
+
+test("setQuery and clearQuery keep visible text and search state synchronized", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(async () => {
+    const combo = Combobox.getOrCreateInstance(document.getElementById("remote-input"));
+    await combo.setQuery("Alpha", { show: true });
+    const set = {
+      input: combo.input.value,
+      query: combo.query,
+      open: combo.isOpen(),
+      rows: Array.from(combo.listbox.querySelectorAll(".cb-option"), (row) => row.textContent.trim()),
+    };
+    combo.hide();
+    await combo.clearQuery();
+    return {
+      set,
+      cleared: { input: combo.input.value, query: combo.query, open: combo.isOpen() },
+    };
+  });
+
+  expect(state.set).toEqual({ input: "Alpha", query: "Alpha", open: true, rows: ["Local Alpha"] });
+  expect(state.cleared).toEqual({ input: "", query: "", open: false });
+});
+
+test("a consumer anchor is the positioning and internal-interaction region", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(async () => {
+    const input = document.getElementById("remote-input");
+    const shell = document.createElement("div");
+    shell.setAttribute("style", "color: red");
+    input.before(shell);
+    shell.append(input);
+    const button = document.createElement("button");
+    button.type = "button";
+    shell.append(button);
+
+    const combo = Combobox.getOrCreateInstance(input, { anchor: shell });
+    await combo.setQuery("Alpha", { show: true });
+    button.focus();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const whileEnhanced = {
+      open: combo.isOpen(),
+      anchorName: shell.style.getPropertyValue("anchor-name"),
+      positionAnchor: combo.popover.style.getPropertyValue("position-anchor"),
+    };
+    combo.dispose();
+    return { whileEnhanced, restoredStyle: shell.getAttribute("style") };
+  });
+
+  expect(state.whileEnhanced.open).toBe(true);
+  expect(state.whileEnhanced.anchorName).toBe(state.whileEnhanced.positionAnchor);
+  expect(state.restoredStyle).toBe("color: red");
+});
+
 test("selecting a remote result materializes the native option and chip on a multiple", async ({ page }) => {
   test.skip(!(await modernSupported(page)), MODERN);
   await page.evaluate(() => {

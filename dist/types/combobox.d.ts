@@ -102,6 +102,10 @@ export type ComboboxOptions = {
     selectionOrder?: "source" | "selected";
     observeSource?: boolean;
     render?: RenderMap;
+    /**
+     * Consumer-authored positioning/control region
+     */
+    anchor?: HTMLElement;
     sort?: (a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number;
     score?: (item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number | false | null;
     filter?: (item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => boolean;
@@ -133,6 +137,7 @@ export type ResolvedOptions = ComboboxOptions & {
     sort: ((a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number) | null;
     score: ((item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number | false | null) | null;
     filter: ((item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => boolean) | null;
+    anchor: HTMLElement | null;
 };
 export type ViewState = {
     /**
@@ -223,6 +228,7 @@ export type ViewState = {
  * @property {"source" | "selected"} [selectionOrder]
  * @property {boolean} [observeSource]
  * @property {RenderMap} [render]
+ * @property {HTMLElement} [anchor] Consumer-authored positioning/control region
  * @property {(a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number} [sort]
  * @property {(item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number | false | null} [score]
  * @property {(item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => boolean} [filter]
@@ -258,6 +264,7 @@ export type ViewState = {
  *   sort: ((a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number) | null,
  *   score: ((item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number | false | null) | null,
  *   filter: ((item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => boolean) | null,
+ *   anchor: HTMLElement | null,
  * }} ResolvedOptions
  */
 /**
@@ -341,6 +348,10 @@ export declare class Combobox {
     fallbackControl: HTMLElement | null;
     /** @type {HTMLElement | null} */
     control: HTMLElement | null;
+    /** @type {HTMLElement | null} */
+    anchor: HTMLElement | null;
+    /** @type {AttributeSnapshot | null} */
+    anchorSnapshot: AttributeSnapshot | null;
     /** @type {HTMLInputElement | null} */
     input: HTMLInputElement | null;
     /** @type {HTMLElement | null} */
@@ -427,6 +438,30 @@ export declare class Combobox {
      * @param {{ show?: boolean, reason?: string }} [options]
      */
     search(query?: string, { show, reason }?: {
+        show?: boolean;
+        reason?: string;
+    }): Promise<void>;
+    /**
+     * Update the visible interaction text and run the normal search pipeline.
+     * Unlike search(), this keeps the DOM input and `query` in sync. Programmatic
+     * assignment follows the platform and does not dispatch native input/change
+     * events.
+     * @param {*} value
+     * @param {{ show?: boolean, reason?: string }} [options]
+     * @returns {Promise<void>}
+     */
+    setQuery(value: any, { show, reason }?: {
+        show?: boolean;
+        reason?: string;
+    }): Promise<void>;
+    /**
+     * Clear the visible interaction text and run the normal search pipeline.
+     * The picker is not opened when it was closed unless `{ show: true }` is
+     * requested explicitly.
+     * @param {{ show?: boolean, reason?: string }} [options]
+     * @returns {Promise<void>}
+     */
+    clearQuery({ show, reason }?: {
         show?: boolean;
         reason?: string;
     }): Promise<void>;
