@@ -86,7 +86,7 @@ Full ESM source with zero globals; behavioral suite stays on the source, the bun
 - [x] duplicate label/value behavior (value identity is authoritative, `#selectItem` resolves by value);
 - [x] maxItems interaction (never mutilates pre-existing init state);
 - [x] fallback create parity (`guards.add` + `beforecreate` on the Add input);
-- [ ] async guards edge review (unhandled rejections from user-facing paths are already event-surfaced).
+- [x] async guards edge review (guards `add`/`remove`/`clear` rejections from user-facing and programmatic paths surface `combobox:guarderror` with zero unhandled rejections; browser coverage in `features.spec.js` + fallback parity in `combobox-element.spec.js`).
 
 ## Phase 6 — Ordered multiple selection
 

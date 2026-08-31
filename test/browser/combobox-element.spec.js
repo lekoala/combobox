@@ -177,3 +177,114 @@ test("wrapper can be forced into native fallback", async ({ page }) => {
   expect(state.hasFallbackCreate).toBe(true);
   expect(state.popoverCount).toBe(0);
 });
+
+test("fallback create runs guards.add, beforecreate and createerror like the enhanced picker", async ({
+  page,
+}) => {
+  await setup(page, ELEMENTS_HTML);
+
+  const state = await page.evaluate(async () => {
+    const make = () => {
+      const select = document.createElement("select");
+      select.multiple = true;
+      select.innerHTML = `<option value="1" selected>One</option>`;
+      document.body.append(select);
+      return select;
+    };
+    const add = async (select, label) => {
+      const input = select.nextElementSibling.querySelector(".cb-fallback-input");
+      input.value = label;
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    };
+
+    // guards.add false refuses silently.
+    const refused = make();
+    Combobox.getOrCreateInstance(refused, {
+      mode: "fallback",
+      create: true,
+      guards: { add: () => false },
+    });
+    await add(refused, "plum");
+    const refusedState = { hasPlum: Array.from(refused.options, (o) => o.value).includes("plum") };
+
+    // guards.add rejection surfaces guarderror, zero unhandled rejections.
+    const rejected = make();
+    const guardErrors = [];
+    const unhandled = [];
+    window.addEventListener("unhandledrejection", (event) =>
+      unhandled.push(event.reason?.message ?? String(event.reason)),
+    );
+    rejected.addEventListener("combobox:guarderror", (event) =>
+      guardErrors.push({ guard: event.detail.guard, message: event.detail.error.message }),
+    );
+    Combobox.getOrCreateInstance(rejected, {
+      mode: "fallback",
+      create: true,
+      guards: { add: async () => Promise.reject(new Error("app boom")) },
+    });
+    await add(rejected, "plum");
+    const rejectedState = {
+      guardErrors,
+      unhandled,
+      hasPlum: Array.from(rejected.options, (o) => o.value).includes("plum"),
+    };
+
+    // beforecreate preventDefault blocks.
+    const blocked = make();
+    blocked.addEventListener("combobox:beforecreate", (event) => event.preventDefault());
+    Combobox.getOrCreateInstance(blocked, { mode: "fallback", create: true });
+    await add(blocked, "plum");
+    const blockedState = { hasPlum: Array.from(blocked.options, (o) => o.value).includes("plum") };
+
+    // Success: option created, selected, unnamed input, native events once.
+    const success = make();
+    const successEvents = [];
+    success.addEventListener("combobox:create", (event) =>
+      successEvents.push(`create:${event.detail.item.value}`),
+    );
+    success.addEventListener("input", () => successEvents.push("input"));
+    success.addEventListener("change", () => successEvents.push("change"));
+    Combobox.getOrCreateInstance(success, { mode: "fallback", create: true });
+    await add(success, "plum");
+    const successState = {
+      events: successEvents,
+      selected: Array.from(success.selectedOptions, (o) => o.value),
+      hasPlum: Array.from(success.options, (o) => o.value).includes("plum"),
+      inputName: success.nextElementSibling.querySelector(".cb-fallback-input").getAttribute("name"),
+    };
+
+    // create rejection -> createerror, nothing added.
+    const errored = make();
+    const createErrors = [];
+    errored.addEventListener("combobox:createerror", (event) =>
+      createErrors.push(event.detail.error.message),
+    );
+    Combobox.getOrCreateInstance(errored, {
+      mode: "fallback",
+      create: async () => {
+        throw new Error("boom");
+      },
+    });
+    await add(errored, "plum");
+    const erroredState = {
+      createErrors,
+      hasPlum: Array.from(errored.options, (o) => o.value).includes("plum"),
+    };
+
+    return { refusedState, rejectedState, blockedState, successState, erroredState };
+  });
+
+  expect(state.refusedState).toEqual({ hasPlum: false });
+  expect(state.rejectedState).toEqual({
+    guardErrors: [{ guard: "add", message: "app boom" }],
+    unhandled: [],
+    hasPlum: false,
+  });
+  expect(state.blockedState).toEqual({ hasPlum: false });
+  expect(state.successState.events).toEqual(["input", "change", "create:plum"]);
+  expect(state.successState.selected).toContain("plum");
+  expect(state.successState.hasPlum).toBe(true);
+  expect(state.successState.inputName).toBeNull();
+  expect(state.erroredState).toEqual({ createErrors: ["boom"], hasPlum: false });
+});

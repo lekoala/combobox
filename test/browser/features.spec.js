@@ -449,3 +449,228 @@ test("custom tokenize keeps the declared rest in the input", async ({ page }) =>
   expect(state.selected).not.toContain("beta");
   expect(state.inputValue).toBe("beta");
 });
+
+test("createFilter returning false hides the create row and blocks Enter", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  await page.evaluate(() => {
+    Combobox.getOrCreateInstance(document.getElementById("tags"), {
+      create: true,
+      createFilter: (value) => value.trim().length > 2,
+    });
+  });
+
+  const input = page.locator(control("tags"));
+  const row = (text) => page.locator(".cb-popover:visible .cb-create", { hasText: text });
+
+  await input.fill("xy");
+  await expect(row("xy")).toHaveCount(0);
+  await input.press("Enter");
+  await page.waitForTimeout(40);
+  let state = await page.evaluate(() => ({
+    selected: Array.from(document.getElementById("tags").selectedOptions, (o) => o.value),
+  }));
+  expect(state.selected).toEqual(["1"]);
+
+  await input.fill("xyz");
+  await expect(row("xyz")).toHaveCount(1);
+  await input.press("Enter");
+  await page.waitForTimeout(40);
+  state = await page.evaluate(() => ({
+    selected: Array.from(document.getElementById("tags").selectedOptions, (o) => o.value),
+  }));
+  expect(state.selected).toContain("xyz");
+});
+
+test("async create shows a loading row and selects the resolved item", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    const events = [];
+    select.addEventListener("combobox:create", () => events.push("create"));
+    select.addEventListener("input", () => events.push("input"));
+    select.addEventListener("change", () => events.push("change"));
+
+    let resolveCreate;
+    const gate = new Promise((resolve) => (resolveCreate = resolve));
+    const combo = Combobox.getOrCreateInstance(select, {
+      create: async (label) => {
+        await gate;
+        return { value: label.toUpperCase(), label };
+      },
+    });
+    const input = combo.input;
+    input.focus();
+    input.value = "plum";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const during = {
+      loadingRow: combo.listbox.querySelector(".cb-loading")?.textContent.trim() ?? null,
+    };
+
+    resolveCreate();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    return {
+      during,
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+      optionExists: !!select.querySelector('option[value="PLUM"]'),
+      inputValue: input.value,
+      events,
+    };
+  });
+
+  expect(state.during.loadingRow).toBe("Loading…");
+  expect(state.optionExists).toBe(true);
+  expect(state.selected).toContain("PLUM");
+  expect(state.inputValue).toBe("");
+  expect(state.events).toEqual(["input", "change", "create"]);
+});
+
+test("create rejection emits createerror and AbortError stays silent", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    const errors = [];
+    select.addEventListener("combobox:createerror", (event) =>
+      errors.push({ label: event.detail.label, message: event.detail.error.message }),
+    );
+    const combo = Combobox.getOrCreateInstance(select, {
+      create: async () => {
+        throw new Error("boom");
+      },
+    });
+    const input = combo.input;
+    input.focus();
+    input.value = "plum";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const rejected = {
+      errors,
+      hasPlum: Array.from(select.options, (o) => o.value).includes("plum"),
+      inputValue: input.value,
+    };
+
+    const abortSelect = document.createElement("select");
+    abortSelect.multiple = true;
+    abortSelect.innerHTML = `<option value="1" selected>One</option>`;
+    document.body.append(abortSelect);
+    const abortErrors = [];
+    abortSelect.addEventListener("combobox:createerror", (event) =>
+      abortErrors.push(event.detail.error.message),
+    );
+    const abortCombo = Combobox.getOrCreateInstance(abortSelect, {
+      create: async () => {
+        throw new DOMException("Aborted", "AbortError");
+      },
+    });
+    const abortInput = abortCombo.input;
+    abortInput.focus();
+    abortInput.value = "ghost";
+    abortInput.dispatchEvent(new Event("input", { bubbles: true }));
+    abortInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    return {
+      rejected,
+      aborted: {
+        errors: abortErrors,
+        hasGhost: Array.from(abortSelect.options, (o) => o.value).includes("ghost"),
+      },
+    };
+  });
+
+  expect(state.rejected.errors).toEqual([{ label: "plum", message: "boom" }]);
+  expect(state.rejected.hasPlum).toBe(false);
+  expect(state.rejected.inputValue).toBe("plum");
+  expect(state.aborted.errors).toEqual([]);
+  expect(state.aborted.hasGhost).toBe(false);
+});
+
+test("beforecreate preventDefault blocks creation and keeps the query", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    select.addEventListener("combobox:beforecreate", (event) => event.preventDefault());
+    const combo = Combobox.getOrCreateInstance(select, { create: true });
+    const input = combo.input;
+    input.focus();
+    input.value = "plum";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return {
+      hasPlum: Array.from(select.options, (o) => o.value).includes("plum"),
+      inputValue: input.value,
+    };
+  });
+  expect(state.hasPlum).toBe(false);
+  expect(state.inputValue).toBe("plum");
+});
+
+test("guards.add rejection surfaces guarderror with zero unhandled rejections", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    const guardErrors = [];
+    const unhandled = [];
+    window.addEventListener("unhandledrejection", (event) =>
+      unhandled.push(event.reason?.message ?? String(event.reason)),
+    );
+    select.addEventListener("combobox:guarderror", (event) =>
+      guardErrors.push({ guard: event.detail.guard, message: event.detail.error.message }),
+    );
+    const combo = Combobox.getOrCreateInstance(select, {
+      create: true,
+      guards: { add: async () => Promise.reject(new Error("app boom")) },
+    });
+    const input = combo.input;
+    input.focus();
+    input.value = "plum";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    return {
+      guardErrors,
+      unhandled,
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+      hasPlum: Array.from(select.options, (o) => o.value).includes("plum"),
+    };
+  });
+  expect(state.guardErrors).toEqual([{ guard: "add", message: "app boom" }]);
+  expect(state.unhandled).toEqual([]);
+  expect(state.selected).toEqual(["1"]);
+  expect(state.hasPlum).toBe(false);
+});
+
+test("guards.clear rejection surfaces guarderror and keeps the selection", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    const guardErrors = [];
+    const unhandled = [];
+    window.addEventListener("unhandledrejection", (event) =>
+      unhandled.push(event.reason?.message ?? String(event.reason)),
+    );
+    select.addEventListener("combobox:guarderror", (event) =>
+      guardErrors.push({ guard: event.detail.guard, message: event.detail.error.message }),
+    );
+    const combo = Combobox.getOrCreateInstance(select, {
+      guards: { clear: async () => Promise.reject(new Error("app boom")) },
+    });
+    const result = await combo.clear();
+    return {
+      result,
+      guardErrors,
+      unhandled,
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+    };
+  });
+  expect(state.result).toBe(false);
+  expect(state.guardErrors).toEqual([{ guard: "clear", message: "app boom" }]);
+  expect(state.unhandled).toEqual([]);
+  expect(state.selected).toEqual(["1"]);
+});
