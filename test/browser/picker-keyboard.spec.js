@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 });
 
-test("Home/End jump to the first/last selectable option", async ({ page }) => {
+test("Home/End move the input caret and never hijack picker navigation", async ({ page }) => {
   await setup(page, FEATURES);
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("capped"));
@@ -22,64 +22,49 @@ test("Home/End jump to the first/last selectable option", async ({ page }) => {
 
   const input = page.locator(filter("capped"));
   await input.click();
-
-  await input.press("End");
-  let state = await page.evaluate(() => {
-    const combo = Combobox.getInstance(document.getElementById("capped"));
-    const label = combo.visibleItems[combo.activeIndex]?.label;
-    const activeId = combo.input.getAttribute("aria-activedescendant");
-    const activeRow = activeId ? document.getElementById(activeId) : null;
-    const activeOption = document.querySelector(`#combobox-option-${combo.id}-${combo.activeIndex}`);
-    return {
-      label,
-      index: combo.activeIndex,
-      activeDescendant: activeRow === activeOption,
-    };
-  });
-  expect(state.index).toBe(3);
-  expect(state.label).toBe("Four");
-  expect(state.activeDescendant).toBe(true);
+  await input.fill("apple pineapple");
 
   await input.press("Home");
-  state = await page.evaluate(() => {
+  const homeStart = await page.evaluate(() => {
     const combo = Combobox.getInstance(document.getElementById("capped"));
-    return { label: combo.visibleItems[combo.activeIndex]?.label, index: combo.activeIndex };
+    return { start: combo.input.selectionStart, active: combo.activeIndex, open: combo.isOpen() };
   });
-  expect(state.index).toBe(0);
-  expect(state.label).toBe("One");
+
+  await input.press("End");
+  const endStart = await page.evaluate(() => {
+    const combo = Combobox.getInstance(document.getElementById("capped"));
+    return {
+      start: combo.input.selectionStart,
+      active: combo.activeIndex,
+      open: combo.isOpen(),
+      activedesc: combo.input.getAttribute("aria-activedescendant"),
+    };
+  });
+
+  expect(homeStart.start).toBe(0);
+  expect(homeStart.active).toBe(-1);
+  expect(homeStart.open).toBe(true);
+  const length = await input.evaluate((el) => el.value.length);
+  expect(endStart.start).toBe(length);
+  expect(endStart.active).toBe(-1);
+  expect(endStart.open).toBe(true);
+  expect(endStart.activedesc).toBeNull();
 });
 
-test("Home/End skip disabled options and never land on a disabled row", async ({ page }) => {
-  await setup(page, SOURCES);
+test("Home/End on a closed picker stay text-editing and never auto-open", async ({ page }) => {
+  await setup(page, FEATURES);
   await page.evaluate(() => {
-    Combobox.getOrCreateInstance(document.getElementById("grouped"));
+    Combobox.getOrCreateInstance(document.getElementById("capped"));
   });
 
-  const input = page.locator(filter("grouped"));
+  const input = page.locator(filter("capped"));
   await input.click();
-
-  await input.press("End");
-  let state = await page.evaluate(() => {
-    const combo = Combobox.getInstance(document.getElementById("grouped"));
-    return {
-      label: combo.visibleItems[combo.activeIndex]?.label,
-      disabled: combo.visibleItems[combo.activeIndex]?.disabled,
-    };
-  });
-  // Apple is the only selectable option: the disabled Banana/Carrot tail is skipped.
-  expect(state.label).toBe("Apple");
-  expect(state.disabled).toBe(false);
+  await input.press("Escape");
+  expect(await isOpen(page, "capped")).toBe(false);
 
   await input.press("Home");
-  state = await page.evaluate(() => {
-    const combo = Combobox.getInstance(document.getElementById("grouped"));
-    return {
-      label: combo.visibleItems[combo.activeIndex]?.label,
-      disabled: combo.visibleItems[combo.activeIndex]?.disabled,
-    };
-  });
-  expect(state.label).toBe("Apple");
-  expect(state.disabled).toBe(false);
+  await input.press("End");
+  expect(await isOpen(page, "capped")).toBe(false);
 });
 
 test("PageDown/PageUp step by a page and clamp at the edges", async ({ page }) => {
@@ -109,10 +94,6 @@ test("PageDown/PageUp step by a page and clamp at the edges", async ({ page }) =
     out.push(combo.activeIndex);
     press("PageUp");
     out.push(combo.activeIndex);
-    press("Home");
-    out.push(combo.activeIndex);
-    press("End");
-    out.push(combo.activeIndex);
     press("PageUp");
     out.push(combo.activeIndex);
     press("PageDown");
@@ -120,10 +101,10 @@ test("PageDown/PageUp step by a page and clamp at the edges", async ({ page }) =
     return out;
   });
 
-  expect(steps).toEqual([pageSize - 1, pageSize, 0, 0, 29, 29 - pageSize, 29]);
+  expect(steps).toEqual([pageSize - 1, pageSize, 0, 0, pageSize]);
 });
 
-test("PageUp/PageDown and End never land on disabled rows in a mixed list", async ({ page }) => {
+test("PageUp/PageDown never land on disabled rows and clamp at the selectable edges", async ({ page }) => {
   await setup(page, PICKER);
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("mixed"));
@@ -137,33 +118,31 @@ test("PageUp/PageDown and End never land on disabled rows in a mixed list", asyn
     const input = combo.input;
     const press = (key) =>
       input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
-    const indexes = [];
-    press("PageDown");
-    indexes.push(combo.activeIndex);
-    press("PageDown");
-    indexes.push(combo.activeIndex);
-    press("End");
-    indexes.push(combo.activeIndex);
-    press("PageUp");
-    indexes.push(combo.activeIndex);
-    press("PageUp");
-    indexes.push(combo.activeIndex);
-    press("Home");
-    indexes.push(combo.activeIndex);
+    // Overshoot both edges: PageDown clamps at the last selectable row, PageUp
+    // clamps at the first (skipping the scattered disabled rows throughout).
+    for (let i = 0; i < 40; i++) press("PageDown");
+    const down = combo.activeIndex;
+    const downDisabled = combo.visibleItems[down]?.disabled;
+    for (let i = 0; i < 40; i++) press("PageUp");
+    const up = combo.activeIndex;
     return {
-      indexes,
-      label: combo.visibleItems[combo.activeIndex]?.label,
-      neverDisabled: indexes.every((i) => i >= 0 && !combo.visibleItems[i]?.disabled),
-      homeEnd: [combo.visibleItems[0]?.label, 0],
+      down,
+      downDisabled,
+      up,
+      upDisabled: combo.visibleItems[up]?.disabled,
+      upLabel: combo.visibleItems[up]?.label,
     };
   });
-  expect(state.neverDisabled).toBe(true);
-  expect(state.indexes[2]).toBe(29);
-  expect(state.indexes[5]).toBe(0);
-  expect(state.label).toBe("Item 1");
+  expect(state.down).toBe(29);
+  expect(state.downDisabled).toBe(false);
+  expect(state.up).toBe(0);
+  expect(state.upDisabled).toBe(false);
+  expect(state.upLabel).toBe("Item 1");
 });
 
-test("all four keys open a closed picker; Escape closes and clears activedescendant", async ({ page }) => {
+test("PageDown/PageUp and arrows open a closed picker; Escape closes and clears activedescendant", async ({
+  page,
+}) => {
   await setup(page, FEATURES);
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("capped"));
@@ -180,16 +159,6 @@ test("all four keys open a closed picker; Escape closes and clears activedescend
   expect(state.open).toBe(true);
   expect(state.activeDescendant).toBe(true);
 
-  await input.press("Home");
-  state = await openState(page, "capped");
-  expect(state.open).toBe(true);
-  expect(state.activeIndex).toBe(0);
-
-  await input.press("End");
-  state = await openState(page, "capped");
-  expect(state.open).toBe(true);
-  expect(state.activeIndex).toBe(3);
-
   await input.press("Escape");
   await page.waitForFunction((id) => {
     const combo = Combobox.getInstance(document.getElementById(id));
@@ -198,6 +167,11 @@ test("all four keys open a closed picker; Escape closes and clears activedescend
     // after hidePopover(); poll instead of asserting a single-shot snapshot.
     return !combo.isOpen() && activeId === null;
   }, "capped");
+
+  await input.press("ArrowDown");
+  state = await openState(page, "capped");
+  expect(state.open).toBe(true);
+  expect(state.activeIndex).toBe(0);
 });
 
 test("open/close events fire in order; beforeopen/beforeclose cancel without state flip", async ({

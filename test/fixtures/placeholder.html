@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Placeholder fixtures</title>
+</head>
+<body>
+  <form id="form">
+    <label for="tagplace">Tags with the legacy placeholder</label>
+    <select id="tagplace" name="tagplace[]" multiple>
+      <option value="" selected disabled hidden>Choose a tag...</option>
+      <option value="1">Apple</option>
+      <option value="2">Banana</option>
+    </select>
+
+    <label for="singleplace">Single with the legacy placeholder</label>
+    <select id="singleplace" name="singleplace">
+      <option value="" selected disabled hidden>Choose a tag...</option>
+      <option value="1">Apple</option>
+    </select>
+
+    <label for="emptyok">allowEmptyOption but the same disabled placeholder</label>
+    <select id="emptyok" name="emptyok[]" multiple>
+      <option value="" selected disabled hidden>Empty placeholder</option>
+      <option value="1">Apple</option>
+    </select>
+  </form>
+
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>

@@ -5,7 +5,7 @@ These scenarios should drive implementation and tests. They include the common p
 ## UC1 — Free-form autocomplete
 
 ```html
-<input name="city" list="cities" data-combobox>
+<input name="city" list="cities">
 <datalist id="cities">...</datalist>
 ```
 
@@ -21,7 +21,7 @@ Requirements:
 
 ```html
 <input filter="doctor" hidden>
-<select id="doctor" name="doctor" data-combobox required>...</select>
+<select id="doctor" name="doctor" required>...</select>
 ```
 
 Requirements:

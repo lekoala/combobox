@@ -1,7 +1,7 @@
 import {
+  fuzzyMatch,
   moveValueInOrder,
   normalize,
-  parseSeparators,
   rankByScore,
   reconcileSelected,
   splitTokens,
@@ -27,7 +27,7 @@ const DEFAULTS = {
   allowEmptyOption: false,
   placeholder: "Search…",
   messages: DEFAULT_MESSAGES,
-  match: "includes", // Open UI-aligned: includes | startswith | pattern | function
+  match: "includes", // Open UI-aligned: includes | startswith | fuzzy | pattern | function
   searchFields: ["label"],
   minChars: 0,
   load: null,
@@ -165,9 +165,8 @@ const INPUT_ATTRS = [
  * - <select multiple>: selected <option>s own multiple values.
  *
  * The modern select filter input is a separate, unnamed interaction control.
- * It may be generated or supplied explicitly via:
- *   <input filter="select-id" hidden>
- * or data-filter-input="input-id" on the select.
+ * It may be generated, or supplied explicitly through a liaison attribute on
+ * the input itself: <input filter="select-id" hidden>.
  */
 export class Combobox {
   static supported = supportsModernCombobox();
@@ -179,16 +178,17 @@ export class Combobox {
    *
    * Valid shapes:
    *   init("selector") / init("selector", options)
-   *   init(root) / init(root, options)
    *   init(root, "selector") / init(root, "selector", options)
    *   init([element, ...], options) / init(nodeList, options)
    *
-   * A string root is a CSS selector, an Element/Document root is a scope, and
-   * any other iterable is treated as a list of source elements. Unsupported
+   * Discovery is always explicit: a string root is a CSS selector, an
+   * Element/Document root is a scope for the selector, and any other iterable
+   * is a list of source elements. An element root without a selector and a bare
+   * init() discover nothing (there is no implicit `data-*` marker). Unsupported
    * elements inside collections are ignored without invalidating the call.
    * Returns the array of Combobox instances.
    */
-  static init(rootOrSelector = document, selectorOrOptions = "[data-combobox]", maybeOptions = {}) {
+  static init(rootOrSelector = document, selectorOrOptions = null, maybeOptions = {}) {
     const targets = [];
     let options = {};
 
@@ -204,7 +204,8 @@ export class Combobox {
         targets.push(...root.querySelectorAll(selectorOrOptions));
         options = maybeOptions;
       } else {
-        targets.push(...root.querySelectorAll("[data-combobox]"));
+        // An element root needs an explicit selector; options alone do not pick
+        // targets. This keeps `data-*` discovery out of the API.
         options = isPlainObject(selectorOrOptions) ? selectorOrOptions : {};
       }
     } else {
@@ -244,9 +245,11 @@ export class Combobox {
     // Remote/custom results are deliberately transient. The native select is
     // the selection/value owner, not a cache for every server result.
     this.results = null;
-    this.selectionOrder = this.isSelect
-      ? Array.from(element.selectedOptions).map((option) => option.value)
-      : [];
+    // For a <select>, option identity is the HTMLOptionElement itself; a
+    // duplicate `value` does not collapse identities. `selectionOrder` holds
+    // option references (in source order initially), `value` is payload only.
+    this.selectionOrder = this.isSelect ? Array.from(element.selectedOptions) : [];
+    this._chipOptions = new WeakMap();
     this.searchGeneration = 0;
     this.nextCursor = null;
     this.loading = false;
@@ -260,22 +263,9 @@ export class Combobox {
     this._sourceObserver = null;
     this._sourceSyncTimer = null;
 
-    const attrCreate = element.hasAttribute("data-create");
-    const attrPlaceholder = element.getAttribute("data-placeholder");
-    const attrMatch = element.getAttribute("data-match");
-    const proposedSearch = element.getAttribute("search");
-
     this.explicitOptions = options;
     this.options = {
       ...DEFAULTS,
-      create: attrCreate,
-      placeholder: attrPlaceholder || DEFAULTS.placeholder,
-      match: attrMatch || proposedSearch || DEFAULTS.match,
-      maxItems: Number(element.getAttribute("data-max") || 0),
-      // The legacy `data-separator` attribute lives on the source only and
-      // uses the pipe-delimited encoding; JS options and the <combo-box>
-      // `separators` attribute pass a real array instead.
-      separators: parseSeparators(element.getAttribute("data-separator")),
       ...options,
       messages: {
         ...DEFAULT_MESSAGES,
@@ -304,20 +294,26 @@ export class Combobox {
     this.ownsInput = false;
     this.fallbackControl = null;
 
-    instances.set(element, this);
-
     if (this.mode === "fallback") {
       this.#initFallback();
-      return;
+    } else {
+      // Registration is transactional: an element whose init throws (e.g. a
+      // broken datalist) must not stay associated with a half-built instance.
+      try {
+        if (this.isSelect) this.#enhanceSelect();
+        else this.#enhanceInput();
+
+        this.#createPopover();
+        this.#bind();
+        this.refresh();
+        this.#watchSource();
+      } catch (error) {
+        this.dispose();
+        throw error;
+      }
     }
 
-    if (this.isSelect) this.#enhanceSelect();
-    else this.#enhanceInput();
-
-    this.#createPopover();
-    this.#bind();
-    this.refresh();
-    this.#watchSource();
+    instances.set(element, this);
   }
 
   /* ---------------------------------------------------------------------- */
@@ -404,7 +400,7 @@ export class Combobox {
       } else {
         option.selected = true;
       }
-      this.#rememberSelection(option.value);
+      this.#rememberSelection(option);
       this.#dispatchNativeValueEvents();
       emit(this.source, "combobox:create", { combobox: this, item: { ...created, option, selected: true } });
       return option;
@@ -459,9 +455,6 @@ export class Combobox {
     this.control.append(this.chips);
 
     this.input = this.#resolveFilterInput();
-    if (!hasOwn(this.explicitOptions, "match") && this.input.getAttribute("search")) {
-      this.options.match = this.input.getAttribute("search");
-    }
     this.input.classList.add("cb-input");
     this.input.type = "text";
     this.input.autocomplete = "off";
@@ -473,23 +466,14 @@ export class Combobox {
     this.#copyAccessibleName();
     this.control.append(this.input);
     this.source.after(this.control);
-
-    this.control.addEventListener(
-      "click",
-      (event) => {
-        if (event.target.closest("button")) return;
-        this.input.focus();
-      },
-      { signal: this.abortController.signal },
-    );
   }
 
   #resolveFilterInput() {
     let input = null;
-    const inputId = this.source.getAttribute("data-filter-input");
-
-    if (inputId) input = document.getElementById(inputId);
-    if (!input && this.source.id) {
+    // An author-supplied filter input is declared with a liaison attribute on
+    // the input itself: <input filter="select-id">. Configuration stays on
+    // <combo-box> attributes or JS — the source select never carries data-*.
+    if (this.source.id) {
       input = document.querySelector(`input[filter="${CSS.escape(this.source.id)}"]`);
     }
 
@@ -574,12 +558,13 @@ export class Combobox {
 
     if (!this.isSelect) return this.results;
 
-    const selected = new Set(Array.from(this.source.selectedOptions, (option) => option.value));
-    return this.results.map((item) => ({
-      ...item,
-      selected: selected.has(item.value),
-      option: item.option || this.#findOption(item.value),
-    }));
+    return this.results.map((item) => {
+      // Option identity is the element, never the value string, so transient
+      // items resolve their selected state through their exact option. A plain
+      // value falls back to the first matching source option.
+      const option = item.option || this.#findOption(item.value);
+      return { ...item, selected: option?.selected ?? false, option };
+    });
   }
 
   /** Map data objects to canonical items when label/value fields are set. */
@@ -615,6 +600,24 @@ export class Combobox {
     return Array.from(this.source.options).find((option) => option.value === String(value)) || null;
   }
 
+  /**
+   * Resolve a plain value to the option a fresh selection should land on: the
+   * first non-disabled match, skipping already-selected options in multiple
+   * mode (each native option is selected at most once; identical values on
+   * distinct options are distinct choices). Single-select returns the first
+   * non-disabled match regardless of the current selection.
+   */
+  #findSelectableOption(value) {
+    if (!this.isSelect) return null;
+    const wanted = String(value);
+    return (
+      Array.from(this.source.options).find(
+        (option) =>
+          option.value === wanted && !option.disabled && (this.isMultiple && option.selected) === false,
+      ) || null
+    );
+  }
+
   /** Match a token to an existing native option by value or label. */
   #findCreateMatch(label) {
     const lookup = normalize(label);
@@ -643,14 +646,13 @@ export class Combobox {
       this.source.replaceChildren();
       if (emptyOption && !this.isMultiple) this.source.append(emptyOption);
 
-      const byValue = new Map();
-      for (const item of [...preserved, ...normalized]) {
-        if (!item.value || byValue.has(item.value)) continue;
-        byValue.set(item.value, item);
-      }
+      // No value-based dedupe: catalogue identity is the <option> element, so
+      // repeated values in the payload map to their own options.
+      const catalog = [...preserved, ...normalized];
 
       const groups = new Map();
-      for (const item of byValue.values()) {
+      for (const item of catalog) {
+        if (!item.value) continue;
         const option = new Option(item.label, item.value, Boolean(item.selected), Boolean(item.selected));
         option.disabled = Boolean(item.disabled);
         if (item.data) Object.assign(option.dataset, item.data);
@@ -775,7 +777,11 @@ export class Combobox {
     this.status.setAttribute("aria-live", "polite");
 
     this.popover.append(this.listbox, this.status);
-    document.body.append(this.popover);
+    // Popover renders in the top layer, but a modal <dialog> makes everything
+    // outside it (including a body-level popover) inert. Stay a descendant of
+    // an ancestor dialog so the picker stays interactive inside showModal().
+    const dialog = this.source.closest("dialog");
+    (dialog || document.body).append(this.popover);
 
     // The popover renders in the top layer, outside the control's subtree, so
     // it cannot inherit the control's typography. Adopt the interaction
@@ -945,9 +951,12 @@ export class Combobox {
     if (event.type === "click") {
       const remove = event.target.closest(".cb-chip-remove");
       if (!remove) return;
-      const value = remove.closest(".cb-chip")?.dataset.value;
-      if (value == null) return;
-      void this.remove(value).then((removed) => {
+      const chip = remove.closest(".cb-chip");
+      if (!chip) return;
+      // The chip's exact option is authoritative (duplicate values share a
+      // data-value but never an option). data-value is only a fallback.
+      const option = this._chipOptions.get(chip);
+      void this.remove(option ?? chip.dataset.value).then((removed) => {
         if (removed) this.input.focus();
       });
       return;
@@ -955,11 +964,14 @@ export class Combobox {
     if (event.type === "keydown") {
       const chip = event.target.closest(".cb-chip");
       if (!chip) return;
-      const value = chip.dataset.value;
-      const item = this.getSelectedItems().find((entry) => entry.value === value) || {
-        value,
-        label: value,
-      };
+      const option = this._chipOptions.get(chip);
+      const item = option
+        ? this.getSelectedItems().find((entry) => entry.option === option) || {
+            value: option.value,
+            label: option.textContent.trim(),
+            option,
+          }
+        : { value: chip.dataset.value, label: chip.dataset.value };
       this.#onChipKeyDown(event, item);
     }
   }
@@ -1013,16 +1025,6 @@ export class Combobox {
       return;
     }
 
-    if (event.key === "Home" || event.key === "End") {
-      event.preventDefault();
-      if (!this.isOpen()) this.search(this.input.value, { show: true, reason: "keyboard" });
-      const last = this.visibleItems.length - 1;
-      const from = event.key === "End" ? last : 0;
-      const toward = event.key === "End" ? -1 : 1;
-      this.#setActive(this.#nearestSelectable(from, toward));
-      return;
-    }
-
     if (event.key === "PageUp" || event.key === "PageDown") {
       event.preventDefault();
       if (!this.isOpen()) this.search(this.input.value, { show: true, reason: "keyboard" });
@@ -1034,8 +1036,10 @@ export class Combobox {
     }
 
     if (event.key === "Enter" && this.isOpen()) {
+      // IME composition owns the key: returning first never steals Enter from a
+      // composing input, and never preventDefault()s it.
+      if (event.isComposing || this.composing) return;
       event.preventDefault();
-      if (event.isComposing) return;
       if (this.isMultiple && this.#separatorsActive()) {
         void this.#commitEnterTokens();
         return;
@@ -1103,7 +1107,7 @@ export class Combobox {
     ) {
       const selected = this.#selectedOptionsInOrder();
       const last = selected[selected.length - 1];
-      if (last && !last.disabled) void this.remove(last.value);
+      if (last && !last.disabled) void this.remove(last);
     }
   }
 
@@ -1314,6 +1318,10 @@ export class Combobox {
     switch (String(this.options.match).toLowerCase()) {
       case "startswith":
         return values.some((value) => normalize(value).startsWith(lookup));
+      case "fuzzy":
+        // Lightweight subsequence match over the already-normalized text. It
+        // never re-ranks: original catalogue order is preserved.
+        return fuzzyMatch(text, lookup);
       case "pattern":
         try {
           const pattern = new RegExp(query, "i");
@@ -1379,6 +1387,8 @@ export class Combobox {
       option.tabIndex = -1;
       option.dataset.index = String(index);
       option.setAttribute("aria-selected", String(Boolean(item.selected)));
+      // Preserve native <option title="…"> tooltips on the row.
+      if (item.option?.title || item.title) option.title = item.option?.title || item.title;
       if (item.disabled) {
         option.setAttribute("aria-disabled", "true");
       }
@@ -1447,7 +1457,11 @@ export class Combobox {
     this.chips.replaceChildren();
 
     for (const option of this.#selectedOptionsInOrder()) {
-      if (!option.value && !option.textContent.trim()) continue;
+      // An empty value is not a real selection unless allowEmptyOption is on;
+      // the old-demo placeholder pattern (<option value="" selected disabled
+      // hidden>) is never a chip.
+      const placeholder = option.disabled && option.hidden;
+      if (!option.value && (!this.options.allowEmptyOption || placeholder)) continue;
 
       const item = {
         value: option.value,
@@ -1462,6 +1476,10 @@ export class Combobox {
       chip.className = "cb-chip";
       chip.tabIndex = -1;
       chip.dataset.value = item.value;
+      // data-value is for inspection/debug only; the authoritative identity is
+      // the option link kept in the #chipOptions WeakMap.
+      this._chipOptions.set(chip, option);
+      if (option.title) chip.title = option.title;
 
       const label = document.createElement("span");
       label.className = "cb-chip-label";
@@ -1486,22 +1504,19 @@ export class Combobox {
     const selected = Array.from(this.source.selectedOptions);
     if (this.options.selectionOrder !== "selected") return selected;
 
-    // Reconcile the remembered order against the actual selection. Values no
-    // longer selected are dropped; values selected by external DOM mutations
-    // and absent from the remembered order are appended in native order.
-    const byValue = new Map(selected.map((option) => [option.value, option]));
-    return reconcileSelected(Array.from(byValue.keys()), this.selectionOrder).map((value) =>
-      byValue.get(value),
-    );
+    // Reconcile the remembered order against the actual selection. Options no
+    // longer selected are dropped; options selected by external DOM mutations
+    // and absent from the remembered order are appended in native order. Set
+    // membership is object identity, so duplicate values stay distinct.
+    return reconcileSelected(selected, this.selectionOrder);
   }
 
-  #rememberSelection(value) {
-    value = String(value);
-    if (!this.selectionOrder.includes(value)) this.selectionOrder.push(value);
+  #rememberSelection(option) {
+    if (!this.selectionOrder.includes(option)) this.selectionOrder.push(option);
   }
 
-  #forgetSelection(value) {
-    const index = this.selectionOrder.indexOf(String(value));
+  #forgetSelection(option) {
+    const index = this.selectionOrder.indexOf(option);
     if (index >= 0) this.selectionOrder.splice(index, 1);
   }
 
@@ -1551,7 +1566,7 @@ export class Combobox {
 
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      void this.remove(item.value).then((removed) => {
+      void this.remove(item.option ?? item.value).then((removed) => {
         if (!removed) return;
         queueMicrotask(() => {
           const remaining = Array.from(this.chips.querySelectorAll(".cb-chip"));
@@ -1570,9 +1585,12 @@ export class Combobox {
 
   /** Move a focused chip to an absolute position, keep it focused and announce. */
   #reorderChip(item, target) {
-    if (!this.move(item.value, target)) return;
+    const identity = item.option ?? item.value;
+    if (!this.move(identity, target)) return;
     const chips = Array.from(this.chips.querySelectorAll(".cb-chip"));
-    const chip = chips.find((candidate) => candidate.dataset.value === item.value);
+    const chip = item.option
+      ? chips.find((candidate) => this._chipOptions.get(candidate) === item.option)
+      : chips.find((candidate) => candidate.dataset.value === item.value);
     chip?.focus();
     this.status.textContent = this.options.messages.position(
       item.label,
@@ -1644,18 +1662,24 @@ export class Combobox {
     if (index < 0) this.input.removeAttribute("aria-activedescendant");
   }
 
-  #selectItem(item) {
+  #selectItem(item, { materialize = true } = {}) {
     if (item.disabled) return false;
 
     let option = null;
     if (this.isSelect) {
-      // Value identity is authoritative: a duplicate label/value resolves to
-      // the same canonical option, never to a second selected <option>.
-      option = this.#findOption(item.value) || item.option;
-      if (!option) option = this.addOption(item);
+      // Option identity is authoritative: an exact item.option always wins over
+      // a value lookup, so the third `value="2"` row a user picks never
+      // collapses into the first one. A plain value resolves to the first
+      // selectable match (unselected in multiple mode); materialization only
+      // creates a native option when the value is genuinely absent.
+      option =
+        item.option instanceof HTMLOptionElement ? item.option : this.#findSelectableOption(item.value);
+      // Materialize without preselection: the exact option is marked selected
+      // below, so the unchanged check above can never short-circuit a real pick.
+      if (!option && materialize) option = this.addOption(item);
       if (!option || option.disabled) return false;
 
-      const unchanged = this.isMultiple ? option.selected : this.source.value === option.value;
+      const unchanged = this.isMultiple ? option.selected : this.source.selectedOptions[0] === option;
       if (unchanged) {
         if (!this.isMultiple) this.hide();
         return false;
@@ -1687,15 +1711,17 @@ export class Combobox {
     if (this.isSelect) {
       if (this.isMultiple) {
         option.selected = true;
-        this.#rememberSelection(option.value);
+        this.#rememberSelection(option);
         this.input.value = "";
         this.#commit();
         if (this.suppressReopen) this.refresh();
         else if (this.#closeOnSelect()) this.hide();
         else this.search("", { show: true, reason: "select" });
       } else {
-        this.source.value = option.value;
-        this.selectionOrder = [option.value];
+        // Select the exact option rather than assigning source.value, so a
+        // duplicate value keeps its own label and selectedIndex.
+        option.selected = true;
+        this.selectionOrder = [option];
         this.input.value = item.label;
         this.#commit();
         if (this.#closeOnSelect()) this.hide();
@@ -1759,7 +1785,7 @@ export class Combobox {
     }
 
     const option = this.addOption(created, { selected: true });
-    this.#rememberSelection(option.value);
+    this.#rememberSelection(option);
     this.input.value = "";
     this.#commit();
 
@@ -1904,9 +1930,14 @@ export class Combobox {
     const item = toItem(rawItem, this.#fields());
     if (!item?.value) throw new TypeError("Option requires a value");
 
-    let option = this.#findOption(item.value);
-    if (!option) {
-      option = new Option(item.label, item.value, selected, selected);
+    // Each catalogue entry is its own identity: an existing value never
+    // short-circuits a fresh option, so two distinct {value: "2"} entries stay
+    // distinct choices. An explicit item.option is adopted as-is instead.
+    const option =
+      item.option instanceof HTMLOptionElement
+        ? item.option
+        : new Option(item.label, item.value, selected, selected);
+    if (!(item.option instanceof HTMLOptionElement)) {
       option.disabled = Boolean(item.disabled);
       if (item.data) Object.assign(option.dataset, item.data);
       if (item.group) {
@@ -1922,44 +1953,66 @@ export class Combobox {
       } else {
         this.source.add(option);
       }
-    } else if (selected) {
-      option.selected = true;
     }
-    if (selected) this.#rememberSelection(option.value);
+    if (selected && !option.selected) option.selected = true;
+    if (selected) this.#rememberSelection(option);
     return option;
   }
 
   select(itemOrValue) {
+    const isObject = typeof itemOrValue === "object" && itemOrValue !== null;
+
     if (this.mode === "fallback" && this.isSelect) {
-      const item =
-        typeof itemOrValue === "object"
-          ? toItem(itemOrValue, this.#fields())
-          : { value: String(itemOrValue), label: String(itemOrValue) };
-      const existing = this.#findOption(item.value);
-      const option = existing || this.addOption(item);
+      const item = isObject
+        ? toItem(itemOrValue, this.#fields())
+        : { value: String(itemOrValue), label: String(itemOrValue) };
+      const option =
+        (this.isMultiple ? this.#findSelectableOption(item.value) : null) || this.#findOption(item.value);
+      if (!option) {
+        if (!isObject) return false;
+        const created = this.addOption(item, { selected: true });
+        this.#dispatchNativeValueEvents();
+        return created !== null;
+      }
+      if (option.disabled) return false;
       const unchanged = this.isMultiple ? option.selected : this.source.value === option.value;
       if (unchanged) return false;
       if (!this.isMultiple) {
         for (const other of this.source.options) other.selected = false;
       }
       option.selected = true;
-      this.#rememberSelection(option.value);
+      this.#rememberSelection(option);
       this.#dispatchNativeValueEvents();
       return true;
     }
 
-    let item = typeof itemOrValue === "object" ? toItem(itemOrValue, this.#fields()) : null;
-    if (!item) {
-      const value = String(itemOrValue);
-      item = this.#items().find((candidate) => candidate.value === value) ||
-        this.#sourceItems().find((candidate) => candidate.value === value) || { value, label: value };
+    if (isObject) {
+      const item = toItem(itemOrValue, this.#fields());
+      // An exact <option> passed to select() keeps its identity, so a
+      // duplicate value is never resolved back to the first occurrence.
+      if (itemOrValue instanceof HTMLOptionElement) item.option = itemOrValue;
+      return this.#selectItem(item, { materialize: true });
     }
-    return this.#selectItem(item);
+
+    // A bare string means "select an existing catalogue value": no implicit
+    // creation, and each call resolves to the next selectable occurrence (see
+    // #findSelectableOption), so select("2") x3 picks three distinct options.
+    const value = String(itemOrValue);
+    const found =
+      this.#items().find((candidate) => candidate.value === value) ||
+      this.#sourceItems().find((candidate) => candidate.value === value);
+    if (!found) return false;
+    return this.#selectItem({ value: found.value, label: found.label }, { materialize: false });
   }
 
-  async remove(value) {
+  async remove(valueOrOption) {
     if (!this.isSelect) return false;
-    const option = this.#findOption(value);
+    // An exact option is authoritative (the chip a user clicked); a bare value
+    // resolves to the first selected occurrence in the current order.
+    const option =
+      valueOrOption instanceof HTMLOptionElement
+        ? valueOrOption
+        : this.#selectedOptionsInOrder().find((entry) => entry.value === String(valueOrOption));
     if (!option?.selected || option.disabled) return false;
     const item = {
       value: option.value,
@@ -1973,7 +2026,7 @@ export class Combobox {
     const before = emit(this.source, "combobox:beforeremove", { combobox: this, item }, { cancelable: true });
     if (before.defaultPrevented) return false;
     option.selected = false;
-    this.#forgetSelection(option.value);
+    this.#forgetSelection(option);
     this.#commit();
     emit(this.source, "combobox:remove", { combobox: this, item });
     this.refresh();
@@ -2001,7 +2054,7 @@ export class Combobox {
     const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
     if (before.defaultPrevented) return false;
     for (const option of selected) option.selected = false;
-    this.selectionOrder = this.selectionOrder.filter((value) => this.#findOption(value)?.selected);
+    this.selectionOrder = this.selectionOrder.filter((option) => option.selected);
     this.#commit();
     emit(this.source, "combobox:clear", { combobox: this });
     this.refresh();
@@ -2025,19 +2078,24 @@ export class Combobox {
     }));
   }
 
-  move(value, index) {
+  move(itemOrValue, index) {
     if (!this.isMultiple || this.options.selectionOrder !== "selected") return false;
-    value = String(value);
-    if (!this.#findOption(value)?.selected) return false;
+    // An exact option moves that identity (duplicate values stay distinct); a
+    // bare value moves the first selected occurrence in the ordered model.
+    const option =
+      itemOrValue instanceof HTMLOptionElement
+        ? itemOrValue
+        : this.selectionOrder.find((entry) => entry.value === String(itemOrValue));
+    if (!option?.selected) return false;
 
-    const moved = moveValueInOrder(this.selectionOrder, value, index);
+    const moved = moveValueInOrder(this.selectionOrder, option, index);
     if (!moved) return false;
     const { order: nextOrder, from, to } = moved;
 
     const before = emit(
       this.source,
       "combobox:beforereorder",
-      { combobox: this, value, from, to },
+      { combobox: this, value: option.value, from, to },
       { cancelable: true },
     );
     if (before.defaultPrevented) return false;
@@ -2045,7 +2103,7 @@ export class Combobox {
     this.#renderChips();
     emit(this.source, "combobox:reorder", {
       combobox: this,
-      value,
+      value: option.value,
       from,
       to,
       values: this.getSelectedValues(),
@@ -2067,7 +2125,7 @@ export class Combobox {
     if (this.isSelect) {
       this.input.disabled = this.source.disabled;
       this.input.readOnly = this.source.hasAttribute("readonly");
-      for (const option of this.source.selectedOptions) this.#rememberSelection(option.value);
+      for (const option of this.source.selectedOptions) this.#rememberSelection(option);
       if (this.source.required) this.input.setAttribute("aria-required", "true");
       else this.input.removeAttribute("aria-required");
       if (this.isMultiple) this.#renderChips();
@@ -2133,9 +2191,14 @@ export class Combobox {
     if (openCombobox === this) openCombobox = null;
     this.popover?.remove();
 
-    for (const item of this.#sourceItems()) {
-      item.option?.removeAttribute("data-filtered");
-      item.option?.removeAttribute("data-active-option");
+    // Cleanup only touches real source options. An init that failed before the
+    // datalist resolved (input without a valid `list`) never produced mirror
+    // state, and #sourceItems would crash on the null datalist.
+    if (this.isSelect || this.datalist instanceof HTMLDataListElement) {
+      for (const item of this.#sourceItems()) {
+        item.option?.removeAttribute("data-filtered");
+        item.option?.removeAttribute("data-active-option");
+      }
     }
 
     // <label> ids invented by #copyAccessibleName are stripped again unless the

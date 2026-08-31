@@ -380,6 +380,28 @@
       </section>
 
       <section class="demo-card">
+        <h2>18. Declarative fuzzy search</h2>
+        <p class="demo-note">
+          <code>search="fuzzy"</code> enables lightweight order-preserving
+          subsequence matching (type <code>ghar</code> for George Harrison);
+          <code>search-fields="label,email"</code> also searches the
+          <code>&lt;option data-*&gt;</code> metadata; <code>tab-select</code>
+          commits the active row with Tab. This is pure declarative
+          configuration — no JavaScript.
+        </p>
+
+        <label for="fuzzy-people">People</label>
+        <combo-box id="fuzzy-widget" search="fuzzy" search-fields="label,email" tab-select placeholder="Type a fuzzy search…">
+          <select id="fuzzy-people" name="fuzzy-people[]" multiple>
+            <option value="1" data-email="george@example.com">George Harrison</option>
+            <option value="2" data-email="ringo@example.com">Ringo Starr</option>
+            <option value="3" data-email="paul@example.com">Paul McCartney</option>
+            <option value="4" data-email="john@example.com">John Lennon</option>
+          </select>
+        </combo-box>
+      </section>
+
+      <section class="demo-card">
         <h2>Event / extension log</h2>
         <p class="demo-note">
           The architecture exposes cancellable “before” events, including the

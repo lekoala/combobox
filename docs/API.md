@@ -5,7 +5,7 @@ This documents the intended v1 shape. The POC implements many of these seams alr
 ## Initialization
 
 ```js
-Combobox.init("[data-combobox]", options);
+Combobox.init("select.my-combobox", options);
 
 const combo = new Combobox(element, options);
 Combobox.getInstance(element);
@@ -15,19 +15,20 @@ Combobox.supported;
 
 `init()` is a discovery/creation API, not a reconfiguration API. It accepts:
 - a CSS selector, globally or scoped to a root;
-- a root `Element`/`Document`;
+- a root `Element`/`Document` **plus an explicit selector**;
 - a list of source elements (`NodeList` or array).
 
 ```js
 Combobox.init("select");
 Combobox.init("select", options);
-Combobox.init(root);                 // root.querySelectorAll("[data-combobox]")
-Combobox.init(root, options);
 Combobox.init(root, "select");
 Combobox.init(root, "select", options);
 Combobox.init([select1, input2], options);
 Combobox.init(nodeList, options);
 ```
+
+Discovery is always explicit: an element root without a selector (or a bare
+`init()`) finds nothing — there is no implicit `data-*` marker.
 
 An element that already has an instance is returned as-is and **never** reconfigured — `init(root, { maxItems: 3 })` followed by `init(root, { maxItems: 10 })` upgrades nothing twice and silently reconfigures nothing. Unsupported elements inside a collection are ignored without invalidating the call. `init()` returns the array of `Combobox` instances.
 
@@ -79,18 +80,26 @@ Child lookup is **direct children only**: a source nested inside another element
 | `create-on-blur` | `createOnBlur: true` |
 | `close-on-select` | `closeOnSelect: true` |
 | `autoselect-first` | `autoselectFirst: true` |
+| `tab-select` | `tabSelect: true` |
+| `search-fields` | `searchFields: ["label", "email", ...]` (comma-delimited) |
 | `label-field` | `labelField` |
 | `value-field` | `valueField` |
 | `load-on-empty` | `loadOnEmpty: true` |
 | `allow-empty-option` | `allowEmptyOption: true` |
 | `debounce` | `debounce` |
 
-Boolean attributes accept `="false"` to turn off. A fixed **legacy subset** of `data-*`
-attributes on the native source is supported for migration only and so sources can be
-reused imperatively without a wrapper: `data-create`, `data-placeholder`, `data-match`,
-`data-max`, `data-separator`. There is no general `data-*` → option mapping. Canonical
-configuration lives on `<combo-box>` attributes or in JS; wrapper options (`_options`)
-take precedence over both.
+Boolean attributes honor `="false"` to turn off and `="true"` (or plain presence)
+to turn on.
+
+The JavaScript API and `<combo-box>` attributes are the **two canonical
+configuration surfaces**. `<combo-box>` attributes expose simple serializable
+behavior (boolean / number / enum / short string / short list) declaratively;
+JavaScript options expose the same configuration plus functions and structured
+behavior. Native form semantics stay on the enhanced `<input>`/`<select>`.
+`data-*` attributes on **source items** are application metadata exposed as
+`item.data` (e.g. they feed `search-fields="label,email"`), never combobox
+configuration — there is no generic `data-*` → option mapping and no legacy
+`data-*` layer. Wrapper options (`_options`) take precedence over markup.
 
 ### Event
 
@@ -109,7 +118,7 @@ take precedence over both.
     position: (label, position, total) => `${label} position ${position} of ${total}`,
   },
   minChars: 0,
-  match: "includes",       // includes | startswith | pattern | function
+  match: "includes",       // includes | startswith | fuzzy | pattern | function
   searchFields: ["label"],
   filter: null,
   score: null,
@@ -187,6 +196,21 @@ Canonical normalized item:
 Remote/transient results usually have no `option` until selected.
 
 ## Filtering
+
+### Matching modes
+
+`match` selects the default predicate applied to the joined normalized
+`searchFields` text (empty queries skip matching entirely):
+
+| Mode | Behavior |
+|---|---|
+| `includes` (default) | plain substring |
+| `startswith` | any search field starts with the query |
+| `fuzzy` | lightweight subsequence match: every non-space query character appears in order (over already-normalized text, so `som` matches `Sómething`). It **never re-ranks** — catalogue order is preserved; use `score`/`sort` for custom ranking |
+| `pattern` | escape-hatch regex on any field |
+| `function` | `match(item, query, { combobox })` fully owns matching |
+
+Declarative entry: `<combo-box search="fuzzy">`; imperative: `match: "fuzzy"`.
 
 ### `search(query, options)`
 
@@ -340,7 +364,7 @@ Focus stays in the search input; the picker is driven entirely through it (`role
 | Key | Behavior |
 | --- | --- |
 | `ArrowDown` / `ArrowUp` | open the picker when closed; move the active option, wrapping within the rendered window and skipping `disabled` rows |
-| `Home` / `End` | jump to the first/last selectable option |
+| `Home` / `End` | stay on the native caret inside the editable filter input (per the ARIA APG editable-combobox guidance) |
 | `PageDown` / `PageUp` | move the active option by a page (listbox viewport height ÷ row height), clamped to the first/last selectable option |
 | `Enter` | select the active option, or create an eligible entry when no option is active |
 | `Escape` | close the picker and clear `aria-activedescendant` |
@@ -360,16 +384,37 @@ Navigation keys always operate on the filtered, rendered window (`maxOptions`), 
 ```js
 combo.select({ value: data.id, label: data.name });
 combo.select("existing-value");
-const removed = await combo.remove("value");  // boolean
-const cleared = await combo.clear();          // boolean
+const removed = await combo.remove("value");      // boolean
+const removedExact = await combo.remove(option);  // boolean (exact <option>)
+const cleared = await combo.clear();              // boolean
 combo.addOption(item, { selected: false });
 combo.getSelectedValues();
 combo.getSelectedItems();
 ```
 
-`select({value,label})` is the important external-create seam: if a select-backed option does not exist, the component materializes it, selects it, refreshes UI and emits native value events.
+For a `<select>`, **option identity is the `HTMLOptionElement`**; `option.value` is only
+the serialized payload. Three `<option value="2">` in the catalogue are three distinct
+choices — each selectable once, each kept as its own chip, each serialized into FormData.
+This replaces legacy `allowSame` entirely: the catalogue decides how many copies exist,
+and nothing magically makes a single option selectable twice.
+
+- `select({value, label})` is the external-create seam: if no selectable catalogue option
+  carries that value, the component materializes one, selects it, refreshes UI and emits
+  native value events. Passing an exact `<option>` selects that identity.
+- `select("value")` is strictly "select the next matching catalogue occurrence": each call
+  resolves to the first matching option that is not already selected (in multiple mode)
+  and never creates. Repeated `select("2")` on three catalogue `2`s selects all three and
+  a fourth call returns `false`.
+- `select()` returns a boolean; nothing is created or changed on `false`.
+- `remove(valueOrOption)` takes an exact `<option>` (e.g. the one behind a chip) or a
+  string (the first selected occurrence in the current order).
+- `addOption()` always appends a new native option — it never dedupes by `value` — unless
+  `item.option` is passed, in which case that exact option is adopted.
 
 `remove()` and `clear()` are async because they can await `guards`; they resolve `false` when refused (voluntary or guarded).
+
+Native `<option title="…">` tooltips propagate onto rendered rows and chips; richer
+tooltips are the job of `render`.
 
 ## Ordering
 
@@ -379,6 +424,7 @@ new Combobox(select, {
 });
 
 combo.move("value", 0);
+combo.move(option, 2); // exact option identity
 ```
 
 No built-in drag/drop. Applications may wire any UI to `move()`.

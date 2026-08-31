@@ -239,7 +239,7 @@ test("disabled at runtime: toggling an option shows/hides the chip remove button
   await expect(page.locator('.cb-chip[data-value="1"] .cb-chip-remove')).toHaveCount(1);
 });
 
-test("duplicate values collapse to one identity in chips and selection", async ({ page }) => {
+test("duplicate values are distinct option identities in chips and selection", async ({ page }) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("dupes"));
@@ -258,10 +258,12 @@ test("duplicate values collapse to one identity in chips and selection", async (
       chipsSame: Array.from(document.querySelectorAll("#dupes + .cb-control .cb-chip")).filter(
         (chip) => chip.getAttribute("data-value") === "same",
       ).length,
+      values: Combobox.getInstance(select).getSelectedValues(),
     };
   });
-  expect(state.selectedSame).toBe(1);
-  expect(state.chipsSame).toBe(1);
+  expect(state.selectedSame).toBe(2);
+  expect(state.chipsSame).toBe(2);
+  expect(state.values).toEqual(["same", "same"]);
 });
 
 test("form reset restores native selection and chips", async ({ page }) => {

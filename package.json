@@ -1,14 +1,30 @@
 {
   "name": "@lekoala/combobox",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "description": "Native-first <combo-box> combobox/filterable-select",
   "type": "module",
+  "license": "MIT",
   "packageManager": "bun@1.4.0",
+  "keywords": [
+    "combobox",
+    "select",
+    "filterable-select",
+    "datalist",
+    "custom-select",
+    "popover",
+    "web-component"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "README.md"
+  ],
   "exports": {
     ".": "./src/index.js",
     "./define": "./src/define.js",
-    "./combobox.css": "./src/combobox.css"
+    "./combobox.css": "./src/combobox.css",
+    "./dist/combobox.js": "./dist/combobox.js"
   },
   "scripts": {
     "build": "bun build src/define.js --outfile=dist/combobox.js --format=iife",
@@ -25,7 +41,9 @@
     "test:syntax": "node --check src/combobox.js && node --check src/combo-box.js && node --check src/helpers.js && node --check src/index.js && node --check src/define.js",
     "lint": "biome check src test playwright.config.js",
     "format": "biome format --write src test playwright.config.js",
-    "check": "bun run test:syntax && bun run lint && bun run test:unit && bun run build && bun run test:browser --project chromium && bun run test:dist --project chromium"
+    "check": "bun run test:syntax && bun run lint && bun run test:unit && bun run build && bun run test:browser --project chromium && bun run test:dist --project chromium",
+    "prepack": "bun run build",
+    "prepublishOnly": "bun run lint && bun run test:unit && bun run build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",

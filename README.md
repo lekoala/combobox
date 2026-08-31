@@ -4,7 +4,7 @@ A small native-first combobox/filterable-select library that replaces the overla
 
 The project deliberately starts from browser primitives and Open UI concepts, while using Tom Select and Select2 as functional regression checklists rather than architectural templates. Working identity is intentionally boring: npm package `@lekoala/combobox`, engine class `Combobox`, primary element `<combo-box>`.
 
-> **Status:** ready for implementation work, not ready for publication. The source is pure ESM in `src/` with **zero globals**; a generated classic build (`dist/combobox.js`, from `src/define.js`) covers `file://` and classic `<script>` consumers. Public contracts and invariants are documented; several production details are still marked TODO.
+> **Status:** v0.1.0. The source is pure ESM in `src/` with **zero globals**; a generated classic build (`dist/combobox.js`, from `src/define.js`) covers `file://` and classic `<script>` consumers. CSS Anchor Positioning + the Popover API are the only modern-feature floor; older engines degrade to native controls.
 
 ## Core idea
 
@@ -89,7 +89,7 @@ happens implicitly — `import "@lekoala/combobox"` does not register anything, 
 must opt in via `@lekoala/combobox/define`, an explicit `defineCombobox()`, or the
 classic build.
 
-Attributes map to options (`create`, `placeholder`, `search`, `min-chars`, `max-items`, `max-options`, `selection-order`, `separators`, `create-on-blur`, `close-on-select`, `autoselect-first`, `label-field`, `value-field`, `load-on-empty`, `allow-empty-option`, `debounce`). JavaScript-only behavior (remote `load`, `create`, renderers, async `guards`) is passed through `<element>.configure({ ... })`. See [Element API](docs/API.md#element-and-registration).
+Attributes map to options (`create`, `placeholder`, `search`, `min-chars`, `max-items`, `max-options`, `selection-order`, `separators`, `create-on-blur`, `close-on-select`, `autoselect-first`, `tab-select`, `search-fields`, `label-field`, `value-field`, `load-on-empty`, `allow-empty-option`, `debounce`). JavaScript-only behavior (remote `load`, `create`, renderers, async `guards`) is passed through `<element>.configure({ ... })`. See [Element API](docs/API.md#element-and-registration). `data-*` on source items is application metadata only — there is no `data-*` configuration surface.
 
 ## Progressive fallback
 
@@ -98,7 +98,7 @@ If Popover + the required CSS Anchor features are unavailable, native controls s
 - `input + datalist` → native datalist.
 - `select` → native select.
 - `select multiple` → native multiple select.
-- `select multiple[data-create]` → native select plus a small unnamed Add input/button. This is a cheap enhancement only; there is still no custom picker/placement fallback.
+- `select multiple` with `create` enabled → native select plus a small unnamed Add input/button. This is a cheap enhancement only; there is still no custom picker/placement fallback.
 
 Use `?native=1` in the demo to force this mode.
 
@@ -127,17 +127,19 @@ The demo covers:
 15. rich renderers returning DOM `Node`s with hostile string data;
 16. application-authored clear affordance calling `clear()`;
 17. `label-field`/`value-field`/`search-fields` over data objects;
-18. form reset restoring the native selection and chips.
+18. form reset restoring the native selection and chips;
+19. declarative fuzzy search (`search="fuzzy"` + `search-fields` over `<option data-*>` metadata + `tab-select`, no JS).
 
 ## Important architecture contracts
 
 1. **Native source remains authoritative.** Form data, required/disabled state, reset and native integration start from the original input/select.
-2. **Catalogue, results and selection are separate concepts.** Remote search results do not become hundreds of `<option>` elements. A remote result becomes a native option when it is selected.
-3. **Selection order is explicit when needed.** Source order, result order and selection order must not be conflated.
-4. **Filtering is interceptable.** `beforefilter` is cancellable and exposes `event.query`, following the direction explored by Open UI.
-5. **Async transport is application-owned.** The core provides `load(query, context)`, debounce/abort/lifecycle seams; it does not invent `serverParams`, `queryParam`, `serverDataKey`, etc.
-6. **Rendering is safe by default.** Strings become text. Rich rendering returns DOM `Node`s; there is no global `allowHtml` switch.
-7. **Bootstrap is a skin, not a dependency.** The JS should not depend on Bootstrap JS or positioning utilities.
+2. **Option identity is the `<option>` element, not the `value` string.** Three `<option value="2">` are three distinct choices; selection, chips, removal, reorder and FormData all address the exact option. A bare `select("2")` picks the next *selectable* occurrence and never invents a fourth.
+3. **Catalogue, results and selection are separate concepts.** Remote search results do not become hundreds of `<option>` elements. A remote result becomes a native option when it is selected.
+4. **Selection order is explicit when needed.** Source order, result order and selection order must not be conflated.
+5. **Filtering is interceptable.** `beforefilter` is cancellable and exposes `event.query`, following the direction explored by Open UI.
+6. **Async transport is application-owned.** The core provides `load(query, context)`, debounce/abort/lifecycle seams; it does not invent `serverParams`, `queryParam`, `serverDataKey`, etc.
+7. **Rendering is safe by default.** Strings become text. Rich rendering returns DOM `Node`s; there is no global `allowHtml` switch.
+8. **Bootstrap is a skin, not a dependency.** The JS should not depend on Bootstrap JS or positioning utilities.
 
 See [Architecture](docs/ARCHITECTURE.md), [API](docs/API.md), [Use cases](docs/USE_CASES.md), [Project setup](docs/PROJECT_SETUP.md), and [References](docs/REFERENCES.md).
 
@@ -202,6 +204,8 @@ in `test/unit` (`bun run test:unit`).
 
 ## Before publishing a v1
 
-The contracts are intentionally ahead of the implementation. In particular, run the full
-matrix in [ROADMAP.md](docs/ROADMAP.md) across current Chromium, Firefox and WebKit
-(`bun run check` + `bun run test:matrix`) before releasing.
+The before-publish checklist is largely closed for v0.1.0: Chromium runs on every CI
+push/PR and Firefox + WebKit run a matrix on `master`/tags, the package metadata is in
+place (`prepack` builds `dist/`), and `TESTING.md` tracks the reference-suite gaps that
+must close before 1.0. Generated type declarations are deliberately deferred past the
+v1 gate. Run `bun run check` + the `test:matrix` engines before cutting a release.

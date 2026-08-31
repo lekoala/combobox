@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import {
+  booleanAttribute,
+  fuzzyMatch,
   moveValueInOrder,
   normalize,
+  parseList,
   parseSeparators,
   rankByScore,
   reconcileSelected,
@@ -166,4 +169,55 @@ test("moveValueInOrder clamps to bounds and returns null for no-ops/unknown valu
   expect(moveValueInOrder(["a", "b", "c"], "a", 0)).toBeNull();
   expect(moveValueInOrder(["a", "b", "c"], "zz", 1)).toBeNull();
   expect(moveValueInOrder([], "a", 1)).toBeNull();
+});
+
+test("fuzzyMatch matches full substrings and order-preserving subsequences", () => {
+  expect(fuzzyMatch("banana", "ban")).toBe(true);
+  expect(fuzzyMatch("banana", "bnn")).toBe(true);
+  expect(fuzzyMatch("banana", "banana")).toBe(true);
+});
+
+test("fuzzyMatch rejects out-of-order characters and the empty target", () => {
+  expect(fuzzyMatch("banana", "bnb")).toBe(false);
+  expect(fuzzyMatch("banana", "zzz")).toBe(false);
+  expect(fuzzyMatch("", "a")).toBe(false);
+  expect(fuzzyMatch("", "")).toBe(true);
+});
+
+test("fuzzyMatch skips spaces in the lookup (not in position continuity)", () => {
+  expect(fuzzyMatch("something", "so me t")).toBe(true);
+  expect(fuzzyMatch("something", "s o")).toBe(true);
+});
+
+test("fuzzyMatch treats a whitespace-only lookup as a match-everything query", () => {
+  expect(fuzzyMatch("anything", "   ")).toBe(true);
+  expect(fuzzyMatch("anything", " ")).toBe(true);
+});
+
+test("fuzzyMatch advances by full code points, not utf-16 units (surrogate pairs)", () => {
+  // "😀" is a surrogate pair; the next lookup char must not match inside it.
+  expect(fuzzyMatch("😀 smile", "😀s")).toBe(true);
+  expect(fuzzyMatch("😀", "😀")).toBe(true);
+});
+
+test("parseList splits on commas, trims and drops empties", () => {
+  expect(parseList("label, email, ")).toEqual(["label", "email"]);
+  expect(parseList("name,email,company")).toEqual(["name", "email", "company"]);
+  expect(parseList("")).toEqual([]);
+  expect(parseList(null)).toEqual([]);
+  expect(parseList("  ,  ,  ")).toEqual([]);
+});
+
+test("booleanAttribute returns undefined when absent and honors =false", () => {
+  // Element-like stub keeps the pure helper test DOM-free.
+  const make = (attrs) => ({
+    hasAttribute: (name) => Object.hasOwn(attrs, name),
+    getAttribute: (name) => (Object.hasOwn(attrs, name) ? attrs[name] : null),
+  });
+
+  expect(booleanAttribute(make({}), "create")).toBeUndefined();
+  expect(booleanAttribute(make({ create: "" }), "create")).toBe(true);
+  expect(booleanAttribute(make({ create: "true" }), "create")).toBe(true);
+  expect(booleanAttribute(make({ create: "false" }), "create")).toBe(false);
+  expect(booleanAttribute(make({ create: "0" }), "create")).toBe(true);
 });

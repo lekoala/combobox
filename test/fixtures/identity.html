@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Identity fixtures</title>
+</head>
+<body>
+  <form id="form">
+    <label for="triple">Three duplicate values, all preselected</label>
+    <select id="triple" name="triple[]" multiple>
+      <option value="2" selected>Banana</option>
+      <option value="2" selected>Banana</option>
+      <option value="2" selected>Banana 2 same value</option>
+    </select>
+
+    <label for="sequenced">Three duplicate values, none selected</label>
+    <select id="sequenced" name="sequenced[]" multiple>
+      <option value="2">Banana</option>
+      <option value="2">Banana</option>
+      <option value="2">Banana 2 same value</option>
+    </select>
+
+    <label for="sametwins">Same value AND same label</label>
+    <select id="sametwins" name="sametwins[]" multiple>
+      <option value="twin">Twin</option>
+      <option value="twin">Twin</option>
+      <option value="other">Other</option>
+    </select>
+
+    <label for="maxed">maxItems counts options, not unique values</label>
+    <select id="maxed" name="maxed[]" multiple>
+      <option value="2">Two a</option>
+      <option value="2">Two b</option>
+      <option value="3">Three</option>
+    </select>
+
+    <label for="ordered">Ordered duplicates</label>
+    <select id="ordered" name="ordered[]" multiple>
+      <option value="2" selected>Banana</option>
+      <option value="2" selected>Banana</option>
+      <option value="2" selected>Banana 2 same value</option>
+    </select>
+
+    <label for="rebuilt">setOptions rebuild</label>
+    <select id="rebuilt" name="rebuilt[]" multiple>
+      <option value="1">One</option>
+    </select>
+
+    <label for="single">Single duplicate</label>
+    <select id="single" name="single">
+      <option value="2">Banana</option>
+      <option value="2">Banana 2 same value</option>
+      <option value="3">Orange</option>
+    </select>
+  </form>
+
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>

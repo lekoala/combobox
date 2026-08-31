@@ -66,7 +66,7 @@ test("keyboard navigation is physical in RTL", async ({ page }) => {
   const input = page.locator("#rtl-single + .cb-control .cb-input");
   await input.click();
   await input.press("ArrowDown");
-  await input.press("End");
+  await input.press("ArrowDown");
 
   const state = await page.evaluate(() => {
     const combo = Combobox.getInstance(document.getElementById("rtl-single"));

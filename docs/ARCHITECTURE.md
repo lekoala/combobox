@@ -43,6 +43,15 @@ Do **not** use the native select as a cache for every remote page/query. A resul
 
 For select-backed controls the native selected option(s) are authoritative. For input-backed controls the original input value is authoritative.
 
+**Option identity is the `HTMLOptionElement`**, never the `value` string. A duplicate
+`value` on distinct options means distinct identities: they can all be selected at once
+and serialize as repeated FormData entries. The internal selection model
+(`selectionOrder`) stores option references, so a `Set`/`Map` keyed on the element
+distinguishes the three `value="2"` options where a value-keyed model collapsed them.
+Chips carry the exact option behind them (a `WeakMap`), and the `data-value` attribute
+is inspection-only. The `value` string is used purely to *resolve* a bare-value API call
+to the first matching selectable option.
+
 ### Selection order
 
 A native multiple select has selected values but does not naturally model “chosen in this order”. Keep that separately only when `selectionOrder: "selected"` is requested.
@@ -56,7 +65,7 @@ This avoids the common Select2 workaround of detaching and appending `<option>` 
 Raw HTML:
 
 ```html
-<input id="city" name="city" list="cities" data-combobox>
+<input id="city" name="city" list="cities">
 <datalist id="cities">
   <option value="Brussels">
 </datalist>
@@ -77,7 +86,7 @@ Raw HTML:
 ```html
 <label for="doctor">Doctor</label>
 <input filter="doctor" hidden>
-<select id="doctor" name="doctor" data-combobox>...</select>
+<select id="doctor" name="doctor">...</select>
 ```
 
 Enhanced:
@@ -107,7 +116,29 @@ For multiple select, chips are projections of selected native options.
 </combo-box>
 ```
 
-The transformation is identical to the imperative path above; the wrapper only owns the upgrade/dispose lifecycle. Options come from wrapper attributes (mapped) plus JS via `configure()`, and the legacy source-level `data-*` subset (`data-create`, `data-placeholder`, `data-match`, `data-max`, `data-separator`) keeps working — so the `data-combobox` contract and the wrapper coexist while migration is progressive. No general `data-*` → option mapping exists. Child lookup is direct-children only; a source nested in another element is not found.
+The transformation is identical to the imperative path above; the wrapper only owns the upgrade/dispose lifecycle. Configuration comes from exactly two surfaces: `<combo-box>` attributes (serializable behavior) and JS (`configure()`/constructor options) — there is **no** third `data-*`-driven surface on the source. Child lookup is direct-children only; a source nested in another element is not found.
+
+## Declarative configuration policy
+
+The declarative contract follows Data Grid's split between structure and configuration:
+
+| Type of config | HTML | JS |
+|---|---|---|
+| native form semantics (name, multiple, required, disabled, optgroup, selected) | ✅ native attributes | rarely |
+| boolean | ✅ `<combo-box foo>` (honors `="false"`) | ✅ |
+| number | ✅ `max-items="5"` | ✅ |
+| enum | ✅ `search="fuzzy"` | ✅ |
+| short string | ✅ | ✅ |
+| short list | ✅ `search-fields="label,email"` | ✅ array |
+| item metadata | ✅ `<option data-email="…">` → `item.data.email` | ✅ |
+| callback | ❌ | ✅ |
+| async loader | ❌ | ✅ |
+| renderer | ❌ | ✅ |
+| guards | ❌ | ✅ |
+| score/sort/filter functions | ❌ | ✅ |
+| structured objects | generally ❌ | ✅ |
+
+`data-*` on source items is **application metadata** (`item.data`, e.g. feeding the `search-fields` attribute), never combobox configuration. An explicit filter input is declared structurally with a liaison attribute on the input itself: `<input filter="select-id" hidden>`. There is no legacy `data-*` compatibility layer.
 
 Fallback: without JS or on unsupported browsers the browser sees an unknown element wrapping a fully functional native control.
 
@@ -251,7 +282,7 @@ Picker:
 
 - focus remains in search input;
 - Arrow Down/Up changes active option and opens the picker when closed; disabled results are skipped, navigation wraps within the rendered window;
-- Home/End jump to the first/last selectable option; PageDown/PageUp move by a page (listbox viewport height ÷ row height) and clamp at the selectable edges;
+- Home/End stay on the native caret inside the editable filter input (ARIA APG editable-combobox guidance); PageDown/PageUp move by a page (listbox viewport height ÷ row height) and clamp at the selectable edges;
 - Enter selects active option or creates when eligible;
 - Escape closes and clears `aria-activedescendant`;
 - Tab: native focus traversal by default (an open picker closes first so an open top layer never traps the Tab in engines like Firefox, without ever `preventDefault()`ing); the opt-in `tabSelect` option makes Tab commit the active option or an eligible create like Enter, but only ever blocks default focus traversal when such a commit is actually possible. Picker never blocks Tab during IME composition.

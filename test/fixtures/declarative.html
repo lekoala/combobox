@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Declarative policy fixtures</title>
+</head>
+<body>
+  <form id="form">
+    <select id="legacy" name="legacy[]" multiple
+      data-create
+      data-placeholder="Nope"
+      data-match="fuzzy"
+      data-max="1"
+      data-separator=","
+      data-fuzzy="true"
+      data-combobox>
+      <option value="1" selected>One</option>
+      <option value="2">Two</option>
+    </select>
+
+    <combo-box create="false" load-on-empty="false" allow-empty-option="false" tab-select id="boolwrap">
+      <select id="boolsel" name="boolsel" multiple>
+        <option value="1">One</option>
+      </select>
+    </combo-box>
+
+    <combo-box search-fields="label,email" id="sfwrap">
+      <select id="sfsel" name="sfsel" multiple>
+        <option value="1" data-email="a@x.com">Alpha</option>
+      </select>
+    </combo-box>
+
+    <combo-box max-items="3" id="prio">
+      <select id="priosel" name="priosel" multiple>
+        <option value="1">One</option>
+      </select>
+    </combo-box>
+  </form>
+
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>

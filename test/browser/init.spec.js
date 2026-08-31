@@ -70,12 +70,24 @@ test("init accepts a NodeList and ignores unsupported elements", async ({ page }
   expect(state.mixedIsEnhancer).toBe(true);
 });
 
-test("init() default selector and unknown selectors degrade safely", async ({ page }) => {
+test("init() without an explicit selector discovers nothing; unknown selectors degrade safely", async ({
+  page,
+}) => {
   const state = await page.evaluate(() => {
     const defaults = Combobox.init();
+    // An element root alone is not a discovery scope: a selector is required.
+    const rootOnly = Combobox.init(document.querySelector("#form"));
+    const rootWithOptions = Combobox.init(document.querySelector("#form"), { maxItems: 1 });
     const none = Combobox.init("#does-not-exist");
-    return { defaults: defaults.length, none: none.length };
+    return {
+      defaults: defaults.length,
+      rootOnly: rootOnly.length,
+      rootWithOptions: rootWithOptions.length,
+      none: none.length,
+    };
   });
   expect(state.defaults).toBe(0);
+  expect(state.rootOnly).toBe(0);
+  expect(state.rootWithOptions).toBe(0);
   expect(state.none).toBe(0);
 });

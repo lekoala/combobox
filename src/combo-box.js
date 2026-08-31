@@ -1,5 +1,5 @@
 import { Combobox } from "./combobox.js";
-import { parseSeparators } from "./helpers.js";
+import { booleanAttribute, parseList, parseSeparators } from "./helpers.js";
 
 /**
  * Lightweight Custom Element owner for the Combobox enhancement engine.
@@ -24,6 +24,8 @@ export class ComboBoxElement extends HTMLElement {
     "create-on-blur",
     "close-on-select",
     "autoselect-first",
+    "tab-select",
+    "search-fields",
     "label-field",
     "value-field",
     "load-on-empty",
@@ -165,7 +167,9 @@ export class ComboBoxElement extends HTMLElement {
   #resolvedOptions() {
     const attrs = {};
 
-    if (this.hasAttribute("create")) attrs.create = true;
+    const bool = (name) => booleanAttribute(this, name);
+
+    if (this.hasAttribute("create")) attrs.create = bool("create");
     if (this.hasAttribute("placeholder")) attrs.placeholder = this.getAttribute("placeholder");
     if (this.hasAttribute("search")) attrs.match = this.getAttribute("search");
     if (this.hasAttribute("min-chars")) attrs.minChars = Number(this.getAttribute("min-chars"));
@@ -173,16 +177,16 @@ export class ComboBoxElement extends HTMLElement {
     if (this.hasAttribute("max-options")) attrs.maxOptions = Number(this.getAttribute("max-options"));
     if (this.hasAttribute("selection-order")) attrs.selectionOrder = this.getAttribute("selection-order");
     if (this.hasAttribute("separators")) attrs.separators = parseSeparators(this.getAttribute("separators"));
-    if (this.hasAttribute("create-on-blur"))
-      attrs.createOnBlur = this.getAttribute("create-on-blur") !== "false";
-    if (this.hasAttribute("close-on-select"))
-      attrs.closeOnSelect = this.getAttribute("close-on-select") !== "false";
-    if (this.hasAttribute("autoselect-first"))
-      attrs.autoselectFirst = this.getAttribute("autoselect-first") !== "false";
+    if (this.hasAttribute("create-on-blur")) attrs.createOnBlur = bool("create-on-blur");
+    if (this.hasAttribute("close-on-select")) attrs.closeOnSelect = bool("close-on-select");
+    if (this.hasAttribute("autoselect-first")) attrs.autoselectFirst = bool("autoselect-first");
+    if (this.hasAttribute("tab-select")) attrs.tabSelect = bool("tab-select");
+    if (this.hasAttribute("search-fields"))
+      attrs.searchFields = parseList(this.getAttribute("search-fields"));
     if (this.hasAttribute("label-field")) attrs.labelField = this.getAttribute("label-field");
     if (this.hasAttribute("value-field")) attrs.valueField = this.getAttribute("value-field");
-    if (this.hasAttribute("load-on-empty")) attrs.loadOnEmpty = true;
-    if (this.hasAttribute("allow-empty-option")) attrs.allowEmptyOption = true;
+    if (this.hasAttribute("load-on-empty")) attrs.loadOnEmpty = bool("load-on-empty");
+    if (this.hasAttribute("allow-empty-option")) attrs.allowEmptyOption = bool("allow-empty-option");
     if (this.hasAttribute("debounce")) attrs.debounce = Number(this.getAttribute("debounce"));
 
     // JS wins over markup for behavior that needs an explicit override.

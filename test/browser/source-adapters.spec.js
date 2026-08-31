@@ -136,7 +136,7 @@ test.describe("select single/multiple source mapping", () => {
     expect(await page.locator("#wrapped").inputValue()).toBe("w1");
   });
 
-  test("explicit data-filter-input is reused, unnamed and restored hidden on dispose", async ({ page }) => {
+  test("explicit filter input is reused, unnamed and restored hidden on dispose", async ({ page }) => {
     test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
     await init(page, "explicit");

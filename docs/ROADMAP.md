@@ -22,7 +22,7 @@ No major architecture change should be needed for these.
 Extract only where tests justify the boundary:
 
 - item normalization; ✅ done in `src/helpers.js`
-- matching/search fields/accent folding; ✅ done (`normalize`)
+- matching/search fields/accent folding; ✅ done (`normalize`; fuzzy subsequence matching added in `match: "fuzzy"`)
 - result scoring/sorting; ✅ done (`rankByScore` — descending score, `false`/`null` exclusion, `0` valid, tie-stable by input index; custom `sort` stays a comparator passthrough with no internal behavior to encapsulate)
 - tokenizer; ✅ done (`splitTokens`/`parseSeparators` + `tokenize` seam)
 - ordered selection model; ✅ done (`reconcileSelected` for order ∩ selection + native-order unknowns; `moveValueInOrder` for pure clamped reordering)
@@ -83,7 +83,7 @@ Full ESM source with zero globals; behavioral suite stays on the source, the bun
 - [x] sync and async create;
 - [x] create errors/aborts;
 - [x] separators and paste batches (sequential, `maxItems` re-evaluated between tokens);
-- [x] duplicate label/value behavior (value identity is authoritative, `#selectItem` resolves by value);
+- [x] duplicate label/value behavior (option identity is authoritative: the `HTMLOptionElement` is the identity, `option.value` is serialized payload — three `<option value="2">` are three choices; `#selectItem`/`remove`/`move`/chips key on the exact option);
 - [x] maxItems interaction (never mutilates pre-existing init state);
 - [x] fallback create parity (`guards.add` + `beforecreate` on the Add input);
 - [x] async guards edge review (guards `add`/`remove`/`clear` rejections from user-facing and programmatic paths surface `combobox:guarderror` with zero unhandled rejections; browser coverage in `features.spec.js` + fallback parity in `combobox-element.spec.js`).
@@ -109,10 +109,11 @@ Full ESM source with zero globals; behavioral suite stays on the source, the bun
 
 ## Phase 8 — Package/release
 
-- ESM default export + documented direct-browser path;
-- subpath CSS export if useful;
-- generated `.d.ts` or JSDoc type generation;
-- no transpilation unless a concrete browser floor requires it;
-- minification as release artifact only;
-- migration guide from both legacy packages;
-- mark legacy packages maintenance-only with pointer to new library.
+- [x] v0.1.0 publishable shape: `version 0.1.0`, `private` removed, `files` (`dist`/`src`/`LICENSE`/`README`), `prepack` builds dist, `prepublishOnly` runs lint + unit + build, `./dist/combobox.js` subpath export added;
+- [x] CI split — Chromium on every push/PR, Firefox + WebKit matrix on `master`/tags (`.github/workflows/ci.yml`);
+- [x] declarative surface frozen: the JS API and `<combo-box>` attributes are the two configuration surfaces — booleans honor `="false"`, `tab-select`/`search-fields` added, `data-*` on the source dropped (item `data-*` stays metadata), `init()` discovery explicit;
+- [ ] generated `.d.ts` or JSDoc type generation — explicitly **deferred**: not part of the v1 gate;
+- [x] no transpilation — ESM + generated classic `dist/combobox.js` only;
+- [ ] minification as release artifact only — deferred with the build tooling;
+- [x] migration guide from both legacy packages (`docs/MIGRATION.md`, incl. the demo migration tour);
+- [ ] mark legacy packages maintenance-only with pointer to new library — outside this repository.

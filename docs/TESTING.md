@@ -99,7 +99,7 @@ Tom Select interaction tests explicitly cover close-after-select variants, Escap
 - [x] Enter selects active result.
 - [x] Enter create behavior only runs when eligible.
 - [x] Escape closes without corrupting source value.
-- [x] Home/End step to first/last selectable option (disabled tails skipped).
+- [x] Home/End stay native text-editing in the editable input (caret per ARIA APG); picker navigation uses ArrowDown/Up and PageUp/PageDown (`picker-keyboard.spec.js`).
 - [x] PageDown/PageUp step by a page (viewport height ÷ row height) and clamp at the selectable edges.
 - [x] all picker navigation keys open a closed picker.
 - [x] Tab behavior explicitly tested once policy is fixed (`tabSelect` option; default native traversal, opt-in commit, IME-safe).
@@ -114,7 +114,7 @@ Select2 search-a11y tests are particularly useful for `aria-activedescendant` an
 - [x] Right from last returns search input.
 - [x] Home/End first/last.
 - [x] Delete/Backspace removes focused removable chip.
-- [ ] disabled/read-only chip cannot be removed.
+- [x] disabled chip cannot be removed (no remove button is rendered for a selected-disabled option, `features.spec.js`; the source `readonly` mirror is `source-adapters.spec.js`).
 - [x] focus lands predictably after removal.
 - [ ] normal Left/Right editing inside non-empty search is untouched.
 
@@ -122,27 +122,27 @@ We explicitly do **not** test or implement Tom Select's virtual caret-between-it
 
 ## F. Native source/value integrity
 
-- [ ] selecting local result updates original option, does not recreate it.
+- [x] selecting local result updates original option, does not recreate it (a UI click on the second duplicate `value` touches that exact option, `identity.spec.js`).
 - [ ] single reselect of current value does not fire false native value events.
-- [ ] multiple select updates only intended options.
-- [ ] duplicate labels with distinct values select correct identity.
+- [x] multiple select updates only intended options (removing the middle duplicate deselects only that `<option>`, `identity.spec.js`).
+- [x] duplicate labels with distinct values select correct identity (`identity.spec.js` covers same value + same label).
 - [x] disabled option cannot select.
 - [x] disabled optgroup child cannot select.
-- [ ] externally-created remote result materializes one native option when selected.
-- [ ] unselected remote results do not accumulate as options.
-- [ ] input-backed combobox leaves arbitrary text as source value.
+- [x] externally-created remote result materializes one native option when selected (`remote.spec.js`).
+- [x] unselected remote results do not accumulate as options (`remote.spec.js`).
+- [x] input-backed combobox leaves arbitrary text as source value (`xss.spec.js` hostile-input case).
 
 Tom Select has direct regression tests for preserving original option elements and disabled options; Select2's AJAX model supports the “materialize selected result, not every remote result” lesson.
 
 ## G. Native event semantics
 
-- [ ] value change emits native `input` then `change`, once each.
+- [x] value change emits native `input` then `change`, once each (asserted by the async-create event sequence `["input","change","create"]`, `features.spec.js`).
 - [ ] no value change emits neither.
 - [ ] programmatic `select/remove/clear` follows same contract.
 - [ ] custom `before*` events are cancellable.
 - [ ] after events do not fire when cancelled.
 - [ ] event detail contains item/query/context expected.
-- [ ] create/load error events expose error without unhandled state corruption.
+- [x] create/load error events expose error without unhandled state corruption (`combobox:createerror`, `combobox:loaderror`, `combobox:guarderror` in `features.spec.js`/`remote.spec.js`).
 
 Tom Select's events suite specifically verifies `input` before `change`, single firing, disabled values and no event when value is unchanged.
 
@@ -151,17 +151,28 @@ Tom Select's events suite specifically verifies `input` before `change`, single 
 - [ ] empty query behavior.
 - [ ] includes.
 - [ ] startswith.
-- [ ] accent-insensitive (`liege` matches `Liège`).
-- [ ] `searchFields` supports label and extra data fields.
+- [x] accent-insensitive (`liege` matches `Liège` — `normalize` unit tests; the filter pipeline funnels through it in `applyFilter`).
+- [x] `searchFields` supports label and extra data fields (custom `searchFields` incl. item `data-*` metadata, `fuzzy.spec.js`).
+- [x] fuzzy subsequence matching (`fuzzy.spec.js`: order-preserving subsequence `bnn→Banana`, space-skipping, whitespace query matches all, accent/case fold, garbage → no-results).
+- [x] fuzzy never re-ranks — catalogue order preserved (`fuzzy.spec.js`).
+- [x] default `match` stays `includes` and never fuzzy-matches subsequences (control test, `fuzzy.spec.js`).
 - [ ] custom match.
 - [ ] custom filter.
 - [x] score ordering stable for equal scores (pure logic in `rankByScore`, unit-tested).
-- [ ] custom sort.
+- [x] custom sort (`sort` comparator exercised by `order.spec.js`).
 - [ ] invalid pattern query fails safely.
 - [ ] backspacing from no-results restores options.
 - [ ] no-results state is visually stable and never horizontally scrolls.
 - [ ] selected multiple values are excluded from results unless future policy says otherwise.
 - [ ] data-filtered mirror state correct for local source options.
+
+## H2. Declarative configuration policy
+
+- [x] `<combo-box>` attributes are the canonical declarative surface (booleans honor `="false"`, numbers/enums/short lists, `declarative.spec.js`).
+- [x] `tab-select` and `search-fields` attributes map (`declarative.spec.js`, `combobox-element.spec.js`).
+- [x] JS options win over wrapper attributes (`declarative.spec.js`).
+- [x] legacy `data-*` config on the source is ignored — no third way (`declarative.spec.js`).
+- [x] item `data-*` is application metadata consumed by `searchFields` (`fuzzy.spec.js`); an explicit filter input uses the structural `filter="select-id"` link (`source-adapters.spec.js`).
 
 ## I. `beforefilter` / app-owned filtering
 
@@ -214,13 +225,13 @@ Select2 tags tests cover trim/null, duplicate matching, tag insertion and cleanu
 
 ## L. Tokenization / paste (P0 parity)
 
-- [ ] one separator.
-- [ ] multiple separators.
-- [ ] paste multiple tokens creates/selects each valid token.
+- [x] one separator (`features.spec.js` separator consumption + `splitTokens` unit tests).
+- [x] multiple separators (`splitTokens` longest-match unit tests).
+- [x] paste multiple tokens creates/selects each valid token (sequential separator paste, `features.spec.js`).
 - [ ] invalid token/createFilter false does not corrupt remaining term.
 - [ ] duplicate token handled once according to value policy.
-- [ ] maxItems stops at limit cleanly.
-- [ ] custom tokenizer can preserve quoted separator text.
+- [x] maxItems stops at limit cleanly (`features.spec.js` re-evaluates `maxItems` between tokens).
+- [x] custom tokenizer can preserve quoted separator text (`tokenize` seam + `rest` handling, `features.spec.js`).
 - [ ] composition/IME input is not tokenized mid-composition.
 
 Select2's tokenizer suite includes the important “createTag returns null must not cut the term” and quoted-token cases.
@@ -228,12 +239,12 @@ Select2's tokenizer suite includes the important “createTag returns null must 
 ## M. Clear / remove / guards
 
 - [ ] clear single.
-- [ ] clear multiple.
+- [x] clear multiple (`guards.clear` confirmation path, `features.spec.js`).
 - [ ] beforeclear cancellation.
 - [ ] beforeremove cancellation.
 - [ ] clear does not remove disabled selections unless policy explicitly allows it.
 - [ ] external clear button can call API without DOM hacks.
-- [ ] async confirmation design gets dedicated tests once finalized.
+- [x] async confirmation design gets dedicated tests once finalized (guards `add`/`remove`/`clear` refusals and rejections, `features.spec.js`).
 
 ## N. Selection order
 
@@ -283,9 +294,9 @@ These mirror concrete Select2 `tests/integration/dom-changes.js` cases.
 - [x] invalid directs focus to interaction input.
 - [x] form reset restores initial selections/input value/chips.
 - [ ] source input `pattern` remains authoritative for free-form mode.
-- [ ] FormData contains source `name` once/multiple as expected.
+- [x] FormData contains source `name` once/multiple as expected (source-order assertion in `order.spec.js`).
 - [ ] generated search inputs never appear in FormData.
-- [ ] ordered mode serializes intended order.
+- [x] ordered mode serializes intended order (`order.spec.js` ordered FormData with repeated entries).
 
 Tom Select validation tests cover required state transitions and input pattern validation.
 
@@ -334,7 +345,7 @@ Tom Select has a dedicated XSS suite for original values, group labels, option l
 - [ ] no global scroll/resize positioning listeners.
 - [ ] long no-results/loading state has no horizontal scrollbar.
 - [ ] multiple chips wrap/grow without changing picker anchor width incorrectly.
-- [ ] RTL logical placement/text.
+- [x] RTL logical placement/text (`rtl.spec.js` + RTL chip/remove layout in `css-polish.spec.js`).
 - [x] RTL: chips flow right-to-left, picker flips and has no horizontal overflow, physical keyboard navigation is stable.
 - [x] reduced motion: no transition/animation runs in the picker (CSS has none; asserted under `prefers-reduced-motion: reduce` in `visual.spec.js`).
 - [x] forced-colors/high contrast: picker rows and chips stay distinguishable and visible (`visual.spec.js`; engines without the `forced-colors` media query are skipped).
@@ -349,7 +360,7 @@ No virtualization target, but avoid pathological work:
 - [ ] init dozens of controls without repeated layout reads.
 - [x] 4k local options: one source mutation batch should not produce thousands of refreshes (batching proven with the `observeSource` debounce).
 - [ ] filtering avoids unnecessary DOM reconstruction when future profiling justifies optimization.
-- [ ] remote searches do not grow native select catalogue indefinitely.
+- [x] remote searches do not grow native select catalogue indefinitely (`remote.spec.js` transient-results test).
 
 Select2 has a DOM-change regression using 4000 options and asserts one selection update; use it as a batching sanity reference, not a virtualization requirement.
 

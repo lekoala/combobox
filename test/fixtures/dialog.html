@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Dialog popover fixtures</title>
+  <style>
+    #dlg { position: fixed; inset: 10% 50% auto 10%; width: 260px; }
+    #dlg .scrolls { max-height: 90px; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <button id="open" type="button">Open dialog</button>
+  <button id="outside" type="button">outside</button>
+
+  <dialog id="dlg">
+    <p>Pick fruit (scroller is overflow:hidden):</p>
+    <div class="scrolls">
+      <select id="fruit" name="fruit[]" multiple>
+        <option value="1">Apple</option>
+        <option value="2">Banana</option>
+      </select>
+    </div>
+    <button id="closebtn" type="button">Close dialog</button>
+  </dialog>
+
+  <script>
+    const dialog = document.getElementById("dlg");
+    document.getElementById("open").addEventListener("click", () => dialog.showModal());
+    document.getElementById("closebtn").addEventListener("click", () => dialog.close());
+  </script>
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>

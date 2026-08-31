@@ -2,23 +2,31 @@
 
 This is a design migration, not a compatibility layer. Preserve use cases, not every historical option name.
 
-## Declarative contract: `data-combobox` → `<combo-box>`
+## Migration is documentation, not runtime compatibility
 
-The library started with a `[data-combobox]` attribute contract. The declarative wrapper `<combo-box>` is now the primary element, but `data-combobox` and the imperative path remain first-class until migration is done. Both feed the exact same engine — this is a markup classification, not a rewrite.
+The new API is exactly two surfaces — the JavaScript engine and the `<combo-box>`
+element. Legacy source-level `data-*` attributes are **not** re-implemented as a
+hidden compatibility layer: migration happens in the markup, once, by moving
+configuration onto the `<combo-box>` element. The old markup simply stops being
+configured (native semantics remain, unenhanced), and the new shape takes over:
 
-| Existing | Direction | New shape |
-|---|---|---|
-| `<select id="x" data-combobox>` | Expand | `<combo-box><select id="x">…</select></combo-box>` |
-| `<input data-combobox list="…">` + `<datalist>` | Expand | `<combo-box><input list="…"><datalist>…</datalist></combo-box>` |
-| `data-create` | Map to attribute | `<combo-box create>` |
-| `data-placeholder` | Map to attribute | `placeholder` |
-| `data-max` | Map to attribute | `max-items` |
-| `search` attribute | Keep | `search` → `match` (same on wrapper) |
-| JS-only options (`load`, `create`, renderers) | Keep | `element.configure({ … })` |
-| imperative init | Keep | `Combobox.init(selector)` / `Combobox.getOrCreateInstance(source)` |
-| explicit filter input sibling | Keep | `<combo-box><input filter="select-id" hidden><select id="select-id">…</select></combo-box>` |
+| Existing (bootstrap5-tags/autocomplete) | Migrate to |
+|---|---|
+| `<select data-combobox>` / `<input data-combobox list="…">` | `<combo-box><select>…</select></combo-box>` |
+| `data-create` | `<combo-box create>` |
+| `data-placeholder` | `<combo-box placeholder>` |
+| `data-max` | `<combo-box max-items>` |
+| `data-match` | `<combo-box search>` |
+| `data-separator` | `<combo-box separators>` |
+| `data-fuzzy="true"` | `<combo-box search="fuzzy">` |
+| `data-allow-new="true"` | `<combo-box create>` |
+| `data-add-on-blur="true"` | `<combo-box create-on-blur>` |
+| `data-filter-input="input-id"` | `<input filter="select-id" hidden>` |
+| JS options (`load`, `create`, renderers) | `element.configure({ … })` |
+| imperative init | `Combobox.init("select.mine")` / `Combobox.getOrCreateInstance(source)` |
+| explicit filter input sibling | `<combo-box><input filter="select-id" hidden><select id="select-id">…</select></combo-box>` |
 
-The wrapper owns only lifecycle (upgrade/dispose); the native source never changes hands. `data-combobox` is intentionally kept so the two contracts coexist during the progressive move.
+The wrapper owns only lifecycle (upgrade/dispose); the native source never changes hands. `data-*` on source items remains **application metadata** (`item.data`), never configuration.
 
 ## `bootstrap5-tags`
 
@@ -37,7 +45,7 @@ The wrapper owns only lifecycle (upgrade/dispose); the native source never chang
 | `placeholder` | Keep | `placeholder` / native placeholder option |
 | `showDropIcon` | Skin | CSS/markup decision |
 | `keepOpen` | Keep behavior | `closeOnSelect`; default single closes / multiple stays open (implemented) |
-| `allowSame` | Drop/clarify | value identity must be unambiguous (`#selectItem` resolves by value); duplicate labels are allowed |
+| `allowSame` | Drop/clarify | identity is the native `<option>` element, never the `value` string — if the catalogue has three `<option value="2">` they are three distinct choices (and only three); `select/remove/move/chips` address the exact option. Duplicate labels stay legal. |
 | `addOnBlur` | Consider | `createOnBlur` (implemented); means a real leave — internal blur and IME composition never create |
 | `showDisabled` | Default behavior decision | disabled results stay visible but are never selectable; a selected-but-disabled option keeps its chip without a remove button |
 | `hideNativeValidation` | Drop | preserve native validation instead |
@@ -48,7 +56,7 @@ The wrapper owns only lifecycle (upgrade/dispose); the native source never chang
 | `highlightTyped` | Renderer/helper | not core state |
 | `fullWidth` | Drop | CSS Anchor sizing |
 | `fixed` | Drop | Popover + Anchor |
-| `fuzzy` | Extension seam | custom `match/score` rather than built-in engine initially |
+| `fuzzy` | Keep, native | `match: "fuzzy"` — lightweight subsequence matching, no ranking; `score`/`sort` remain for custom ranking |
 | `startsWith` | Keep | `match: "startswith"` |
 | `singleBadge` | Drop | renderer/skin |
 | `activeClasses` | Drop | component CSS/state attributes |
@@ -82,6 +90,63 @@ The wrapper owns only lifecycle (upgrade/dispose); the native source never chang
 | groups | Keep | optgroups/group renderer |
 | disabled | Native | source state |
 | destroy/getInstance | Keep | lifecycle API |
+
+## Legacy demo migration tour
+
+Each scenario exercised by the old `bootstrap5-tags` and `bootstrap5-autocomplete`
+demos is classified against the new engine. The classification is the migration
+contract: every legacy case either keeps a functional equivalent, has a designed
+replacement, or is dropped on purpose. Not every row needs a new demo — demos are
+illustrations, the coverage matrix in `TESTING.md` is the proof.
+
+### `bootstrap5-tags` demo
+
+| Legacy scenario | Classification | Where it lands |
+|---|---|---|
+| select single/multiple | covered | native source owner |
+| chips (badges) | covered, identity fixed | chips; a duplicate `value` is a distinct `<option>` identity |
+| optgroup / disabled option / disabled select | covered | `sync()`, disabled propagation |
+| native validation + reset | covered | `checkValidity()`/`invalid`/reset restore default selections incl. duplicate `value` |
+| allow clear / clear API | covered | `clear()`; the clear affordance stays application-authored |
+| allow new (`allowNew`) | redesigned | `create` + `createFilter` + async `create` + guards |
+| regex (`canAdd`) | redesigned | `createFilter()` |
+| separator / paste of several values | covered | `separators` + `tokenize` seam, sequential consumption |
+| add on blur | covered | `createOnBlur` (real leave only; IME-safe) |
+| max items | covered | `maxItems` counts selected `<option>`s, never unique values |
+| show disabled | covered | disabled rows stay visible, are never selectable |
+| search fields | covered | `searchFields` |
+| custom label/value fields | covered, narrowed | map data objects only; real `<option>`s are canonical |
+| custom render item | redesigned | `render.item`/`render.option` returning DOM `Node`s (safe by default) |
+| remote initial + live remote | covered | `load(query, { signal, cursor, source, input, combobox })` |
+| dependent parameters | covered | app-level loader reads live state |
+| selected ordering | covered | `selectionOrder: "selected"` + `move()` |
+| fuzzy | covered | native `match: "fuzzy"` subsequence matching (no ranking) |
+| HTML in labels | redesigned | renderer returns Nodes; strings are text |
+| SortableJS chip drag/drop | intentionally dropped | `move()` is the model op; drag/drop stays external |
+| `allowSame` | deliberately removed | native option identity replaces it (see option-identity contract) |
+
+### `bootstrap5-autocomplete` demo
+
+| Legacy scenario | Classification | Where it lands |
+|---|---|---|
+| input + array | covered | datalist/`setOptions` |
+| datalist | covered | native fallback + enhanced source adapter |
+| label/value different | covered | select-backed, `label-field`/`value-field` |
+| groups, threshold, show-all | covered | optgroups, `minChars`, empty query shows source |
+| local filtering / `startsWith` | covered | `match: "includes" \| "startswith" \| "pattern"` |
+| custom `source()` | covered | `load()` / transient `setResults()` |
+| remote, debounce, stale requests | covered | `load` + AbortSignal + debounce |
+| `searchFields` | covered | `searchFields` |
+| not-found | covered | `messages.noResults` + `render.noResults` |
+| custom rendering | covered | `render.option`/`render.item` |
+| Tab select | diverged (documented) | opt-in `tabSelect`; Tab never blocked unless a commit is possible |
+| disabled | covered | native source state |
+| RTL | covered | logical CSS + physical keyboard tests |
+| custom element integration | covered | `<combo-box>` wrapper |
+| clear API / external control | covered | `clear()` |
+| `fullWidth`/`fixed`/`dropdownParent` | intentionally dropped | Popover top layer + CSS Anchor Positioning |
+| fuzzy | covered | native `match: "fuzzy"` subsequence matching |
+| Bootstrap modal / positioning hacks | intentionally dropped | we anchor inside the modal via the `<dialog>` parent instead |
 
 ## Select2 integration hacks that should disappear
 

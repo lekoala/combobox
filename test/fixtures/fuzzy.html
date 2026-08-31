@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fuzzy matching fixtures</title>
+</head>
+<body>
+  <form id="form">
+    <combo-box search="fuzzy" id="fz">
+      <select id="fruits" name="fruits[]" multiple>
+        <option value="banana">Banana</option>
+        <option value="strawberry">Strawberry</option>
+        <option value="blackberry">Blackberry</option>
+        <option value="something">Sómething sour</option>
+        <option value="apple">Apple pie</option>
+      </select>
+    </combo-box>
+
+    <select id="plain" name="plain[]" multiple>
+      <option value="banana">Banana</option>
+      <option value="strawberry">Strawberry</option>
+      <option value="blackberry">Blackberry</option>
+      <option value="something">Sómething sour</option>
+      <option value="apple">Apple pie</option>
+    </select>
+
+    <combo-box search="fuzzy" search-fields="label,email" id="dd">
+      <select id="people" name="people[]" multiple>
+        <option value="1" data-email="john@x.com">John Doe</option>
+        <option value="2" data-email="jane@y.org">Jane Smith</option>
+        <option value="3" data-email="jo@z.io">Jo Bloggs</option>
+      </select>
+    </combo-box>
+  </form>
+
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>

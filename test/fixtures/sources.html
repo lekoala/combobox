@@ -37,8 +37,8 @@
     </select>
 
     <label for="explicit">Explicit filter</label>
-    <input type="text" id="explicit-filter" hidden>
-    <select id="explicit" name="explicit" data-filter-input="explicit-filter">
+    <input type="text" id="explicit-filter" filter="explicit" hidden>
+    <select id="explicit" name="explicit">
       <option value="">Choose</option>
       <option value="x">X-Ray</option>
       <option value="z">Zulu</option>
@@ -64,8 +64,8 @@
       <option value="al">Alfa</option>
     </select>
     <span id="desc-text" hidden>Helper description text</span>
-    <input type="text" id="described-filter" hidden>
-    <select id="described" name="described" data-filter-input="described-filter" aria-describedby="desc-text">
+    <input type="text" id="described-filter" filter="described" hidden>
+    <select id="described" name="described" aria-describedby="desc-text">
       <option value="">Choose</option>
       <option value="dd">Delta</option>
     </select>
