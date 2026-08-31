@@ -28,10 +28,10 @@ Final export contract:
 
 - `src/index.js` — ESM barrel: `export { Combobox }` (`default` too), `ComboBoxElement`, `defineCombobox`, plus the pure helpers (`normalize`, `toItem`, `parseSeparators`, `splitTokens`, `rankByScore`, `reconcileSelected`, `moveValueInOrder`) from `src/helpers.js`. Public types (`ComboboxOptions`, `ComboboxItem`, `ComboboxSource`, `LoadContext`) are re-exported as JSDoc typedefs. Importing it **never registers** anything.
 - `src/define.js` — side-effect entry that calls `defineCombobox()`; importing `@lekoala/combobox/define` registers `<combo-box>`.
-- `dist/combobox.js` / `dist/combobox.min.js` (`bun run build`, from `src/define.js`) — self-contained iife classic scripts that register `<combo-box>` and nothing else, keeping `file://` and classic `<script>` consumers working without a server. No globals are leaked.
+- `dist/combobox.js` / `dist/combobox.min.js` (`bun run sync`, from `src/define.js`) — self-contained iife classic scripts that register `<combo-box>` and nothing else, keeping `file://` and classic `<script>` consumers working without a server. No globals are leaked.
 - `dist/combobox.css` / `dist/combobox.min.css` ship as subpath exports; the demo loads `dist/combobox.css` so the distributed CSS is exercised.
 - Types are generated from checked JSDoc (`tsconfig.types.json` → `dist/types`); no TypeScript source/transpilation. A `custom-elements.json` manifest is generated from the element source.
-- All generated artifacts are committed; `check:generated` rejects drift.
+- All generated artifacts are committed; `verify`/CI rejects drift via `check:generated`.
 
 `package.json` shape:
 
@@ -55,8 +55,11 @@ Final export contract:
     "build:types": "bun run types",
     "build:manifest": "bun scripts/custom-elements.js",
     "build": "bun run build:bundle && bun run build:types && bun run build:manifest",
+    "sync": "bun run build",
+    "check": "bun run test:syntax && bun run lint && bun run typecheck && bun run test",
     "check:package": "bun scripts/check-package.js",
-    "check:generated": "git diff --exit-code -- dist custom-elements.json"
+    "check:generated": "bun scripts/check-generated.js",
+    "verify": "bun run check && bun run sync && bun run test:types && bun run check:generated && bun run check:package"
   }
 }
 ```
@@ -87,7 +90,7 @@ Before v1, document the actual tested browser floor based on the feature gate an
 - [x] convert the POC source to pure ESM exports + generated classic build (`src/define.js` → `dist/combobox.js`) with zero globals.
 - [x] browser suite targets the ESM source; `test/dist` smoke-tests the bundle.
 - [x] generated types/checkJs setup (`strict` checkJs; `tsconfig.types.json` → `dist/types`; consumer locked by `test/types/consumer.ts`).
-- [x] implement full P0 browser-test matrix (browser suite spans Chromium/Firefox/WebKit; `check` stays Chromium-only, `test:browser:all`/`check:all` cover Firefox+WebKit).
+- [x] implement full P0 browser-test matrix (browser suite spans Chromium/Firefox/WebKit; `test:browser` stays Chromium-only, `test:browser:all`/`check:all` cover Firefox+WebKit).
 - [x] test current Chromium + Firefox + WebKit and document support policy (Playwright 1.62 bundles engines that all satisfy the Popover + CSS Anchor feature gate, so the enhanced picker exercises on all three).
 - [ ] refresh `docs/MIGRATION.md` examples once the API freezes.
 
@@ -96,11 +99,13 @@ Before v1, document the actual tested browser floor based on the feature gate an
 ```bash
 bun install
 bunx playwright install chromium firefox webkit   # all three matrix engines
-bun run build
-bun run check                # static chain + Chromium browser + dist smoke
-bun run check:all            # + Firefox + WebKit browser
-bun run test:types           # TypeScript consumer contract (after build)
-bun run check:package        # npm tarball contract
+bun run test:types           # TypeScript consumer contract (after sync)
+bun run test:browser         # Chromium behavior suite (source ESM)
+bun run test:dist            # dist bundle smoke (after sync)
+bun run check                # source quality only: syntax + lint + typecheck + unit
+bun run sync                 # regenerate committed artifacts
+bun run verify               # final gate: check + sync + test:types + drift + package
+bun run check:all            # verify + Firefox + WebKit browser + dist smoke
 ```
 
 ## Recommended first commits

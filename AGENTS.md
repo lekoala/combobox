@@ -75,6 +75,7 @@ Lifecycle: `init`, `getInstance`, `getOrCreateInstance`, `show`, `hide`, `dispos
 - Any bug involving focus, keyboard, popover state, forms, validation, browser layout, IME, or ARIA needs a real-browser regression test.
 - Unit-test pure matching/tokenization/order helpers after extraction; do not use a DOM shim as a substitute for browser interaction tests.
 - Work inside the project directory. Use the gitignored `.temp/` folder for throwaway artifacts (screenshots, ad-hoc scripts); never write outside the workspace.
+- During implementation, run `bun run check`. Regenerate committed artifacts with `bun run sync` once the source change is complete. `bun run verify` is the final pre-commit/release gate; a drift between committed artifacts and a fresh `sync` is a `verify`/CI failure, not a day-to-day `check` failure.
 
 ## Commands
 
@@ -83,26 +84,29 @@ bun install
 bun run lint
 bun run typecheck
 bun run test          # unit tests
-bun run test:types    # TypeScript consumer contract (needs build first)
-bun run build         # bundle + CSS + dist/types + custom-elements.json
+bun run check         # source quality only: syntax + lint + typecheck + unit (never touches dist/)
+bun run sync          # regenerate committed artifacts: bundle + CSS + dist/types + custom-elements.json
+bun run verify        # final gate: check + sync + type consumer + generated drift + package contract
+bun run test:types    # TypeScript consumer contract (needs sync first)
 bun run test:browser  # Chromium behavior suite (source ESM)
-bun run test:dist     # dist bundle smoke
+bun run test:dist     # dist bundle smoke (needs sync first)
 bun run check:package # npm tarball contract
-bun run check:generated # git diff --exit-code -- dist custom-elements.json
-bun run check         # full static chain + Chromium browser + dist smoke
-bun run check:all     # check + firefox/webkit browser matrix
+bun run check:generated # drift gate for committed dist/ + custom-elements.json (part of verify)
+bun run check:all     # verify + firefox/webkit browser matrix + dist smoke
 ```
 
-`check:static` (part of `check`) = syntax + lint + typecheck + unit + build + type
-consumer + package contract + generated drift. The behavioral browser suite targets the
+`check` = syntax + lint + typecheck + unit. It never builds and never runs the drift
+gate: a source edit mid-task legitimately produces temporary drift. `verify` is the
+final pre-commit/release gate — it regenerates (`sync`) and then rejects any deviation
+between committed artifacts and a fresh sync. The behavioral browser suite targets the
 ESM source; only `test/dist` exercises the generated bundle.
 
 The demo (`demo/index.html`) always loads the generated classic `dist/combobox.js` and
 `dist/combobox.css` (self-registers `<combo-box>` with zero globals), so it works over
-both http(s) and `file://` after a single `bun run build`. The demo validates the
+both http(s) and `file://` after a single `bun run sync`. The demo validates the
 distributable; the source ESM is exercised directly by the unit/browser test suites.
-Generated artifacts are committed; never hand-edit `dist/` or `custom-elements.json` — a
-drift check in CI rejects out-of-sync generated files.
+Generated artifacts are committed; never hand-edit `dist/` or `custom-elements.json` —
+the `verify`/CI drift gate rejects out-of-sync generated files.
 
 ## Definition of done for a feature
 

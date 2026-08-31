@@ -116,7 +116,7 @@ Use `?native=1` in the demo to force this mode.
 ## Try the POC
 
 `demo/index.html` always loads the generated classic `dist/combobox.js`, so after a single
-`bun run build` it works identically over `http(s)` and directly from `file://`, validating
+`bun run sync` it works identically over `http(s)` and directly from `file://`, validating
 the distributed product. Run `bun run dev` to build and serve it at `http://127.0.0.1:4173/`.
 
 The demo covers:
@@ -206,21 +206,26 @@ test/types/consumer.ts    TypeScript consumer contract test against the publishe
 ## Development
 
 The library has **no runtime dependencies and no globals**. The only build is the
-generated distribution artifacts: `bun run build` produces the `dist/` bundle
-(iife unminified + minified), the component CSS, the TypeScript declarations
-(`dist/types`) and the Custom Elements Manifest (`custom-elements.json`). All
-generated artifacts are committed and CI-enforced against drift.
+generated distribution artifacts: `bun run sync` produces the `dist/` bundle (iife
+unminified + minified), the component CSS, the TypeScript declarations (`dist/types`)
+and the Custom Elements Manifest (`custom-elements.json`). All generated artifacts are
+committed and CI-enforced against drift.
 
 ```bash
 bun install
 bunx playwright install chromium firefox webkit
-bun run build
 bun run check
+bun run test:browser
+bun run sync
+bun run verify
 ```
 
-`check` = syntax + lint + typecheck + unit + build + type consumer test + package
-contract + generated-drift + Chromium browser + dist smoke. The browser suite runs
-against the **ESM source** (`src/…`); only `test/dist` exercises the generated bundle.
+`check` = syntax + lint + typecheck + unit — source quality only, it never builds and
+never looks at `dist/`. `sync` regenerates the committed artifacts once the source change
+is complete. `verify` is the final pre-commit/release gate: it re-runs `check`, regenerates
+with `sync`, then rejects any drift between committed artifacts and a fresh sync plus the
+published type/package contract. The browser suite runs against the **ESM source**
+(`src/…`); only `test/dist` exercises the generated bundle.
 `bun run check:all` / `bun run test:browser:all` extend the same suites to **Firefox +
 WebKit** (current Playwright engines all satisfy the Popover + Anchor feature gate, so the
 enhanced picker runs on all three). Popover, focus, form validation, keyboard behavior
@@ -229,8 +234,8 @@ are unit-tested in `test/unit` (`bun run test`).
 
 ## Before publishing a v1
 
-The v0.1.0 publishing shape is in place and CI-enforced: Chromium, Firefox and WebKit
-run the browser matrix, `check:static` gates typecheck/lint/unit/build/types/package
-contract/generated drift, and `npm pack --dry-run` validates the tarball. Generated
-type declarations ship in `dist/types` and the consumer contract is locked by
-`test/types/consumer.ts`. Run `bun run check:all` before cutting a release.
+The v0.1.0 publishing shape is in place and CI-enforced: Chromium, Firefox and WebKit run
+the browser matrix, `verify` gates check/sync/types/package contract/generated drift, and
+`npm pack --dry-run` validates the tarball. Generated type declarations ship in
+`dist/types` and the consumer contract is locked by `test/types/consumer.ts`. Run
+`bun run check:all` before cutting a release.

@@ -365,4 +365,4 @@ A prior-art regression batches 4000 option mutations into one selection update; 
 
 # Starter release gate
 
-Before calling the implementation “v1-ready”, all P0 cases above must be automated except the explicitly manual AT matrix. The suite runs on current Chromium, Firefox and WebKit (Playwright projects; `bun run test:browser:all` / `check:all` for the non-Chromium engines, `check` stays Chromium-only for fast local loops), and forced-fallback tests run in every engine.
+Before calling the implementation “v1-ready”, all P0 cases above must be automated except the explicitly manual AT matrix. The suite runs on current Chromium, Firefox and WebKit (Playwright projects; `bun run test:browser:all` / `check:all` for the non-Chromium engines, `test:browser` stays Chromium-only for fast local loops), and forced-fallback tests run in every engine.

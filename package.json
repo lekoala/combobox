@@ -41,7 +41,7 @@
     "access": "public"
   },
   "scripts": {
-    "dev": "bun run build && node test/server.js",
+    "dev": "bun run sync && node test/server.js",
     "build:bundle": "bun scripts/build.js",
     "build:types": "bun run types",
     "build:manifest": "bun scripts/custom-elements.js",
@@ -57,13 +57,14 @@
     "test:browser:headed": "playwright test test/browser --project chromium --headed",
     "test:browser:all": "playwright test test/browser",
     "test:dist": "playwright test test/dist --project chromium",
+    "sync": "bun run build",
+    "check": "bun run test:syntax && bun run lint && bun run typecheck && bun run test",
     "check:package": "bun scripts/check-package.js",
-    "check:generated": "git diff --exit-code -- dist custom-elements.json",
-    "check:static": "bun run test:syntax && bun run lint && bun run typecheck && bun run test && bun run build && bun run test:types && bun run check:package && bun run check:generated",
-    "check": "bun run check:static && bun run test:browser && bun run test:dist",
-    "check:all": "bun run check:static && bun run test:browser:all && bun run test:dist",
-    "prepack": "bun run build",
-    "prepublishOnly": "bun run lint && bun run typecheck && bun run test && bun run build && bun run test:types && bun run check:package"
+    "check:generated": "bun scripts/check-generated.js",
+    "verify": "bun run check && bun run sync && bun run test:types && bun run check:generated && bun run check:package",
+    "check:all": "bun run verify && bun run test:browser:all && bun run test:dist",
+    "prepack": "bun run sync",
+    "prepublishOnly": "bun run verify"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.11",
