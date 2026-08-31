@@ -1,0 +1,229 @@
+{
+  "schemaVersion": "2.1.0",
+  "readme": "README.md",
+  "modules": [
+    {
+      "kind": "javascript-module",
+      "path": "src/combo-box.js",
+      "declarations": [
+        {
+          "kind": "class",
+          "name": "ComboBoxElement",
+          "description": "Autonomous custom element (no Shadow DOM) wrapping the Combobox enhancement engine for a child <select> or <input list>.",
+          "tagName": "combo-box",
+          "attributes": [
+            {
+              "name": "create"
+            },
+            {
+              "name": "placeholder"
+            },
+            {
+              "name": "search"
+            },
+            {
+              "name": "min-chars"
+            },
+            {
+              "name": "max-items"
+            },
+            {
+              "name": "max-options"
+            },
+            {
+              "name": "selection-order"
+            },
+            {
+              "name": "separators"
+            },
+            {
+              "name": "create-on-blur"
+            },
+            {
+              "name": "close-on-select"
+            },
+            {
+              "name": "autoselect-first"
+            },
+            {
+              "name": "tab-select"
+            },
+            {
+              "name": "search-fields"
+            },
+            {
+              "name": "label-field"
+            },
+            {
+              "name": "value-field"
+            },
+            {
+              "name": "load-on-empty"
+            },
+            {
+              "name": "allow-empty-option"
+            },
+            {
+              "name": "debounce"
+            }
+          ],
+          "members": [
+            {
+              "kind": "getter",
+              "name": "source",
+              "description": "The enhanced source element, discovering it lazily when needed."
+            },
+            {
+              "kind": "getter",
+              "name": "combobox",
+              "description": "The underlying Combobox engine instance, or null before upgrade."
+            },
+            {
+              "kind": "getter",
+              "name": "options",
+              "description": "The merged JavaScript options currently applied to the element."
+            },
+            {
+              "kind": "method",
+              "name": "configure",
+              "description": "Merge JavaScript-only behavior such as load/create/render callbacks."
+            },
+            {
+              "kind": "method",
+              "name": "upgrade",
+              "description": "Enhance the native child source. Safe to call repeatedly. child exists."
+            },
+            {
+              "kind": "method",
+              "name": "whenReady",
+              "description": "Resolves once the engine has upgraded the source child."
+            },
+            {
+              "kind": "method",
+              "name": "dispose",
+              "description": "Tear the engine down and restore the native source."
+            }
+          ],
+          "events": [
+            {
+              "name": "beforefilter"
+            },
+            {
+              "name": "combobox:beforeclear"
+            },
+            {
+              "name": "combobox:beforeclose"
+            },
+            {
+              "name": "combobox:beforecreate"
+            },
+            {
+              "name": "combobox:beforeload"
+            },
+            {
+              "name": "combobox:beforeopen"
+            },
+            {
+              "name": "combobox:beforeremove"
+            },
+            {
+              "name": "combobox:beforereorder"
+            },
+            {
+              "name": "combobox:beforeselect"
+            },
+            {
+              "name": "combobox:clear"
+            },
+            {
+              "name": "combobox:create"
+            },
+            {
+              "name": "combobox:createerror"
+            },
+            {
+              "name": "combobox:guarderror"
+            },
+            {
+              "name": "combobox:load"
+            },
+            {
+              "name": "combobox:loaderror"
+            },
+            {
+              "name": "combobox:remove"
+            },
+            {
+              "name": "combobox:reorder"
+            },
+            {
+              "name": "combobox:select"
+            },
+            {
+              "name": "filter"
+            }
+          ],
+          "cssProperties": [
+            {
+              "name": "--cb-bg"
+            },
+            {
+              "name": "--cb-color"
+            },
+            {
+              "name": "--cb-border-color"
+            },
+            {
+              "name": "--cb-border-radius"
+            },
+            {
+              "name": "--cb-focus-color"
+            },
+            {
+              "name": "--cb-chip-bg"
+            },
+            {
+              "name": "--cb-picker-bg"
+            },
+            {
+              "name": "--cb-option-active-bg"
+            },
+            {
+              "name": "--cb-option-selected-bg"
+            },
+            {
+              "name": "--cb-muted-color"
+            },
+            {
+              "name": "--cb-error-color"
+            },
+            {
+              "name": "--cb-control-height"
+            },
+            {
+              "name": "--cb-option-min-height"
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "ComboBoxElement",
+          "declaration": {
+            "name": "ComboBoxElement",
+            "module": "src/combo-box.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "defineCombobox",
+          "declaration": {
+            "name": "defineCombobox",
+            "module": "src/combo-box.js"
+          }
+        }
+      ]
+    }
+  ]
+}
