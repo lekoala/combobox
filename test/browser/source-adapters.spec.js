@@ -465,6 +465,29 @@ test.describe("external sync()", () => {
   });
 });
 
+test.describe("input+datalist blur with open picker", () => {
+  test("blurring an open input combobox closes cleanly without a select-backed call", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+
+    const pageErrors = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+
+    await init(page, "city2");
+    const result = await page.evaluate(async () => {
+      const combo = Combobox.getInstance(document.getElementById("city2"));
+      combo.input.focus();
+      const wasOpen = combo.isOpen() || combo.show();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      document.activeElement?.blur();
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return { wasOpen, stillOpen: combo.isOpen(), value: document.getElementById("city2").value };
+    });
+    expect(result.wasOpen).toBe(true);
+    expect(result.stillOpen).toBe(false);
+    expect(pageErrors).toEqual([]);
+  });
+});
+
 test.describe("observeSource", () => {
   test("observeSource is opt-in and defaults to off", async ({ page }) => {
     await init(page, "syncs");

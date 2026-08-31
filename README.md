@@ -141,6 +141,10 @@ The demo covers:
 18. form reset restoring the native selection and chips;
 19. declarative fuzzy search (`search="fuzzy"` + `search-fields` over `<option data-*>` metadata + `tab-select`, no JS).
 
+The demo also ships `demo/actual-css.html`, a standalone theme-bridge page that skins the
+combobox entirely with Actual CSS tokens (controls, removable badge chips, picker, states and a
+theme switcher) — no adapter package, just shared CSS contracts.
+
 ## Important architecture contracts
 
 1. **Native source remains authoritative.** Form data, required/disabled state, reset and native integration start from the original input/select.
@@ -174,6 +178,7 @@ Reordering **is** a core data concern; drag/drop is merely one possible UI for c
 AGENTS.md                 implementation rules for coding agents/contributors
 README.md                 project overview
 demo/index.html           architecture demo (always loads the generated dist bundle/css)
+demo/actual-css.html      Actual CSS theme-bridge demo (combobox skinned via Actual CSS tokens)
 src/index.js              pure ESM exports: engine + element + helpers + public types
 src/define.js             single side-effect entry: registers <combo-box>
 src/helpers.js            pure helpers (normalization, items, separators/tokenizer)

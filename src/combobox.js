@@ -1500,7 +1500,7 @@ export class Combobox {
           }
           this.refresh();
         }
-        if (!this.isMultiple) this.#syncSingleLabel();
+        if (this.isSelect && !this.isMultiple) this.#syncSingleLabel();
         this.hide();
       }
     });

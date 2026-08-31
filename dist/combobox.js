@@ -938,7 +938,7 @@
             }
             this.refresh();
           }
-          if (!this.isMultiple)
+          if (this.isSelect && !this.isMultiple)
             this.#syncSingleLabel();
           this.hide();
         }
