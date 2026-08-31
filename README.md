@@ -4,7 +4,7 @@ A small native-first combobox and filterable-select library built around native 
 
 The project deliberately starts from browser primitives and Open UI concepts. Working identity is intentionally boring: npm package `@lekoala/combobox`, engine class `Combobox`, primary element `<combo-box>`.
 
-> **Status:** v0.1.0. The source is pure ESM in `src/` with **zero globals**; a generated classic build (`dist/combobox.js`, from `src/define.js`) covers `file://` and classic `<script>` consumers. CSS Anchor Positioning + the Popover API are the only modern-feature floor; older engines degrade to native controls.
+> **Status:** v0.1.0. The source is pure ESM in `src/` with **zero globals**; a generated classic build (`dist/combobox.js`, from `src/define.js`) covers `file://` and classic `<script>` consumers, with committed minified CSS/JS, generated `dist/types` declarations and a Custom Elements Manifest. CSS Anchor Positioning + the Popover API are the only modern-feature floor; older engines degrade to native controls.
 
 Migrating from `bootstrap5-tags` or `bootstrap5-autocomplete`? See [Migrating to Combobox](docs/MIGRATION.md).
 
@@ -164,14 +164,24 @@ Reordering **is** a core data concern; drag/drop is merely one possible UI for c
 ```text
 AGENTS.md                 implementation rules for coding agents/contributors
 README.md                 project overview
-demo/index.html           architecture demo (always loads generated dist/combobox.js)
-src/index.js              pure ESM exports: engine + element + helpers
+demo/index.html           architecture demo (always loads the generated dist bundle/css)
+src/index.js              pure ESM exports: engine + element + helpers + public types
 src/define.js             single side-effect entry: registers <combo-box>
 src/helpers.js            pure helpers (normalization, items, separators/tokenizer)
 src/combobox.js           engine: Combobox class (ESM, no globals)
 src/combo-box.js          custom element wrapper: ComboBoxElement + defineCombobox()
 src/combobox.css          minimal demo/component skin
-dist/combobox.js          generated classic build (bun run build, gitignored)
+dist/combobox.js          generated classic build (iife, unminified)
+dist/combobox.min.js      generated classic build (minified)
+dist/combobox.css         component stylesheet
+dist/combobox.min.css     minified component stylesheet
+dist/types/*.d.ts         generated TypeScript declarations (from JSDoc)
+custom-elements.json      generated Custom Elements Manifest
+jsconfig.json             strict JSDoc typecheck surface (tsc checkJs)
+tsconfig.types.json       declaration emission project (dist/types)
+scripts/build.js          bundle + CSS artifact build
+scripts/custom-elements.js custom-elements.json generator
+scripts/check-package.js  npm tarball contract gate
 docs/ARCHITECTURE.md      invariants and internal model
 docs/API.md               proposed public API/events
 docs/USE_CASES.md         real application scenarios
@@ -180,14 +190,17 @@ docs/TESTING.md           exhaustive test plan + reference suites
 docs/ROADMAP.md           implementation phases
 test/unit/helpers.test.js pure-helper unit tests (bun, ESM source)
 test/browser/*.spec.js    Playwright behavioral suite (ESM source)
-test/dist/*.spec.js       Playwright smoke tests for dist/combobox.js
+test/dist/*.spec.js       Playwright smoke tests for the dist bundle
+test/types/consumer.ts    TypeScript consumer contract test against the published types
 ```
 
 ## Development
 
 The library has **no runtime dependencies and no globals**. The only build is the
-generated distribution artifact: `bun run build` produces `dist/combobox.js` from
-`src/define.js` (bundled `iife`, unminified, `file://`-compatible).
+generated distribution artifacts: `bun run build` produces the `dist/` bundle
+(iife unminified + minified), the component CSS, the TypeScript declarations
+(`dist/types`) and the Custom Elements Manifest (`custom-elements.json`). All
+generated artifacts are committed and CI-enforced against drift.
 
 ```bash
 bun install
@@ -196,18 +209,19 @@ bun run build
 bun run check
 ```
 
-`check` = syntax + lint + unit + build + Chromium browser + dist smoke. The browser suite runs
+`check` = syntax + lint + typecheck + unit + build + type consumer test + package
+contract + generated-drift + Chromium browser + dist smoke. The browser suite runs
 against the **ESM source** (`src/…`); only `test/dist` exercises the generated bundle.
-`bun run test:browser:matrix` / `test:matrix` extend the same suites to **Firefox + WebKit**
-(current Playwright engines all satisfy the Popover + Anchor feature gate, so the enhanced
-picker runs on all three). Popover, focus, form validation, keyboard behavior and Anchor
-Positioning need a real browser. Pure matching/tokenization/order helpers are unit-tested
-in `test/unit` (`bun run test:unit`).
+`bun run check:all` / `bun run test:browser:all` extend the same suites to **Firefox +
+WebKit** (current Playwright engines all satisfy the Popover + Anchor feature gate, so the
+enhanced picker runs on all three). Popover, focus, form validation, keyboard behavior
+and Anchor Positioning need a real browser. Pure matching/tokenization/order helpers
+are unit-tested in `test/unit` (`bun run test`).
 
 ## Before publishing a v1
 
-The before-publish checklist is largely closed for v0.1.0: Chromium runs on every CI
-push/PR and Firefox + WebKit run a matrix on `master`/tags, the package metadata is in
-place (`prepack` builds `dist/`), and `TESTING.md` tracks the reference-suite gaps that
-must close before 1.0. Generated type declarations are deliberately deferred past the
-v1 gate. Run `bun run check` + the `test:matrix` engines before cutting a release.
+The v0.1.0 publishing shape is in place and CI-enforced: Chromium, Firefox and WebKit
+run the browser matrix, `check:static` gates typecheck/lint/unit/build/types/package
+contract/generated drift, and `npm pack --dry-run` validates the tarball. Generated
+type declarations ship in `dist/types` and the consumer contract is locked by
+`test/types/consumer.ts`. Run `bun run check:all` before cutting a release.

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>@lekoala/combobox demo</title>
-  <link rel="stylesheet" href="../src/combobox.css">
+  <link rel="stylesheet" href="../dist/combobox.css">
   <link rel="stylesheet" href="../demo/demo.css">
   <script src="../dist/combobox.js"></script>
 </head>
@@ -540,7 +540,7 @@
 
       document.getElementById("rich-widget").configure({
         render: {
-          option(item, { selected }) {
+          option(item, { selected: _selected }) {
             const node = document.createElement("span");
             node.append(document.createTextNode(item.label));
             if (item.data.kind === "favorite") {

@@ -81,20 +81,28 @@ Lifecycle: `init`, `getInstance`, `getOrCreateInstance`, `show`, `hide`, `dispos
 ```bash
 bun install
 bun run lint
-bun run test:unit
-bun run build
-bun run test:browser
-bun run test:dist
-bun run check
+bun run typecheck
+bun run test          # unit tests
+bun run test:types    # TypeScript consumer contract (needs build first)
+bun run build         # bundle + CSS + dist/types + custom-elements.json
+bun run test:browser  # Chromium behavior suite (source ESM)
+bun run test:dist     # dist bundle smoke
+bun run check:package # npm tarball contract
+bun run check:generated # git diff --exit-code -- dist custom-elements.json
+bun run check         # full static chain + Chromium browser + dist smoke
+bun run check:all     # check + firefox/webkit browser matrix
 ```
 
-`check` = syntax + lint + unit + build + browser + dist smoke. The behavioral browser
-suite targets the ESM source; only `test/dist` exercises the generated bundle.
+`check:static` (part of `check`) = syntax + lint + typecheck + unit + build + type
+consumer + package contract + generated drift. The behavioral browser suite targets the
+ESM source; only `test/dist` exercises the generated bundle.
 
-The demo (`demo/index.html`) always loads the generated classic `dist/combobox.js`
-(self-registers `<combo-box>` with zero globals), so it works over both http(s) and
-`file://` after a single `bun run build`. The demo validates the distributable; the
-source ESM is exercised directly by the unit/browser test suites.
+The demo (`demo/index.html`) always loads the generated classic `dist/combobox.js` and
+`dist/combobox.css` (self-registers `<combo-box>` with zero globals), so it works over
+both http(s) and `file://` after a single `bun run build`. The demo validates the
+distributable; the source ESM is exercised directly by the unit/browser test suites.
+Generated artifacts are committed; never hand-edit `dist/` or `custom-elements.json` — a
+drift check in CI rejects out-of-sync generated files.
 
 ## Definition of done for a feature
 

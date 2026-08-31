@@ -26,11 +26,12 @@ side-effect entry and the single source of the generated classic build.
 
 Final export contract:
 
-- `src/index.js` — ESM barrel: `export { Combobox }` (`default` too), `ComboBoxElement`, `defineCombobox`, plus the pure helpers (`normalize`, `toItem`, `parseSeparators`, `splitTokens`, `rankByScore`, `reconcileSelected`, `moveValueInOrder`) from `src/helpers.js`. Importing it **never registers** anything.
+- `src/index.js` — ESM barrel: `export { Combobox }` (`default` too), `ComboBoxElement`, `defineCombobox`, plus the pure helpers (`normalize`, `toItem`, `parseSeparators`, `splitTokens`, `rankByScore`, `reconcileSelected`, `moveValueInOrder`) from `src/helpers.js`. Public types (`ComboboxOptions`, `ComboboxItem`, `ComboboxSource`, `LoadContext`) are re-exported as JSDoc typedefs. Importing it **never registers** anything.
 - `src/define.js` — side-effect entry that calls `defineCombobox()`; importing `@lekoala/combobox/define` registers `<combo-box>`.
-- `dist/combobox.js` (`bun run build`, from `src/define.js`) — a self-contained iife classic script that registers `<combo-box>` and nothing else, keeping `file://` and classic `<script>` consumers working without a server. No globals are leaked.
-- `./combobox.css` ships as a subpath export.
-- Types are generated from checked JSDoc; no TypeScript source/transpilation.
+- `dist/combobox.js` / `dist/combobox.min.js` (`bun run build`, from `src/define.js`) — self-contained iife classic scripts that register `<combo-box>` and nothing else, keeping `file://` and classic `<script>` consumers working without a server. No globals are leaked.
+- `dist/combobox.css` / `dist/combobox.min.css` ship as subpath exports; the demo loads `dist/combobox.css` so the distributed CSS is exercised.
+- Types are generated from checked JSDoc (`tsconfig.types.json` → `dist/types`); no TypeScript source/transpilation. A `custom-elements.json` manifest is generated from the element source.
+- All generated artifacts are committed; `check:generated` rejects drift.
 
 `package.json` shape:
 
@@ -38,12 +39,24 @@ Final export contract:
 {
   "type": "module",
   "exports": {
-    ".": "./src/index.js",
-    "./define": "./src/define.js",
-    "./combobox.css": "./src/combobox.css"
+    ".": { "types": "./dist/types/index.d.ts", "import": "./src/index.js" },
+    "./define": { "types": "./dist/types/define.d.ts", "import": "./src/define.js" },
+    "./combobox.css": "./src/combobox.css",
+    "./dist/combobox.js": "./dist/combobox.js",
+    "./dist/combobox.min.js": "./dist/combobox.min.js",
+    "./dist/combobox.css": "./dist/combobox.css",
+    "./dist/combobox.min.css": "./dist/combobox.min.css"
   },
+  "files": ["dist", "src", "custom-elements.json", "LICENSE", "README.md"],
   "scripts": {
-    "build": "bun build src/define.js --outfile=dist/combobox.js --format=iife"
+    "typecheck": "tsc -p jsconfig.json",
+    "types": "tsc -p tsconfig.types.json",
+    "build:bundle": "bun scripts/build.js",
+    "build:types": "bun run types",
+    "build:manifest": "bun scripts/custom-elements.js",
+    "build": "bun run build:bundle && bun run build:types && bun run build:manifest",
+    "check:package": "bun scripts/check-package.js",
+    "check:generated": "git diff --exit-code -- dist custom-elements.json"
   }
 }
 ```
@@ -73,9 +86,9 @@ Before v1, document the actual tested browser floor based on the feature gate an
 - [x] freeze Phase 0 API questions.
 - [x] convert the POC source to pure ESM exports + generated classic build (`src/define.js` → `dist/combobox.js`) with zero globals.
 - [x] browser suite targets the ESM source; `test/dist` smoke-tests the bundle.
-- [ ] create generated types/checkJs setup.
-- [x] implement full P0 browser-test matrix (browser suite spans Chromium/Firefox/WebKit; `check` stays Chromium-only, `test:browser:matrix`/`test:matrix` cover Firefox+WebKit).
-- [x] test current Chromium + Firefox + WebKit and document support policy (Playwright 1.55 bundles Firefox >139 and WebKit 26.x, which both satisfy the Popover + CSS Anchor feature gate, so the enhanced picker exercises on all three engines).
+- [x] generated types/checkJs setup (`strict` checkJs; `tsconfig.types.json` → `dist/types`; consumer locked by `test/types/consumer.ts`).
+- [x] implement full P0 browser-test matrix (browser suite spans Chromium/Firefox/WebKit; `check` stays Chromium-only, `test:browser:all`/`check:all` cover Firefox+WebKit).
+- [x] test current Chromium + Firefox + WebKit and document support policy (Playwright 1.62 bundles engines that all satisfy the Popover + CSS Anchor feature gate, so the enhanced picker exercises on all three).
 - [ ] refresh `docs/MIGRATION.md` examples once the API freezes.
 
 ## Development commands
@@ -84,9 +97,10 @@ Before v1, document the actual tested browser floor based on the feature gate an
 bun install
 bunx playwright install chromium firefox webkit   # all three matrix engines
 bun run build
-bun run check                # syntax + lint + unit + Chromium browser + dist
-bun run test:browser:matrix  # Firefox + WebKit browser
-bun run test:matrix          # Firefox + WebKit browser + dist
+bun run check                # static chain + Chromium browser + dist smoke
+bun run check:all            # + Firefox + WebKit browser
+bun run test:types           # TypeScript consumer contract (after build)
+bun run check:package        # npm tarball contract
 ```
 
 ## Recommended first commits
