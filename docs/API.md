@@ -106,6 +106,7 @@ take precedence over both.
     loading: "Loading…",
     loadError: "Failed to load results",
     create: (query) => `Create “${query}”`,
+    position: (label, position, total) => `${label} position ${position} of ${total}`,
   },
   minChars: 0,
   match: "includes",       // includes | startswith | pattern | function

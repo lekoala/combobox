@@ -90,12 +90,12 @@ Full ESM source with zero globals; behavioral suite stays on the source, the bun
 
 ## Phase 6 — Ordered multiple selection
 
-- explicit source/result/selection order tests;
-- `move()`;
-- ordered chips;
-- ordered FormData;
-- keyboard reorder + announcement;
-- external reorder UI example, but no built-in drag/drop.
+- [x] explicit source/result/selection order tests (browser `order.spec.js` + unit `reconcileSelected`/`moveValueInOrder`);
+- [x] `move()` (model operation with `combobox:beforereorder`/`combobox:reorder`, catalogue never mutated, no-op/edge semantics tested);
+- [x] ordered chips (`#selectedOptionsInOrder()` reconciles remembered order with native selection);
+- [x] ordered FormData (`formdata` listener serializes repeated entries in explicit order when `selectionOrder: "selected"`; native order otherwise);
+- [x] keyboard reorder + announcement (`Alt+ArrowLeft/Right`, `Alt+Home/End` on a focused chip, focus kept, `messages.position` live announcement; RTL covered);
+- [x] external reorder UI example (demo section 5), no built-in drag/drop.
 
 ## Phase 7 — Security/accessibility/browser matrix
 

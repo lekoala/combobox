@@ -78,3 +78,28 @@ test("keyboard navigation is physical in RTL", async ({ page }) => {
   expect(state.activeIndex).toBe(1);
   expect(state.label).toBe("ירושלים");
 });
+
+test("Alt+ArrowLeft reorder is physical in RTL and never moves catalogue options", async ({ page }) => {
+  const state = await page.evaluate(() => {
+    const select = document.getElementById("rtl-multi");
+    const combo = Combobox.getOrCreateInstance(select, { selectionOrder: "selected" });
+    combo.select("3"); // selected order: 1, 2, 3
+    const chip3 = Array.from(document.querySelectorAll("#rtl-multi + .cb-control .cb-chip")).find(
+      (chip) => chip.dataset.value === "3",
+    );
+    chip3.focus();
+    chip3.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowLeft", altKey: true, bubbles: true, cancelable: true }),
+    );
+    return {
+      values: combo.getSelectedValues(),
+      focused: document.activeElement?.dataset?.value ?? null,
+      status: document.querySelector(".cb-status")?.textContent ?? "",
+      catalogue: Array.from(select.options, (o) => o.value),
+    };
+  });
+  expect(state.values).toEqual(["1", "3", "2"]);
+  expect(state.focused).toBe("3");
+  expect(state.status).toBe("סלט position 2 of 3");
+  expect(state.catalogue).toEqual(["1", "2", "3"]);
+});

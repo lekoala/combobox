@@ -235,16 +235,18 @@ Select2's tokenizer suite includes the important “createTag returns null must 
 
 ## N. Selection order
 
-- [ ] default source order remains source-like.
-- [ ] `selectionOrder:"selected"` records selection sequence.
-- [ ] source option DOM order does not change merely because selection order changes.
-- [ ] result sorting does not change selection order.
-- [ ] `move(value,index)` updates chips/order and emits reorder only.
-- [ ] before reorder cancellation.
-- [ ] remove then re-add gives defined position.
-- [ ] external DOM selected option is reconciled predictably by sync.
-- [ ] FormData repeated entries follow explicit ordered mode.
-- [ ] keyboard reorder behavior and live announcement once finalized.
+- [x] default source order remains source-like (`order.spec.js` covers chips, `move()` refusal and native FormData order).
+- [x] `selectionOrder:"selected"` records selection sequence (click order preserved, `order.spec.js`).
+- [x] source option DOM order does not change merely because selection order changes (catalogue asserted after every reorder, `order.spec.js`).
+- [x] result sorting does not change selection order (custom `sort` in `order.spec.js`).
+- [x] `move(value,index)` updates chips/order and emits reorder only (`order.spec.js` covers the `{value,from,to,values}` payload and `move()` no-ops).
+- [x] before reorder cancellation (`combobox:beforereorder` preventDefault pins the order, `order.spec.js`).
+- [x] remove then re-add gives defined position (append-at-end, `order.spec.js`).
+- [x] external DOM selected option is reconciled predictably by sync (`source-adapters.spec.js`).
+- [x] FormData repeated entries follow explicit ordered mode (`order.spec.js`; native order asserted in source mode).
+- [x] keyboard reorder behavior and live announcement (`Alt+Arrow/Home/End` keeps focus and announces via `messages.position`, `order.spec.js`; physical-in-RTL proof in `rtl.spec.js`).
+
+Covered by `test/browser/order.spec.js` (fixture `test/fixtures/order.html`).
 
 The pure order model is covered by unit tests (`reconcileSelected` — order ∩ selection, native-order append for unknowns, never resurrecting deselected values; `moveValueInOrder` — clamped from/to, fresh array, no-op/unknown → `null`). Those unit tests do **not** replace the DOM/FormData integration proof above: chips rendering, catalogue order stability and ordered FormData stay as browser tests.
 

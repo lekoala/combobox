@@ -19,6 +19,7 @@ const DEFAULT_MESSAGES = {
   loading: "Loading…",
   loadError: "Failed to load results",
   create: (query) => `Create “${query}”`,
+  position: (label, position, total) => `${label} position ${position} of ${total}`,
 };
 
 const DEFAULTS = {
@@ -1500,6 +1501,28 @@ export class Combobox {
     const current = event.target.closest(".cb-chip");
     const index = chips.indexOf(current);
 
+    // Ordered-mode keyboard reorder: Alt+Arrow/Home/End reorders a focused chip
+    // without changing navigation keys. The gesture is consumed only when a real
+    // move is possible; otherwise it falls through untouched (mirroring the
+    // tabSelect "preventDefault only when a commit is possible" rule).
+    if (event.altKey && index >= 0 && this.options.selectionOrder === "selected") {
+      const target =
+        event.key === "ArrowLeft"
+          ? index - 1
+          : event.key === "ArrowRight"
+            ? index + 1
+            : event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? chips.length - 1
+                : index;
+      if (target !== index && target >= 0 && target < chips.length) {
+        event.preventDefault();
+        this.#reorderChip(item, target);
+        return;
+      }
+    }
+
     if (
       event.key === "ArrowLeft" ||
       event.key === "ArrowRight" ||
@@ -1534,6 +1557,19 @@ export class Combobox {
       event.preventDefault();
       this.input.focus();
     }
+  }
+
+  /** Move a focused chip to an absolute position, keep it focused and announce. */
+  #reorderChip(item, target) {
+    if (!this.move(item.value, target)) return;
+    const chips = Array.from(this.chips.querySelectorAll(".cb-chip"));
+    const chip = chips.find((candidate) => candidate.dataset.value === item.value);
+    chip?.focus();
+    this.status.textContent = this.options.messages.position(
+      item.label,
+      chips.indexOf(chip) + 1,
+      chips.length,
+    );
   }
 
   /* ---------------------------------------------------------------------- */

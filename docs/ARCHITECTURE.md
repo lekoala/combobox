@@ -267,7 +267,7 @@ Multiple chips:
 - Escape returns to search;
 - Alt+Arrow Left/Right reorders a focused chip one position; Alt+Home/End jumps to first/last; the moved chip keeps focus and the live status region announces the new position.
 
-No virtual caret positions between chips. Reordering chip keyboard support lands with ordered-mode completion.
+No virtual caret positions between chips. Reordering chip keyboard support landed together with ordered mode (`Alt+Arrow/Home/End`, live position announcement).
 
 ## 10. Fallback policy
 

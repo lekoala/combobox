@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Order fixtures</title>
+</head>
+<body>
+  <form id="order-form">
+    <label for="ordered">Ordered</label>
+    <select id="ordered" name="ordered[]" multiple>
+      <option value="a" selected>Alpha</option>
+      <option value="b">Beta</option>
+      <option value="c">Gamma</option>
+      <option value="d">Delta</option>
+    </select>
+  </form>
+
+  <form id="source-form">
+    <label for="sourceordered">Source order</label>
+    <select id="sourceordered" name="sourceordered[]" multiple>
+      <option value="1" selected>One</option>
+      <option value="2" selected>Two</option>
+      <option value="3" selected>Three</option>
+      <option value="4">Four</option>
+    </select>
+  </form>
+
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>
