@@ -12,6 +12,11 @@ test("default tabSelect (false): Tab moves focus out without selecting", async (
 
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("capped"));
+    // A following field anchors native traversal: some engines (Firefox) do not
+    // wrap forward-tab from the last focusable element, Chromium does.
+    const next = document.createElement("input");
+    next.id = "tab-next";
+    document.body.append(next);
   });
 
   const input = page.locator("#capped + .cb-control .cb-input");
@@ -23,9 +28,7 @@ test("default tabSelect (false): Tab moves focus out without selecting", async (
     const select = document.getElementById("capped");
     return {
       value: select.value,
-      focusLeft:
-        document.activeElement !==
-        document.getElementById("capped").nextElementSibling.querySelector(".cb-input"),
+      focusLeft: document.activeElement?.id === "tab-next",
       pickerClosed: !document.querySelector(".cb-popover")?.matches(":popover-open"),
     };
   });
@@ -77,6 +80,9 @@ test("tabSelect true: Tab with nothing to commit keeps native traversal", async 
   await page.evaluate(() => {
     const select = document.getElementById("capped");
     Combobox.getOrCreateInstance(select, { tabSelect: true });
+    const next = document.createElement("input");
+    next.id = "tab-next";
+    document.body.append(next);
   });
 
   const input = page.locator("#capped + .cb-control .cb-input");
@@ -87,7 +93,7 @@ test("tabSelect true: Tab with nothing to commit keeps native traversal", async 
     const select = document.getElementById("capped");
     return {
       value: select.value,
-      focusLeft: document.activeElement !== select.nextElementSibling.querySelector(".cb-input"),
+      focusLeft: document.activeElement?.id === "tab-next",
     };
   });
   expect(state.value).toBe("");

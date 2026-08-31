@@ -6,6 +6,9 @@ export default defineConfig({
   timeout: 10_000,
   expect: { timeout: 3_000 },
   fullyParallel: true,
+  // Capped to keep the Windows worker pool stable: higher parallelism produced
+  // intermittent protocol "session closed" flakes under the previous default.
+  workers: 4,
   reporter: "list",
   webServer: {
     command: "node test/server.js",
@@ -21,6 +24,14 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "firefox",
+      use: { ...devices["Desktop Firefox"] },
+    },
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
     },
   ],
 });

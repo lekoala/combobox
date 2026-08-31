@@ -1050,24 +1050,33 @@ export class Combobox {
     // preventDefault() only fires when a commit is actually possible; otherwise
     // Tab keeps its native focus-traversal behavior. IME composition is never a
     // commit (this.composing mirrors the blur handler) and always falls through
-    // to native Tab.
-    if (event.key === "Tab" && this.options.tabSelect && this.isOpen()) {
-      if (event.isComposing || this.composing) return;
-      if (this.isMultiple && this.#separatorsActive() && this.input.value.trim()) {
-        event.preventDefault();
-        void this.#commitEnterTokens();
+    // to native Tab. An open top-layer popover traps sequential focus in some
+    // engines (Firefox keeps focus inside an open manual popover), so whenever
+    // Tab does not commit it still closes the picker before letting traversal
+    // proceed — without ever preventDefault()ing.
+    if (event.key === "Tab" && this.isOpen()) {
+      if (this.options.tabSelect) {
+        if (event.isComposing || this.composing) return;
+        if (this.isMultiple && this.#separatorsActive() && this.input.value.trim()) {
+          event.preventDefault();
+          void this.#commitEnterTokens();
+          return;
+        }
+        const active = this.visibleItems[this.activeIndex];
+        if (active) {
+          event.preventDefault();
+          this.#selectItem(active);
+          return;
+        }
+        if (this.#canCreate(this.input.value)) {
+          event.preventDefault();
+          void this.#createItem(this.input.value.trim());
+          return;
+        }
+        this.hide();
         return;
       }
-      const active = this.visibleItems[this.activeIndex];
-      if (active) {
-        event.preventDefault();
-        this.#selectItem(active);
-        return;
-      }
-      if (this.#canCreate(this.input.value)) {
-        event.preventDefault();
-        void this.#createItem(this.input.value.trim());
-      }
+      this.hide();
       return;
     }
 

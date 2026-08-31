@@ -17,12 +17,15 @@
     "test:unit": "bun test test/unit",
     "test:browser": "playwright test test/browser",
     "test:browser:headed": "playwright test test/browser --headed",
+    "test:browser:chromium": "playwright test test/browser --project chromium",
+    "test:browser:matrix": "playwright test test/browser --project firefox --project webkit --workers 3",
+    "test:matrix": "bun run test:browser:matrix && bun run test:dist --project firefox --project webkit --workers 3",
     "test:dist": "playwright test test/dist",
     "pretest:dist": "bun run build",
     "test:syntax": "node --check src/combobox.js && node --check src/combo-box.js && node --check src/helpers.js && node --check src/index.js && node --check src/define.js",
     "lint": "biome check src test playwright.config.js",
     "format": "biome format --write src test playwright.config.js",
-    "check": "bun run test:syntax && bun run lint && bun run test:unit && bun run build && bun run test:browser && bun run test:dist"
+    "check": "bun run test:syntax && bun run lint && bun run test:unit && bun run build && bun run test:browser --project chromium && bun run test:dist --project chromium"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.8",

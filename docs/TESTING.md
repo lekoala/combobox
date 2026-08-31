@@ -64,15 +64,17 @@ Reference lesson: Select2 DOM-integration suite exercises source mutation and up
 
 Run on every browser with fallback forced even when modern APIs exist.
 
-- [ ] input+datalist remains native and named.
-- [ ] single select remains native.
-- [ ] multiple select remains native.
-- [ ] no `.cb-popover` custom picker is created.
-- [ ] creatable select gets unnamed fallback input and Add button only.
-- [ ] fallback create selects existing option rather than duplicating it.
-- [ ] fallback create can materialize async `{value,label}` if we retain async support there.
-- [ ] fallback create respects createFilter/maxItems.
-- [ ] fallback `dispose()` removes only fallback enhancement.
+Coverage: `test/browser/matrix.spec.js` (auto enhanced/fallback per engine, forced-fallback contract, native submission), `combobox-element.spec.js` (fallback create parity incl. async create/createFilter/guards/dispose) and `test/dist/smoke.spec.js` (`?native=1`).
+
+- [x] input+datalist remains native and named (untouched fallback path).
+- [x] single select remains native (untouched fallback path).
+- [x] multiple select remains native.
+- [x] no `.cb-popover` custom picker is created.
+- [x] creatable select gets unnamed fallback input and Add button only.
+- [x] fallback create selects existing option rather than duplicating it.
+- [x] fallback create can materialize async `{value,label}`.
+- [x] fallback create respects createFilter/maxItems.
+- [x] fallback `dispose()` removes only fallback enhancement.
 
 ## C. Open / close / pointer lifecycle
 
@@ -289,17 +291,17 @@ Tom Select validation tests cover required state transitions and input pattern v
 
 ## R. Accessibility state
 
-Automated browser assertions:
+Automated browser assertions (`test/browser/aria.spec.js` for the role/attribute/status coverage):
 
 - [x] combobox role on focus input.
-- [ ] listbox/option semantics.
-- [ ] aria-expanded toggles exactly with picker state.
+- [x] listbox/option semantics (listbox on `aria-controls` target, `role=option` rows, `aria-multiselectable` on multiple).
+- [x] aria-expanded toggles exactly with picker state.
 - [x] aria-controls lifecycle is valid.
-- [ ] aria-activedescendant references existing active option and is removed when closed.
+- [x] aria-activedescendant references existing active option and is removed when closed.
 - [x] accessible name comes from label/aria-label.
 - [x] aria-describedby propagated.
 - [x] required/invalid/disabled state represented.
-- [ ] status live region announces loading/no-results and selected/removal/reorder where necessary.
+- [x] status live region announces loading/no-results/reorder. **Decision:** `select`/`remove` are intentionally *not* announced — chips removal is visible and focus-managed, and announcing every token of a separator paste batch would be noise; documented API choice.
 
 Manual AT matrix before release:
 
@@ -320,6 +322,8 @@ Inject hostile strings into:
 
 Verify no execution. Renderer Node paths must make unsafe application behavior explicit rather than silently trusting HTML strings.
 
+Covered by `test/browser/xss.spec.js` (fixture `test/fixtures/xss.html`): hostile labels/values/optgroup labels/`data-*`/remote items/create text/state messages render as literal text via `textContent`, `window.__xss` + `pageerror` prove no execution, no `<script|img|svg>` nodes generated, no attribute breakout, datalist options stay literal.
+
 Tom Select has a dedicated XSS suite for original values, group labels, option labels/values and custom templates; match that coverage at minimum.
 
 ## T. Layout/browser regressions
@@ -332,7 +336,9 @@ Tom Select has a dedicated XSS suite for original values, group labels, option l
 - [ ] multiple chips wrap/grow without changing picker anchor width incorrectly.
 - [ ] RTL logical placement/text.
 - [x] RTL: chips flow right-to-left, picker flips and has no horizontal overflow, physical keyboard navigation is stable.
-- [ ] zoom and forced-colors.
+- [x] reduced motion: no transition/animation runs in the picker (CSS has none; asserted under `prefers-reduced-motion: reduce` in `visual.spec.js`).
+- [x] forced-colors/high contrast: picker rows and chips stay distinguishable and visible (`visual.spec.js`; engines without the `forced-colors` media query are skipped).
+- [x] zoom: at 200% zoom the picker stays anchored, internally contained and within the document (`visual.spec.js`).
 
 These cover multiple historical issues from both existing libraries that should disappear with top-layer + Anchor rather than become special cases.
 
@@ -351,4 +357,4 @@ Select2 has a DOM-change regression using 4000 options and asserts one selection
 
 # Starter release gate
 
-Before calling the implementation “v1-ready”, all P0 cases above must be automated except the explicitly manual AT matrix. At minimum run current Chromium, Firefox and WebKit in CI, and always run forced-fallback tests as a separate path.
+Before calling the implementation “v1-ready”, all P0 cases above must be automated except the explicitly manual AT matrix. The suite runs on current Chromium, Firefox and WebKit (Playwright projects; `bun run test:browser:matrix` / `test:matrix` for the non-Chromium engines, `check` stays Chromium-only for fast local loops), and forced-fallback tests run in every engine.

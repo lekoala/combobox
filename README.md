@@ -187,17 +187,21 @@ generated distribution artifact: `bun run build` produces `dist/combobox.js` fro
 
 ```bash
 bun install
-bunx playwright install chromium
+bunx playwright install chromium firefox webkit
 bun run build
 bun run check
 ```
 
-`check` = syntax + lint + unit + build + browser + dist smoke. The browser suite runs
+`check` = syntax + lint + unit + build + Chromium browser + dist smoke. The browser suite runs
 against the **ESM source** (`src/…`); only `test/dist` exercises the generated bundle.
-Popover, focus, form validation, keyboard behavior and Anchor Positioning need a real
-browser. Pure matching/tokenization/order helpers are unit-tested in `test/unit`
-(`bun run test:unit`).
+`bun run test:browser:matrix` / `test:matrix` extend the same suites to **Firefox + WebKit**
+(current Playwright engines all satisfy the Popover + Anchor feature gate, so the enhanced
+picker runs on all three). Popover, focus, form validation, keyboard behavior and Anchor
+Positioning need a real browser. Pure matching/tokenization/order helpers are unit-tested
+in `test/unit` (`bun run test:unit`).
 
 ## Before publishing a v1
 
-The contracts are intentionally ahead of the implementation. In particular, complete the P0 items in [ROADMAP.md](docs/ROADMAP.md), then run the full matrix in [TESTING.md](docs/TESTING.md) across current Chromium, Firefox and WebKit.
+The contracts are intentionally ahead of the implementation. In particular, run the full
+matrix in [ROADMAP.md](docs/ROADMAP.md) across current Chromium, Firefox and WebKit
+(`bun run check` + `bun run test:matrix`) before releasing.

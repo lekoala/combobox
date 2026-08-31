@@ -179,7 +179,7 @@ test.describe("optgroup / disabled propagation", () => {
     test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
     await init(page, "grouped");
-    page.locator(control("grouped")).click();
+    await page.locator(control("grouped")).click();
     await page.waitForTimeout(40);
 
     await page.evaluate(async () => {
@@ -223,7 +223,7 @@ test.describe("optgroup / disabled propagation", () => {
     await input.fill("Carrot");
     expect(await page.locator(".cb-popover:visible .cb-group").allTextContents()).toEqual(["Veggies"]);
     await input.fill("zzz");
-    expect(await page.locator(".cb-popover:visible .cb-group")).toHaveCount(0);
+    expect(await page.locator(".cb-popover:visible .cb-group").allTextContents()).toEqual([]);
   });
 });
 

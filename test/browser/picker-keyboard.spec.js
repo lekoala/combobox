@@ -191,9 +191,13 @@ test("all four keys open a closed picker; Escape closes and clears activedescend
   expect(state.activeIndex).toBe(3);
 
   await input.press("Escape");
-  state = await openState(page, "capped");
-  expect(state.open).toBe(false);
-  expect(state.activeDescendant).toBe(false);
+  await page.waitForFunction((id) => {
+    const combo = Combobox.getInstance(document.getElementById(id));
+    const activeId = combo.input.getAttribute("aria-activedescendant");
+    // The popover toggle event that clears the attribute lands asynchronously
+    // after hidePopover(); poll instead of asserting a single-shot snapshot.
+    return !combo.isOpen() && activeId === null;
+  }, "capped");
 });
 
 test("open/close events fire in order; beforeopen/beforeclose cancel without state flip", async ({

@@ -344,7 +344,7 @@ Focus stays in the search input; the picker is driven entirely through it (`role
 | `PageDown` / `PageUp` | move the active option by a page (listbox viewport height ÷ row height), clamped to the first/last selectable option |
 | `Enter` | select the active option, or create an eligible entry when no option is active |
 | `Escape` | close the picker and clear `aria-activedescendant` |
-| `Tab` | native focus traversal by default; with `tabSelect: true` commits the active option / eligible create like Enter, and only `preventDefault()`s when a commit is actually possible |
+| `Tab` | native focus traversal by default (an open picker closes first without blocking traversal, per the ARIA APG combobox pattern); with `tabSelect: true` commits the active option / eligible create like Enter, and only `preventDefault()`s when a commit is actually possible |
 
 Navigation keys always operate on the filtered, rendered window (`maxOptions`), open a closed picker, skip `disabled` rows, and never land on one. IME composition never tokenizes/selects. `autoselectFirst: true` preselects the first selectable option after every filter.
 

@@ -254,7 +254,7 @@ Picker:
 - Home/End jump to the first/last selectable option; PageDown/PageUp move by a page (listbox viewport height ÷ row height) and clamp at the selectable edges;
 - Enter selects active option or creates when eligible;
 - Escape closes and clears `aria-activedescendant`;
-- Tab: native focus traversal by default; the opt-in `tabSelect` option makes Tab commit the active option or an eligible create like Enter, but only ever blocks default focus traversal when such a commit is actually possible. Picker never blocks Tab during IME composition.
+- Tab: native focus traversal by default (an open picker closes first so an open top layer never traps the Tab in engines like Firefox, without ever `preventDefault()`ing); the opt-in `tabSelect` option makes Tab commit the active option or an eligible create like Enter, but only ever blocks default focus traversal when such a commit is actually possible. Picker never blocks Tab during IME composition.
 - Arrow and page keys are physical in RTL layouts (DOM-index semantics); direction-aware layout is handled by logical CSS alone.
 
 Multiple chips:

@@ -74,9 +74,20 @@ Before v1, document the actual tested browser floor based on the feature gate an
 - [x] convert the POC source to pure ESM exports + generated classic build (`src/define.js` → `dist/combobox.js`) with zero globals.
 - [x] browser suite targets the ESM source; `test/dist` smoke-tests the bundle.
 - [ ] create generated types/checkJs setup.
-- [ ] implement full P0 browser-test matrix.
-- [ ] test current Chromium + Firefox + WebKit and document support policy.
+- [x] implement full P0 browser-test matrix (browser suite spans Chromium/Firefox/WebKit; `check` stays Chromium-only, `test:browser:matrix`/`test:matrix` cover Firefox+WebKit).
+- [x] test current Chromium + Firefox + WebKit and document support policy (Playwright 1.55 bundles Firefox >139 and WebKit 26.x, which both satisfy the Popover + CSS Anchor feature gate, so the enhanced picker exercises on all three engines).
 - [ ] write legacy migration examples once API is frozen.
+
+## Development commands
+
+```bash
+bun install
+bunx playwright install chromium firefox webkit   # all three matrix engines
+bun run build
+bun run check                # syntax + lint + unit + Chromium browser + dist
+bun run test:browser:matrix  # Firefox + WebKit browser
+bun run test:matrix          # Firefox + WebKit browser + dist
+```
 
 ## Recommended first commits
 

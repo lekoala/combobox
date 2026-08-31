@@ -99,13 +99,13 @@ Full ESM source with zero globals; behavioral suite stays on the source, the bun
 
 ## Phase 7 — Security/accessibility/browser matrix
 
-- XSS fixture suite;
-- axe/static ARIA checks plus manual AT checklist;
-- Chromium/Firefox/WebKit current versions;
-- touch/IME/composition;
-- forced-colors/high contrast;
-- zoom and reduced motion where relevant;
-- fallback forced in every engine.
+- [x] XSS fixture suite (`test/browser/xss.spec.js` + `test/fixtures/xss.html`): hostile labels/values/optgroup/data/remote items/create/messages render as literal text, no execution, no attribute breakout, renderer Node path safe);
+- [x] axe/static ARIA checks plus manual AT checklist (`test/browser/aria.spec.js` covers roles, `aria-expanded`, `aria-controls`, `aria-activedescendant` lifecycle, `aria-multiselectable`, `aria-disabled`, status live region; manual AT matrix documented in `TESTING.md` — select/remove intentionally not announced, documented decision);
+- [x] Chromium/Firefox/WebKit current versions (Playwright projects; `check` stays Chromium-only for local speed, `test:browser:matrix`/`test:matrix` run the full matrix);
+- [x] touch/IME/composition (IME already covered; Chromium-only `test/browser/touch.spec.js` for tap open/select/close/remove/outside; engine is Touch-safe by construction — pointer events);
+- [x] forced-colors/high contrast (`visual.spec.js` proves rows/chips distinguishable, engine-skips engines without the media query);
+- [x] zoom and reduced motion where relevant (`visual.spec.js`: zero transition/animation honoured under reduced-motion; 200% zoom keeps the picker anchored and contained);
+- [x] fallback forced in every engine (`matrix.spec.js` proves auto enhanced/fallback per engine and identical forced-fallback contract on Chromium/Firefox/WebKit).
 
 ## Phase 8 — Package/release
 

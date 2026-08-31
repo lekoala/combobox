@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>XSS fixtures</title>
+</head>
+<body>
+  <!-- Minimal shell: hostile content is injected through DOM APIs by the spec
+       so the assertions exercise the engine's rendering, not the parser. -->
+  <form id="xss-form">
+    <select id="xss-tags" name="xss-tags[]" multiple></select>
+    <input id="xss-city" name="xss-city" list="xss-cities">
+    <datalist id="xss-cities"></datalist>
+  </form>
+
+  <script>window.__xss = 0;</script>
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>
