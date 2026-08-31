@@ -8,12 +8,106 @@ import {
   toItem,
 } from "./helpers.js";
 
+/* ---------------------------------------------------------------------- */
+/* Public type contracts                                                  */
+/* ---------------------------------------------------------------------- */
+
+/**
+ * A selectable source: a free-form `<input list>` or a `<select>`.
+ * @typedef {HTMLInputElement | HTMLSelectElement} ComboboxSource
+ */
+
+/**
+ * Matching/search strategy for a combobox.
+ * @typedef {"includes" | "startswith" | "fuzzy" | "pattern"} MatchStrategy
+ */
+
+/**
+ * Context passed to filtering, matching, scoring and sorting hooks, plus the
+ * async load/create callbacks.
+ * @typedef {Object} ComboboxContext
+ * @property {Combobox} combobox
+ * @property {ComboboxSource} source
+ * @property {HTMLInputElement} input The live search/filter input
+ */
+
+/**
+ * Load context for the async `load` callback.
+ * @typedef {Object} LoadContext
+ * @property {AbortSignal} signal
+ * @property {string | null} cursor
+ * @property {Combobox} combobox
+ * @property {ComboboxSource} source
+ * @property {HTMLInputElement} input
+ */
+
+/**
+ * Result of an async load: either a bare item list or `{ items, cursor }` for
+ * paged/append-only loading.
+ * @typedef {{ items: import("./helpers.js").ComboboxItem[], cursor: string | null } | import("./helpers.js").ComboboxItem[]} LoadResult
+ */
+
+/**
+ * async load callback.
+ * @typedef {(query: string, context: LoadContext) => Promise<LoadResult>} LoadCallback
+ */
+
+/**
+ * Context passed to the create and guards callbacks.
+ * @typedef {Object} CreateContext
+ * @property {AbortSignal} signal
+ * @property {Combobox} combobox
+ * @property {ComboboxSource} source
+ * @property {HTMLInputElement} input
+ * @property {boolean} [fallback] True when running on the native fallback path
+ */
+
+/**
+ * async create callback.
+ * @typedef {(label: string, context: CreateContext) => Promise<any>} CreateCallback
+ */
+
+/**
+ * Guard callback for `add`/`remove`/`clear`. A resolved `false` refuses the
+ * change; any other resolved value allows it. A thrown/rejected value is
+ * surfaced as an application error (guards distinguish `false` from rejection).
+ * @typedef {(payload: any, context: CreateContext) => Promise<boolean | void> | boolean | void} GuardCallback
+ */
+
+/**
+ * Custom tokenizer seam: `tokens` are complete consumed values; `rest` is the
+ * trailing incomplete text that must keep living in the input.
+ * @typedef {(value: string, context: ComboboxContext) => { tokens: string[], rest?: string }} TokenizeCallback
+ */
+
+/**
+ * Render context for the `render.*` hooks.
+ * @typedef {Object} RenderContext
+ * @property {Combobox} combobox
+ * @property {string} [query]
+ * @property {boolean} [selected]
+ * @property {*} [error]
+ */
+
+/**
+ * A renderer returns a DOM Node for rich content (strings render as text).
+ * Item renderers (`option`, `item`, `group`) receive the item; the row
+ * renderers (`create`, `noResults`, `loading`, `error`) receive the query or
+ * the load error instead.
+ * @typedef {(item: import("./helpers.js").ComboboxItem, context: RenderContext) => Node | string | null | undefined} ItemRenderer
+ * @typedef {(query: string, context: RenderContext) => Node | string | null | undefined} TextRenderer
+ * @typedef {(query: string, context: RenderContext & { error: any }) => Node | string | null | undefined} ErrorRenderer
+ */
+
+/** @type {WeakMap<ComboboxSource, Combobox>} */
 const instances = new WeakMap();
 let uid = 0;
+/** @type {Combobox | null} */
 let openCombobox = null;
 
 // Generated UI text, centralized for i18n. `render` is the DOM-representation
 // seam and stays separate; behavior options are above it.
+/** @type {Messages} */
 const DEFAULT_MESSAGES = {
   noResults: "No results",
   loading: "Loading…",
@@ -64,10 +158,22 @@ function supportsModernCombobox() {
   );
 }
 
+/**
+ * @param {object} object
+ * @param {string} key
+ * @returns {boolean}
+ */
 function hasOwn(object, key) {
   return Object.hasOwn(object, key);
 }
 
+/**
+ * @param {EventTarget} target
+ * @param {string} type
+ * @param {Record<string, any>} [detail]
+ * @param {{ cancelable?: boolean }} [options]
+ * @returns {CustomEvent}
+ */
 function emit(target, type, detail = {}, { cancelable = false } = {}) {
   const event = new CustomEvent(type, {
     bubbles: true,
@@ -89,6 +195,11 @@ function emit(target, type, detail = {}, { cancelable = false } = {}) {
   return event;
 }
 
+/**
+ * @param {number} ms
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<void>}
+ */
 function wait(ms, signal) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(resolve, ms);
@@ -103,6 +214,10 @@ function wait(ms, signal) {
   });
 }
 
+/**
+ * @param {HTMLElement} element
+ * @param {Node | string | null | undefined} content
+ */
 function setContent(element, content) {
   element.replaceChildren();
   if (content instanceof Node) {
@@ -119,6 +234,10 @@ function setContent(element, content) {
  * restore the authored state exactly. The returned object has a `restore()`
  * method: attributes that were absent are removed, those that had a value are
  * written back. This makes upgrade/dispose symmetry impossible to forget.
+ *
+ * @param {Element} element
+ * @param {string[]} names
+ * @returns {AttributeSnapshot}
  */
 function captureAttributes(element, names) {
   const original = new Map(names.map((name) => [name, element.getAttribute(name)]));
@@ -157,6 +276,134 @@ const INPUT_ATTRS = [
 ];
 
 /**
+ * Optional bookkeeping snapshot of one element's attributes so `dispose()` can
+ * restore the authored state exactly.
+ * @typedef {Object} AttributeSnapshot
+ * @property {() => void} restore Restore the captured attributes (removes what
+ *   was absent, rewrites what had a value)
+ */
+
+/**
+ * Screen-reader / UI status messages. Defaults are merged so the label
+ * producers (`create`, `position`) are always functions; the plain status
+ * strings (`noResults`, `loading`, `loadError`) are literal text rendered by
+ * `setContent` (rich DOM rows use the `render.*` hooks instead).
+ * @typedef {Object} Messages
+ * @property {string} [noResults]
+ * @property {string} [loading]
+ * @property {string} [loadError]
+ * @property {(query: string, context?: ComboboxContext) => string} [create]
+ * @property {(label: string, position: number, total: number, context?: ComboboxContext) => string} [position]
+ */
+
+/**
+ * Optional DOM-representation hooks. `option`/`group`/`item`/`create`/
+ * `noResults`/`loading`/`error` render the respective rows; a returned DOM
+ * Node is inserted for rich content, anything else (strings) is text.
+ * @typedef {Object} RenderMap
+ * @property {ItemRenderer} [option]
+ * @property {TextRenderer} [group]
+ * @property {ItemRenderer} [item]
+ * @property {TextRenderer} [create]
+ * @property {TextRenderer} [noResults]
+ * @property {TextRenderer} [loading]
+ * @property {ErrorRenderer} [error]
+ */
+
+/**
+ * Async guards keyed by lifecycle phase. `false` is a voluntary refusal that
+ * mutates nothing; a rejected promise is an application error surfaced via
+ * `combobox:guarderror`.
+ * @typedef {Object} GuardMap
+ * @property {GuardCallback} [add]
+ * @property {GuardCallback} [remove]
+ * @property {GuardCallback} [clear]
+ */
+
+/**
+ * Combobox configuration. All properties are optional; the engine deep-merges
+ * with its defaults. Callbacks are the JavaScript-only surface.
+ * @typedef {Object} ComboboxOptions
+ * @property {MatchStrategy | ((item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => boolean)} [match]
+ * @property {string | string[]} [searchFields]
+ * @property {number} [minChars]
+ * @property {boolean} [allowEmptyOption]
+ * @property {string} [placeholder]
+ * @property {Messages} [messages]
+ * @property {LoadCallback} [load]
+ * @property {boolean} [loadOnEmpty]
+ * @property {(query: string, context: ComboboxContext) => boolean} [shouldLoad]
+ * @property {number} [debounce]
+ * @property {(value: string, context: ComboboxContext) => boolean} [createFilter]
+ * @property {boolean | CreateCallback} [create]
+ * @property {number} [maxItems]
+ * @property {number} [maxOptions]
+ * @property {string[]} [separators]
+ * @property {TokenizeCallback} [tokenize]
+ * @property {boolean} [closeOnSelect]
+ * @property {boolean} [createOnBlur]
+ * @property {boolean} [autoselectFirst]
+ * @property {boolean} [tabSelect]
+ * @property {string} [labelField]
+ * @property {string} [valueField]
+ * @property {GuardMap} [guards]
+ * @property {"source" | "selected"} [selectionOrder]
+ * @property {boolean} [observeSource]
+ * @property {RenderMap} [render]
+ * @property {(a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number} [sort]
+ * @property {(item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number | false | null} [score]
+ * @property {(item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => boolean} [filter]
+ */
+
+/**
+ * Internal options after the defaults merge. Every defaulted field is present
+ * and readable without optional-chaining; the nullable seams (`load`, `create`
+ * and friends) stay nullable and are always guarded by `typeof === "function"`.
+ * @typedef {ComboboxOptions & {
+ *   match: MatchStrategy | ((item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => boolean),
+ *   searchFields: string | string[],
+ *   minChars: number,
+ *   allowEmptyOption: boolean,
+ *   placeholder: string,
+ *   messages: Messages,
+ *   loadOnEmpty: boolean,
+ *   debounce: number,
+ *   maxItems: number,
+ *   maxOptions: number,
+ *   separators: string[],
+ *   createOnBlur: boolean,
+ *   autoselectFirst: boolean,
+ *   tabSelect: boolean,
+ *   guards: GuardMap,
+ *   selectionOrder: "source" | "selected",
+ *   observeSource: boolean,
+ *   render: RenderMap,
+ *   load: LoadCallback | null,
+ *   create: boolean | CreateCallback,
+ *   createFilter: ((value: string, context: ComboboxContext) => boolean) | null,
+ *   shouldLoad: ((query: string, context: ComboboxContext) => boolean) | null,
+ *   tokenize: TokenizeCallback | null,
+ *   sort: ((a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number) | null,
+ *   score: ((item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number | false | null) | null,
+ *   filter: ((item: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => boolean) | null,
+ * }} ResolvedOptions
+ */
+
+/**
+ * State produced by the two initialisation branches (select vs input+datalist).
+ * Both return every property so the constructor receives a uniform view; the
+ * null-able entries are genuinely branch- or mode-conditional.
+ * @typedef {Object} ViewState
+ * @property {HTMLElement | null} control Wrapper control (select-only; null for
+ *   an input whose source input is itself the control)
+ * @property {HTMLInputElement} input
+ * @property {HTMLElement | null} chips Only meaningful for a select
+ * @property {HTMLDataListElement | null} datalist Only meaningful for an input
+ * @property {AttributeSnapshot | null} inputSnapshot
+ * @property {AttributeSnapshot | null} sourceSnapshot
+ */
+
+/**
  * Native-first combobox / filterable-select skeleton.
  *
  * The source element is always the form-value owner:
@@ -187,32 +434,53 @@ export class Combobox {
    * init() discover nothing (there is no implicit `data-*` marker). Unsupported
    * elements inside collections are ignored without invalidating the call.
    * Returns the array of Combobox instances.
+   *
+   * @param {string | ParentNode | Iterable<EventTarget> | null | undefined} rootOrSelector
+   * @param {string | ComboboxOptions | null | undefined} selectorOrOptions
+   * @param {ComboboxOptions} maybeOptions
+   * @returns {Combobox[]}
    */
   static init(rootOrSelector = document, selectorOrOptions = null, maybeOptions = {}) {
+    /** @type {ComboboxSource[]} */
     const targets = [];
+    /** @type {ComboboxOptions} */
     let options = {};
 
+    /**
+     * A root either is a Node (scope for a selector) or a collection of sources.
+     * @param {unknown} value
+     * @returns {value is Node}
+     */
     const isNode = (value) => value instanceof Node;
-    const isPlainObject = (value) => value !== null && typeof value === "object" && !isNode(value);
+    /**
+     * Accept only plain option objects (not selectors, elements or arrays).
+     * @param {unknown} value
+     * @returns {ComboboxOptions}
+     */
+    const picks = (value) =>
+      value !== null && typeof value === "object" && !isNode(value) && !Array.isArray(value)
+        ? /** @type {ComboboxOptions} */ (value)
+        : {};
 
     if (typeof rootOrSelector === "string") {
-      targets.push(...document.querySelectorAll(rootOrSelector));
-      options = isPlainObject(selectorOrOptions) ? selectorOrOptions : {};
+      targets.push(.../** @type {Iterable<ComboboxSource>} */ (document.querySelectorAll(rootOrSelector)));
+      options = picks(selectorOrOptions);
     } else if (isNode(rootOrSelector)) {
-      const root = rootOrSelector;
+      const root = /** @type {ParentNode} */ (rootOrSelector);
       if (typeof selectorOrOptions === "string") {
-        targets.push(...root.querySelectorAll(selectorOrOptions));
+        targets.push(.../** @type {Iterable<ComboboxSource>} */ (root.querySelectorAll(selectorOrOptions)));
         options = maybeOptions;
       } else {
         // An element root needs an explicit selector; options alone do not pick
         // targets. This keeps `data-*` discovery out of the API.
-        options = isPlainObject(selectorOrOptions) ? selectorOrOptions : {};
+        options = picks(selectorOrOptions);
       }
     } else {
-      targets.push(...Array.from(rootOrSelector ?? []));
-      options = isPlainObject(selectorOrOptions) ? selectorOrOptions : {};
+      targets.push(.../** @type {Iterable<ComboboxSource>} */ (Array.from(rootOrSelector ?? [])));
+      options = picks(selectorOrOptions);
     }
 
+    /** @type {Combobox[]} */
     const instances = [];
     for (const element of targets) {
       if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement)) continue;
@@ -222,49 +490,78 @@ export class Combobox {
     return instances;
   }
 
+  /**
+   * @param {ComboboxSource} element
+   * @returns {Combobox | null}
+   */
   static getInstance(element) {
     return instances.get(element) ?? null;
   }
 
+  /**
+   * @param {ComboboxSource} element
+   * @param {ComboboxOptions} options
+   * @returns {Combobox}
+   */
   static getOrCreateInstance(element, options = {}) {
     return Combobox.getInstance(element) ?? new Combobox(element, options);
   }
 
+  /**
+   * @param {ComboboxSource} element
+   * @param {ComboboxOptions} options
+   */
   constructor(element, options = {}) {
     if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement)) {
       throw new TypeError("Combobox expects an input or select element");
     }
 
+    /** @type {ComboboxSource} */
     this.source = element;
     this.isSelect = element instanceof HTMLSelectElement;
     this.isMultiple = this.isSelect && element.multiple;
     this.abortController = new AbortController();
+    /** @type {AbortController | null} */
     this.loadController = null;
     this.activeIndex = -1;
+    /** @type {import("./helpers.js").ComboboxItem[]} */
     this.filteredItems = [];
     // Remote/custom results are deliberately transient. The native select is
     // the selection/value owner, not a cache for every server result.
+    /** @type {import("./helpers.js").ComboboxItem[] | null} */
     this.results = null;
     // For a <select>, option identity is the HTMLOptionElement itself; a
     // duplicate `value` does not collapse identities. `selectionOrder` holds
     // option references (in source order initially), `value` is payload only.
-    this.selectionOrder = this.isSelect ? Array.from(element.selectedOptions) : [];
+    /** @type {HTMLOptionElement[]} */
+    this.selectionOrder = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
+    /** @type {WeakMap<HTMLElement, HTMLOptionElement>} */
     this._chipOptions = new WeakMap();
     this.searchGeneration = 0;
+    /** @type {string | null} */
     this.nextCursor = null;
     this.loading = false;
+    /** @type {*} */
     this.loadError = null;
     this.query = "";
     this.id = ++uid;
-    this.mode = options.mode === "fallback" || !Combobox.supported ? "fallback" : "enhanced";
+    this.mode =
+      /** @type {ComboboxOptions & { mode?: "fallback" }} */ (options).mode === "fallback" ||
+      !Combobox.supported
+        ? "fallback"
+        : "enhanced";
     this.anchorName = `--combobox-${this.id}`;
     this.suppressReopen = false;
     this.composing = false;
+    /** @type {MutationObserver | null} */
     this._sourceObserver = null;
+    /** @type {ReturnType<typeof setTimeout> | null} */
     this._sourceSyncTimer = null;
 
+    /** @type {ComboboxOptions} */
     this.explicitOptions = options;
-    this.options = {
+    /** @type {ResolvedOptions} */
+    this.options = /** @type {ResolvedOptions} */ ({
       ...DEFAULTS,
       ...options,
       messages: {
@@ -275,24 +572,43 @@ export class Combobox {
         ...DEFAULTS.render,
         ...(options.render || {}),
       },
-    };
+    });
 
     this.original = {
       // explicit filter input
+      /** @type {Comment | null} */
       filterInputPlaceholder: null,
       // detached datalist position marker
+      /** @type {Comment | null} */
       datalistPlaceholder: null,
       // <label> elements whose id the engine invented for aria-labelledby
+      /** @type {Array<{ label: HTMLLabelElement, id: string }>} */
       inventedLabels: [],
     };
-    // Attribute snapshots so dispose() restores anything the engine touched.
-    this.sourceSnapshot = null;
-    this.inputSnapshot = null;
-
-    this.datalist = null;
+    /** @type {HTMLLabelElement[]} */
     this.boundLabels = [];
     this.ownsInput = false;
+    /** @type {HTMLElement | null} */
     this.fallbackControl = null;
+
+    /** @type {HTMLElement | null} */
+    this.control = null;
+    /** @type {HTMLInputElement | null} */
+    this.input = null;
+    /** @type {HTMLElement | null} */
+    this.chips = null;
+    /** @type {HTMLDataListElement | null} */
+    this.datalist = null;
+    /** @type {AttributeSnapshot | null} */
+    this.inputSnapshot = null;
+    /** @type {AttributeSnapshot | null} */
+    this.sourceSnapshot = null;
+    /** @type {HTMLElement | null} */
+    this.popover = null;
+    /** @type {HTMLElement | null} */
+    this.listbox = null;
+    /** @type {HTMLElement | null} */
+    this.status = null;
 
     if (this.mode === "fallback") {
       this.#initFallback();
@@ -300,10 +616,20 @@ export class Combobox {
       // Registration is transactional: an element whose init throws (e.g. a
       // broken datalist) must not stay associated with a half-built instance.
       try {
-        if (this.isSelect) this.#enhanceSelect();
-        else this.#enhanceInput();
+        const view =
+          element instanceof HTMLSelectElement ? this.#enhanceSelect(element) : this.#enhanceInput(element);
+        this.control = view.control;
+        this.input = view.input;
+        this.chips = view.chips;
+        this.datalist = view.datalist;
+        this.inputSnapshot = view.inputSnapshot;
+        this.sourceSnapshot = view.sourceSnapshot;
 
-        this.#createPopover();
+        const picker = this.#createPicker();
+        this.popover = picker.popover;
+        this.listbox = picker.listbox;
+        this.status = picker.status;
+
         this.#bind();
         this.refresh();
         this.#watchSource();
@@ -314,6 +640,62 @@ export class Combobox {
     }
 
     instances.set(element, this);
+  }
+
+  /**
+   * Discriminate the source to a `<select>`. A select-backed combobox is the
+   * only context that calls the select-only operations, so this throws when
+   * the invariant is violated rather than casting (an unchecked cast would
+   * silently lie to the checker).
+   * @returns {HTMLSelectElement}
+   */
+  #selectSource() {
+    if (!(this.source instanceof HTMLSelectElement)) {
+      throw new TypeError("Expected a select-backed combobox");
+    }
+    return this.source;
+  }
+
+  /**
+   * The interaction input. Only enhanced instances call this, and enhanced
+   * construction always creates the input — an absent input is an invariant
+   * violation, not a normal runtime condition.
+   * @returns {HTMLInputElement}
+   */
+  #inputEl() {
+    return /** @type {HTMLInputElement} */ (this.input);
+  }
+
+  /**
+   * The popover picker root. Enhanced instances always have one.
+   * @returns {HTMLElement}
+   */
+  #popoverEl() {
+    return /** @type {HTMLElement} */ (this.popover);
+  }
+
+  /**
+   * The listbox container. Enhanced instances always have one.
+   * @returns {HTMLElement}
+   */
+  #listEl() {
+    return /** @type {HTMLElement} */ (this.listbox);
+  }
+
+  /**
+   * The live status region. Enhanced instances always have one.
+   * @returns {HTMLElement}
+   */
+  #statusEl() {
+    return /** @type {HTMLElement} */ (this.status);
+  }
+
+  /**
+   * The chips container. Only select-backed enhanced instances have chips.
+   * @returns {HTMLElement | null}
+   */
+  #chipsEl() {
+    return this.chips;
   }
 
   /* ---------------------------------------------------------------------- */
@@ -332,9 +714,9 @@ export class Combobox {
     const input = document.createElement("input");
     input.type = "text";
     input.className = "cb-fallback-input";
-    input.placeholder = this.options.placeholder;
+    input.placeholder = this.options.placeholder ?? "";
     input.autocomplete = "off";
-    input.setAttribute("aria-label", this.options.placeholder);
+    input.setAttribute("aria-label", this.options.placeholder ?? "");
     // Deliberately no name: the select remains the only successful control.
 
     const button = document.createElement("button");
@@ -345,7 +727,7 @@ export class Combobox {
     const add = async () => {
       const label = input.value.trim();
       if (!this.#canCreate(label)) return;
-      await this.#createFallbackOption(label);
+      await this.#createFallbackOption(label, input);
       input.value = "";
       input.focus();
     };
@@ -367,7 +749,14 @@ export class Combobox {
     this.fallbackControl = control;
   }
 
-  async #createFallbackOption(label) {
+  /**
+   * Native-fallback creation: run the guard/create pipeline and materialize the
+   * option on the visible select.
+   * @param {string} label
+   * @param {HTMLInputElement} input The fallback Add control
+   * @returns {Promise<HTMLOptionElement | null>}
+   */
+  async #createFallbackOption(label, input) {
     const guard = await this.#runGuard("add", { label });
     if (!guard.ok) return null;
 
@@ -379,6 +768,7 @@ export class Combobox {
     );
     if (before.defaultPrevented) return null;
 
+    /** @type {import("./helpers.js").ComboboxItem} */
     let created = { value: label, label };
     try {
       if (typeof this.options.create === "function") {
@@ -386,17 +776,18 @@ export class Combobox {
           signal: this.abortController.signal,
           combobox: this,
           source: this.source,
+          input,
           fallback: true,
         });
         if (!result) return null;
-        created = toItem(result, this.#fields());
+        created = /** @type {import("./helpers.js").ComboboxItem} */ (toItem(result, this.#fields()));
       }
 
       let option = this.#findOption(created.value);
       if (!option) {
         option = new Option(created.label, created.value, true, true);
         if (created.data) Object.assign(option.dataset, created.data);
-        this.source.add(option);
+        this.#selectSource().add(option);
       } else {
         option.selected = true;
       }
@@ -404,7 +795,7 @@ export class Combobox {
       this.#dispatchNativeValueEvents();
       emit(this.source, "combobox:create", { combobox: this, item: { ...created, option, selected: true } });
       return option;
-    } catch (error) {
+    } catch (/** @type {any} */ error) {
       if (error?.name !== "AbortError") {
         emit(this.source, "combobox:createerror", { combobox: this, label, error });
       }
@@ -416,58 +807,94 @@ export class Combobox {
   /* Source adapters                                                        */
   /* ---------------------------------------------------------------------- */
 
-  #enhanceInput() {
-    const listId = this.source.getAttribute("list");
+  /**
+   * Prepare the input+datalist view. The input is its own control (there is no
+   * wrapper), so `control` is null and `input` is the source itself.
+   * @param {HTMLInputElement} source
+   * @returns {ViewState}
+   */
+  #enhanceInput(source) {
+    const listId = source.getAttribute("list");
     if (!listId) throw new TypeError("Input combobox expects an input with a datalist");
 
-    this.datalist = document.getElementById(listId);
-    if (!(this.datalist instanceof HTMLDataListElement)) {
+    const datalist = document.getElementById(listId);
+    if (!(datalist instanceof HTMLDataListElement)) {
       throw new TypeError(`No datalist found for #${listId}`);
     }
 
-    this.inputSnapshot = captureAttributes(this.source, INPUT_ATTRS);
+    const inputSnapshot = captureAttributes(source, INPUT_ATTRS);
 
     // In enhanced mode the datalist is a data source only. Detach it so the UA
     // picker can never flash/race our popover. dispose() restores it exactly.
-    this.source.removeAttribute("list");
-    this.source.autocomplete = "off";
-    this.original.datalistPlaceholder = document.createComment(`combobox-datalist-${this.id}`);
-    this.datalist.before(this.original.datalistPlaceholder);
-    this.datalist.remove();
+    source.removeAttribute("list");
+    source.autocomplete = "off";
+    const datalistPlaceholder = document.createComment(`combobox-datalist-${this.id}`);
+    this.original.datalistPlaceholder = datalistPlaceholder;
+    datalist.before(datalistPlaceholder);
+    datalist.remove();
 
-    this.input = this.source;
-    this.input.classList.add("cb-text-control");
-    this.input.style.setProperty("anchor-name", this.anchorName);
+    source.classList.add("cb-text-control");
+    source.style.setProperty("anchor-name", this.anchorName);
+
+    return {
+      control: null,
+      input: source,
+      chips: null,
+      datalist,
+      inputSnapshot,
+      sourceSnapshot: null,
+    };
   }
 
-  #enhanceSelect() {
-    this.source.classList.add("cb-source-hidden");
-    this.sourceSnapshot = captureAttributes(this.source, ["aria-hidden", "tabindex"]);
-    this.source.tabIndex = -1;
-    this.source.setAttribute("aria-hidden", "true");
+  /**
+   * Prepare the select view: a wrapper control holding chips and the filter
+   * input, plus a snapshot of the untouched source attributes.
+   * @param {HTMLSelectElement} source
+   * @returns {ViewState}
+   */
+  #enhanceSelect(source) {
+    source.classList.add("cb-source-hidden");
+    const sourceSnapshot = captureAttributes(source, ["aria-hidden", "tabindex"]);
+    source.tabIndex = -1;
+    source.setAttribute("aria-hidden", "true");
 
-    this.control = document.createElement("div");
-    this.control.className = `cb-control ${this.isMultiple ? "cb-control-multiple" : "cb-control-single"}`;
-    this.control.style.setProperty("anchor-name", this.anchorName);
+    const control = document.createElement("div");
+    control.className = `cb-control ${this.isMultiple ? "cb-control-multiple" : "cb-control-single"}`;
+    control.style.setProperty("anchor-name", this.anchorName);
 
-    this.chips = document.createElement("span");
-    this.chips.className = "cb-chips";
-    this.control.append(this.chips);
+    const chips = document.createElement("span");
+    chips.className = "cb-chips";
+    control.append(chips);
 
-    this.input = this.#resolveFilterInput();
-    this.input.classList.add("cb-input");
-    this.input.type = "text";
-    this.input.autocomplete = "off";
-    this.input.spellcheck = false;
-    this.input.removeAttribute("name");
+    const { input, inputSnapshot } = this.#resolveFilterInput();
+    input.classList.add("cb-input");
+    input.type = "text";
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    input.removeAttribute("name");
 
-    if (!this.input.placeholder) this.input.placeholder = this.options.placeholder;
+    if (!input.placeholder) input.placeholder = this.options.placeholder ?? "";
 
-    this.#copyAccessibleName();
-    this.control.append(this.input);
-    this.source.after(this.control);
+    this.#copyAccessibleName(input);
+    control.append(input);
+    source.after(control);
+
+    return {
+      control,
+      input,
+      chips,
+      datalist: null,
+      inputSnapshot,
+      sourceSnapshot,
+    };
   }
 
+  /**
+   * Resolve the interaction filter input, preferring an author-supplied one
+   * declared via `<input filter="select-id">`. Returns the input together with
+   * the snapshot needed by dispose() to restore the authored state.
+   * @returns {{ input: HTMLInputElement, inputSnapshot: AttributeSnapshot | null }}
+   */
   #resolveFilterInput() {
     let input = null;
     // An author-supplied filter input is declared with a liaison attribute on
@@ -478,20 +905,26 @@ export class Combobox {
     }
 
     if (input instanceof HTMLInputElement) {
-      this.inputSnapshot = captureAttributes(input, INPUT_ATTRS);
-      this.original.filterInputPlaceholder = document.createComment(`combobox-filter-input-${this.id}`);
-      input.before(this.original.filterInputPlaceholder);
+      const inputSnapshot = captureAttributes(input, INPUT_ATTRS);
+      const filterInputPlaceholder = document.createComment(`combobox-filter-input-${this.id}`);
+      this.original.filterInputPlaceholder = filterInputPlaceholder;
+      input.before(filterInputPlaceholder);
       input.hidden = false;
-      return input;
+      return { input, inputSnapshot };
     }
 
     this.ownsInput = true;
     // An owned control is disposed with the wrapper: there is nothing to restore.
-    this.inputSnapshot = null;
-    return document.createElement("input");
+    return { input: document.createElement("input"), inputSnapshot: null };
   }
 
-  #copyAccessibleName() {
+  /**
+   * Copy the source select's accessible name/description/required state onto
+   * the interaction input. Must run before the input is attached to the
+   * control so aria-labelledby/aria-describedby reference live labels.
+   * @param {HTMLInputElement} input
+   */
+  #copyAccessibleName(input) {
     const labels = [];
     if (this.source.id) {
       labels.push(...document.querySelectorAll(`label[for="${CSS.escape(this.source.id)}"]`));
@@ -503,11 +936,13 @@ export class Combobox {
     if (wrapped) labels.push(wrapped);
 
     const seen = new Set();
-    this.boundLabels = labels.filter((label) => {
-      if (seen.has(label)) return false;
-      seen.add(label);
-      return true;
-    });
+    this.boundLabels = /** @type {HTMLLabelElement[]} */ (
+      labels.filter((label) => {
+        if (seen.has(label)) return false;
+        seen.add(label);
+        return true;
+      })
+    );
 
     const labelIds = this.boundLabels.map((label, index) => {
       if (!label.id) {
@@ -516,25 +951,29 @@ export class Combobox {
       }
       return label.id;
     });
-    if (labelIds.length) this.input.setAttribute("aria-labelledby", labelIds.join(" "));
+    if (labelIds.length) input.setAttribute("aria-labelledby", labelIds.join(" "));
 
-    if (!this.input.hasAttribute("aria-labelledby") && this.source.getAttribute("aria-label")) {
-      this.input.setAttribute("aria-label", this.source.getAttribute("aria-label"));
+    const ariaLabel = this.source.getAttribute("aria-label");
+    if (!input.hasAttribute("aria-labelledby") && ariaLabel) {
+      input.setAttribute("aria-label", ariaLabel);
     }
-    if (this.source.required) this.input.setAttribute("aria-required", "true");
-    if (this.source.getAttribute("aria-describedby")) {
-      this.input.setAttribute("aria-describedby", this.source.getAttribute("aria-describedby"));
+    if (this.source.required) input.setAttribute("aria-required", "true");
+    const describedBy = this.source.getAttribute("aria-describedby");
+    if (describedBy) {
+      input.setAttribute("aria-describedby", describedBy);
     }
   }
 
   #sourceItems() {
     if (this.isSelect) {
-      return Array.from(this.source.options)
+      return Array.from(this.#selectSource().options)
         .filter((option) => option.value || this.options.allowEmptyOption)
         .map((option) => ({
           value: option.value,
           label: option.textContent.trim(),
-          disabled: option.disabled || option.parentElement?.disabled === true,
+          disabled:
+            option.disabled ||
+            (option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.disabled : false),
           selected: option.selected,
           group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
           option,
@@ -542,6 +981,7 @@ export class Combobox {
         }));
     }
 
+    if (!this.datalist) return [];
     return Array.from(this.datalist.options).map((option) => ({
       value: option.value,
       label: option.label || option.value,
@@ -582,8 +1022,14 @@ export class Combobox {
   }
 
   /** Set transient picker results without turning the select into a remote cache. */
+  /**
+   * @param {Array<any>} items
+   * @returns {this}
+   */
   setResults(items) {
-    this.results = Array.from(items || [], (item) => toItem(item, this.#fields())).filter(Boolean);
+    this.results = Array.from(items || [], (item) => toItem(item, this.#fields())).filter(
+      (item) => item !== null,
+    );
     return this;
   }
 
@@ -595,9 +1041,14 @@ export class Combobox {
     return this;
   }
 
+  /**
+   * @param {*} value
+   * @returns {HTMLOptionElement | null}
+   */
   #findOption(value) {
     if (!this.isSelect) return null;
-    return Array.from(this.source.options).find((option) => option.value === String(value)) || null;
+    const select = this.#selectSource();
+    return Array.from(select.options).find((option) => option.value === String(value)) || null;
   }
 
   /**
@@ -606,12 +1057,14 @@ export class Combobox {
    * mode (each native option is selected at most once; identical values on
    * distinct options are distinct choices). Single-select returns the first
    * non-disabled match regardless of the current selection.
+   * @param {*} value
+   * @returns {HTMLOptionElement | null}
    */
   #findSelectableOption(value) {
     if (!this.isSelect) return null;
     const wanted = String(value);
     return (
-      Array.from(this.source.options).find(
+      Array.from(this.#selectSource().options).find(
         (option) =>
           option.value === wanted && !option.disabled && (this.isMultiple && option.selected) === false,
       ) || null
@@ -619,6 +1072,10 @@ export class Combobox {
   }
 
   /** Match a token to an existing native option by value or label. */
+  /**
+   * @param {string} label
+   * @returns {import("./helpers.js").ComboboxItem | null}
+   */
   #findCreateMatch(label) {
     const lookup = normalize(label);
     for (const item of this.#sourceItems()) {
@@ -628,12 +1085,21 @@ export class Combobox {
   }
 
   /** Replace the native catalogue explicitly. Prefer setResults() for remote search. */
+  /**
+   * @param {Array<any>} items
+   * @param {{ preserveSelected?: boolean }} [options]
+   * @returns {this}
+   */
   setOptions(items, { preserveSelected = this.isSelect } = {}) {
-    const normalized = Array.from(items || [], (item) => toItem(item, this.#fields())).filter(Boolean);
+    const normalized = Array.from(items || [], (item) => toItem(item, this.#fields())).filter(
+      (item) => item !== null,
+    );
 
     if (this.isSelect) {
+      const select = this.#selectSource();
+      /** @type {import("./helpers.js").ComboboxItem[]} */
       const preserved = preserveSelected
-        ? Array.from(this.source.selectedOptions).map((option) => ({
+        ? Array.from(select.selectedOptions).map((option) => ({
             value: option.value,
             label: option.textContent.trim(),
             selected: true,
@@ -642,9 +1108,9 @@ export class Combobox {
           }))
         : [];
 
-      const emptyOption = Array.from(this.source.options).find((option) => !option.value);
-      this.source.replaceChildren();
-      if (emptyOption && !this.isMultiple) this.source.append(emptyOption);
+      const emptyOption = Array.from(select.options).find((option) => !option.value);
+      select.replaceChildren();
+      if (emptyOption && !this.isMultiple) select.append(emptyOption);
 
       // No value-based dedupe: catalogue identity is the <option> element, so
       // repeated values in the payload map to their own options.
@@ -663,14 +1129,15 @@ export class Combobox {
             group = document.createElement("optgroup");
             group.label = item.group;
             groups.set(item.group, group);
-            this.source.append(group);
+            select.append(group);
           }
           group.append(option);
         } else {
-          this.source.append(option);
+          select.append(option);
         }
       }
     } else {
+      if (!this.datalist) return this;
       this.datalist.replaceChildren();
       for (const item of normalized) {
         const option = document.createElement("option");
@@ -743,11 +1210,12 @@ export class Combobox {
     this._sourceObserver = new MutationObserver(() => this.#scheduleSourceSync());
     // For input+datalist the datalist is detached in enhanced mode; a
     // MutationObserver can observe a detached node just fine.
-    this._sourceObserver.observe(this.isSelect ? this.source : this.datalist, config);
+    const target = this.isSelect ? this.source : this.datalist;
+    if (target) this._sourceObserver.observe(target, config);
   }
 
   #scheduleSourceSync() {
-    clearTimeout(this._sourceSyncTimer);
+    if (this._sourceSyncTimer) clearTimeout(this._sourceSyncTimer);
     this._sourceSyncTimer = setTimeout(() => {
       this._sourceSyncTimer = null;
       if (instances.get(this.source) !== this) return;
@@ -759,39 +1227,47 @@ export class Combobox {
   /* Picker / interaction                                                   */
   /* ---------------------------------------------------------------------- */
 
-  #createPopover() {
-    this.popover = document.createElement("div");
-    this.popover.className = "cb-popover";
-    this.popover.popover = "manual";
-    this.popover.style.setProperty("position-anchor", this.anchorName);
+  /**
+   * Build the popover picker (top layer) plus its listbox and live status
+   * region. The popover is appended to the nearest ancestor dialog (or body)
+   * so a modal <dialog> does not make it inert.
+   * @returns {{ popover: HTMLElement, listbox: HTMLElement, status: HTMLElement }}
+   */
+  #createPicker() {
+    const popover = document.createElement("div");
+    popover.className = "cb-popover";
+    popover.popover = "manual";
+    popover.style.setProperty("position-anchor", this.anchorName);
 
-    this.listbox = document.createElement("div");
-    this.listbox.className = "cb-listbox";
-    this.listbox.role = "listbox";
-    this.listbox.id = `combobox-listbox-${this.id}`;
-    if (this.isMultiple) this.listbox.setAttribute("aria-multiselectable", "true");
+    const listbox = document.createElement("div");
+    listbox.className = "cb-listbox";
+    listbox.role = "listbox";
+    listbox.id = `combobox-listbox-${this.id}`;
+    if (this.isMultiple) listbox.setAttribute("aria-multiselectable", "true");
 
-    this.status = document.createElement("div");
-    this.status.className = "cb-status";
-    this.status.setAttribute("role", "status");
-    this.status.setAttribute("aria-live", "polite");
+    const status = document.createElement("div");
+    status.className = "cb-status";
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
 
-    this.popover.append(this.listbox, this.status);
+    popover.append(listbox, status);
     // Popover renders in the top layer, but a modal <dialog> makes everything
     // outside it (including a body-level popover) inert. Stay a descendant of
     // an ancestor dialog so the picker stays interactive inside showModal().
     const dialog = this.source.closest("dialog");
-    (dialog || document.body).append(this.popover);
+    (dialog || document.body).append(popover);
 
     // The popover renders in the top layer, outside the control's subtree, so
     // it cannot inherit the control's typography. Adopt the interaction
     // input's resolved font to avoid falling back to the page-level font.
-    this.popover.style.font = getComputedStyle(this.input).font;
+    popover.style.font = getComputedStyle(this.#inputEl()).font;
 
-    this.input.setAttribute("role", "combobox");
-    this.input.setAttribute("aria-autocomplete", "list");
-    this.input.setAttribute("aria-expanded", "false");
-    this.input.setAttribute("aria-controls", this.listbox.id);
+    this.#inputEl().setAttribute("role", "combobox");
+    this.#inputEl().setAttribute("aria-autocomplete", "list");
+    this.#inputEl().setAttribute("aria-expanded", "false");
+    this.#inputEl().setAttribute("aria-controls", listbox.id);
+
+    return { popover, listbox, status };
   }
 
   #bind() {
@@ -799,16 +1275,16 @@ export class Combobox {
 
     // Persistent listeners go through #handleEvent so no per-render closure is
     // ever added. #renderList/#renderChips stay listener-free.
-    this.input.addEventListener("focus", this, { signal });
-    this.input.addEventListener("input", this, { signal });
-    this.input.addEventListener("compositionstart", this, { signal });
-    this.input.addEventListener("compositionend", this, { signal });
-    this.input.addEventListener("keydown", this, { signal });
-    this.input.addEventListener("blur", this, { signal });
+    this.#inputEl().addEventListener("focus", this, { signal });
+    this.#inputEl().addEventListener("input", this, { signal });
+    this.#inputEl().addEventListener("compositionstart", this, { signal });
+    this.#inputEl().addEventListener("compositionend", this, { signal });
+    this.#inputEl().addEventListener("keydown", this, { signal });
+    this.#inputEl().addEventListener("blur", this, { signal });
 
-    this.listbox.addEventListener("pointerdown", (event) => event.preventDefault(), { signal });
-    this.listbox.addEventListener("pointermove", this, { signal });
-    this.listbox.addEventListener("click", this, { signal });
+    this.#listEl().addEventListener("pointerdown", (event) => event.preventDefault(), { signal });
+    this.#listEl().addEventListener("pointermove", this, { signal });
+    this.#listEl().addEventListener("click", this, { signal });
 
     if (this.chips) {
       this.chips.addEventListener("keydown", this, { signal });
@@ -822,18 +1298,18 @@ export class Combobox {
       (event) => {
         if (!this.isOpen()) return;
         const path = event.composedPath();
-        const control = this.isSelect ? this.control : this.input;
-        if (path.includes(control) || path.includes(this.popover)) return;
+        const control = this.isSelect ? /** @type {HTMLElement} */ (this.control) : this.#inputEl();
+        if (path.includes(control) || path.includes(this.#popoverEl())) return;
         this.hide();
       },
       { capture: true, signal },
     );
 
-    this.popover.addEventListener(
+    this.#popoverEl().addEventListener(
       "toggle",
       (event) => {
         const open = event.newState === "open";
-        this.input.setAttribute("aria-expanded", String(open));
+        this.#inputEl().setAttribute("aria-expanded", String(open));
         emit(this.source, open ? "combobox:open" : "combobox:close", { combobox: this });
         if (!open) {
           this.#setActive(-1);
@@ -845,13 +1321,13 @@ export class Combobox {
 
     if (this.isSelect) {
       this.source.addEventListener("change", () => this.refresh(), { signal });
-      this.source.addEventListener("focus", () => this.input.focus(), { signal });
+      this.source.addEventListener("focus", () => this.#inputEl().focus(), { signal });
       for (const label of this.boundLabels) {
         label.addEventListener(
           "click",
           (event) => {
             event.preventDefault();
-            this.input.focus();
+            this.#inputEl().focus();
           },
           { signal },
         );
@@ -876,8 +1352,8 @@ export class Combobox {
         "invalid",
         (event) => {
           event.preventDefault();
-          this.input.setAttribute("aria-invalid", "true");
-          this.input.focus();
+          this.#inputEl().setAttribute("aria-invalid", "true");
+          this.#inputEl().focus();
         },
         { signal },
       );
@@ -885,29 +1361,37 @@ export class Combobox {
   }
 
   /** Single entry point for all listeners bound with `this` as the handler. */
+  /**
+   * @param {Event} event
+   */
   handleEvent(event) {
-    if (event.currentTarget === this.input) return this.#onInputEvent(event);
+    if (event.currentTarget === this.#inputEl()) return this.#onInputEvent(event);
     if (event.currentTarget === this.control) return this.#onControlEvent(event);
-    if (event.currentTarget === this.listbox) return this.#onListboxEvent(event);
+    if (event.currentTarget === this.#listEl()) return this.#onListboxEvent(event);
     if (event.currentTarget === this.chips) return this.#onChipsEvent(event);
   }
 
+  /**
+   * @param {Event} event
+   */
   #onInputEvent(event) {
     switch (event.type) {
       case "focus": {
-        if (this.isSelect && !this.isMultiple && this.source.selectedOptions.length) this.input.select();
-        const query = this.isSelect && !this.isMultiple ? "" : this.input.value;
+        if (this.isSelect && !this.isMultiple && this.#selectSource().selectedOptions.length)
+          this.#inputEl().select();
+        const query = this.isSelect && !this.isMultiple ? "" : this.#inputEl().value;
         this.search(query, { show: true, reason: "focus" });
         return;
       }
       case "input": {
         // Separator tokens are consumed as they complete (typing or paste).
         // IME composition feeds search but never tokenizes/creates.
-        if (this.isMultiple && !event.isComposing && this.#separatorsActive()) {
+        const inputEvent = /** @type {InputEvent} */ (event);
+        if (this.isMultiple && !inputEvent.isComposing && this.#separatorsActive()) {
           void this.#handleTokenInput();
           return;
         }
-        this.search(this.input.value, { show: true, reason: "input" });
+        this.search(this.#inputEl().value, { show: true, reason: "input" });
         return;
       }
       case "compositionstart":
@@ -917,52 +1401,64 @@ export class Combobox {
         this.composing = false;
         return;
       case "keydown":
-        return this.#onInputKeyDown(event);
+        return this.#onInputKeyDown(/** @type {KeyboardEvent} */ (event));
       case "blur":
-        return this.#onInputBlur(event);
+        return this.#onInputBlur();
     }
   }
 
+  /**
+   * @param {Event} event
+   */
   #onControlEvent(event) {
-    if (event.target.closest("button")) return;
-    this.input.focus();
+    const target = /** @type {HTMLElement} */ (event.target);
+    if (target.closest("button")) return;
+    this.#inputEl().focus();
   }
 
+  /**
+   * @param {Event} event
+   */
   #onListboxEvent(event) {
+    const target = /** @type {HTMLElement} */ (event.target);
     if (event.type === "pointermove") {
-      const option = event.target.closest(".cb-option[data-index]");
-      if (option) this.#setActive(Number(option.dataset.index));
+      const option = target.closest(".cb-option[data-index]");
+      if (option) this.#setActive(Number(/** @type {HTMLElement} */ (option).dataset.index));
       return;
     }
     if (event.type === "click") {
-      const option = event.target.closest(".cb-option");
+      const option = target.closest(".cb-option");
       if (!option) return;
       if (option.classList.contains("cb-create")) {
-        const query = this.input.value.trim();
+        const query = this.#inputEl().value.trim();
         if (query) void this.#createItem(query);
         return;
       }
-      const item = this.visibleItems[Number(option.dataset.index)];
+      const item = this.visibleItems[Number(/** @type {HTMLElement} */ (option).dataset.index)];
       if (item) this.#selectItem(item);
     }
   }
 
+  /**
+   * @param {Event} event
+   */
   #onChipsEvent(event) {
+    const target = /** @type {HTMLElement} */ (event.target);
     if (event.type === "click") {
-      const remove = event.target.closest(".cb-chip-remove");
+      const remove = target.closest(".cb-chip-remove");
       if (!remove) return;
-      const chip = remove.closest(".cb-chip");
+      const chip = /** @type {HTMLElement} */ (remove.closest(".cb-chip"));
       if (!chip) return;
       // The chip's exact option is authoritative (duplicate values share a
       // data-value but never an option). data-value is only a fallback.
       const option = this._chipOptions.get(chip);
-      void this.remove(option ?? chip.dataset.value).then((removed) => {
-        if (removed) this.input.focus();
+      void this.remove(option ?? chip.dataset.value ?? "").then((removed) => {
+        if (removed) this.#inputEl().focus();
       });
       return;
     }
     if (event.type === "keydown") {
-      const chip = event.target.closest(".cb-chip");
+      const chip = /** @type {HTMLElement} */ (target.closest(".cb-chip"));
       if (!chip) return;
       const option = this._chipOptions.get(chip);
       const item = option
@@ -971,8 +1467,8 @@ export class Combobox {
             label: option.textContent.trim(),
             option,
           }
-        : { value: chip.dataset.value, label: chip.dataset.value };
-      this.#onChipKeyDown(event, item);
+        : { value: chip.dataset.value ?? "", label: chip.dataset.value ?? "" };
+      this.#onChipKeyDown(/** @type {KeyboardEvent} */ (event), item);
     }
   }
 
@@ -982,21 +1478,21 @@ export class Combobox {
       // Blur caused by internal interaction (picker click, adornment,
       // chip removal, clear) never closes and never blur-creates.
       const stillInside =
-        active === this.input ||
-        (this.popover?.contains(active) ?? false) ||
+        active === this.#inputEl() ||
+        (this.#popoverEl()?.contains(active) ?? false) ||
         (this.control && active && this.control.contains(active));
       if (this.isOpen() && stillInside) return;
 
       if (this.isOpen() || this.options.createOnBlur) {
         if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing) {
-          const value = this.input.value;
+          const value = this.#inputEl().value;
           this.suppressReopen = true;
           try {
             if (this.#separatorsActive()) {
               const result = await this.#processTokens(value, { final: true });
-              if (result?.consumed) this.input.value = result.rest;
+              if (result?.consumed) this.#inputEl().value = result.rest;
             } else if (value.trim()) {
-              this.input.value = "";
+              this.#inputEl().value = "";
               await this.#createItem(value.trim());
             }
           } finally {
@@ -1010,24 +1506,27 @@ export class Combobox {
     });
   }
 
+  /**
+   * @param {KeyboardEvent} event
+   */
   #onInputKeyDown(event) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      if (!this.isOpen()) this.search(this.input.value, { show: true, reason: "keyboard" });
+      if (!this.isOpen()) this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
       this.#moveActive(1);
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      if (!this.isOpen()) this.search(this.input.value, { show: true, reason: "keyboard" });
+      if (!this.isOpen()) this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
       this.#moveActive(-1);
       return;
     }
 
     if (event.key === "PageUp" || event.key === "PageDown") {
       event.preventDefault();
-      if (!this.isOpen()) this.search(this.input.value, { show: true, reason: "keyboard" });
+      if (!this.isOpen()) this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
       const down = event.key === "PageDown";
       const base = this.activeIndex < 0 ? (down ? -1 : 0) : this.activeIndex;
       const distance = base + (down ? this.#pageSize() : -this.#pageSize());
@@ -1046,7 +1545,7 @@ export class Combobox {
       }
       const active = this.visibleItems[this.activeIndex];
       if (active) this.#selectItem(active);
-      else if (this.#canCreate(this.input.value)) void this.#createItem(this.input.value.trim());
+      else if (this.#canCreate(this.#inputEl().value)) void this.#createItem(this.#inputEl().value.trim());
       return;
     }
 
@@ -1061,7 +1560,7 @@ export class Combobox {
     if (event.key === "Tab" && this.isOpen()) {
       if (this.options.tabSelect) {
         if (event.isComposing || this.composing) return;
-        if (this.isMultiple && this.#separatorsActive() && this.input.value.trim()) {
+        if (this.isMultiple && this.#separatorsActive() && this.#inputEl().value.trim()) {
           event.preventDefault();
           void this.#commitEnterTokens();
           return;
@@ -1072,9 +1571,9 @@ export class Combobox {
           this.#selectItem(active);
           return;
         }
-        if (this.#canCreate(this.input.value)) {
+        if (this.#canCreate(this.#inputEl().value)) {
           event.preventDefault();
-          void this.#createItem(this.input.value.trim());
+          void this.#createItem(this.#inputEl().value.trim());
           return;
         }
         this.hide();
@@ -1090,11 +1589,11 @@ export class Combobox {
       return;
     }
 
-    if (event.key === "ArrowLeft" && this.isMultiple && !this.input.value) {
+    if (event.key === "ArrowLeft" && this.isMultiple && !this.#inputEl().value) {
       const chips = Array.from(this.chips?.querySelectorAll(".cb-chip") || []);
       if (chips.length) {
         event.preventDefault();
-        chips[chips.length - 1].focus();
+        /** @type {HTMLElement} */ (chips[chips.length - 1]).focus();
         return;
       }
     }
@@ -1102,8 +1601,8 @@ export class Combobox {
     if (
       event.key === "Backspace" &&
       this.isMultiple &&
-      !this.input.value &&
-      this.source.selectedOptions.length
+      !this.#inputEl().value &&
+      this.#selectSource().selectedOptions.length
     ) {
       const selected = this.#selectedOptionsInOrder();
       const last = selected[selected.length - 1];
@@ -1117,6 +1616,8 @@ export class Combobox {
 
   /**
    * Run the normal filtering pipeline: beforefilter -> optional load -> filter.
+   * @param {string} [query]
+   * @param {{ show?: boolean, reason?: string }} [options]
    */
   async search(query = "", { show = false, reason = "api" } = {}) {
     if (this.mode !== "enhanced") return;
@@ -1125,7 +1626,7 @@ export class Combobox {
     this.query = String(query ?? "");
 
     const before = emit(
-      this.input,
+      this.#inputEl(),
       "beforefilter",
       {
         query: this.query,
@@ -1148,7 +1649,7 @@ export class Combobox {
     }
 
     this.#applyFilter(this.query);
-    emit(this.input, "filter", {
+    emit(this.#inputEl(), "filter", {
       query: this.query,
       combobox: this,
       items: this.filteredItems,
@@ -1163,12 +1664,15 @@ export class Combobox {
    * This is the escape hatch intended for a canceled beforefilter handler:
    *   event.preventDefault();
    *   combobox.setResults(results).applyFilter(event.query, { show: true });
+   * @param {string} [query]
+   * @param {{ show?: boolean }} [options]
+   * @returns {this | undefined}
    */
-  applyFilter(query = this.input?.value ?? "", { show = false } = {}) {
+  applyFilter(query = "", { show = false } = {}) {
     if (this.mode !== "enhanced") return this;
     this.query = String(query ?? "");
     this.#applyFilter(this.query);
-    emit(this.input, "filter", {
+    emit(this.#inputEl(), "filter", {
       query: this.query,
       combobox: this,
       items: this.filteredItems,
@@ -1179,10 +1683,14 @@ export class Combobox {
     return this;
   }
 
+  /**
+   * @param {string} query
+   * @returns {boolean}
+   */
   #shouldLoad(query) {
     if (
       typeof this.options.shouldLoad === "function" &&
-      !this.options.shouldLoad(query, { combobox: this, source: this.source, input: this.input })
+      !this.options.shouldLoad(query, { combobox: this, source: this.source, input: this.#inputEl() })
     ) {
       return false;
     }
@@ -1193,6 +1701,10 @@ export class Combobox {
     );
   }
 
+  /**
+   * @param {string} query
+   * @param {{ cursor?: string | null, append?: boolean, debounce?: boolean }} [options]
+   */
   async #load(query, { cursor = null, append = false, debounce = false } = {}) {
     this.loadController?.abort();
     this.loadController = new AbortController();
@@ -1230,7 +1742,7 @@ export class Combobox {
         cursor,
         combobox: this,
         source: this.source,
-        input: this.input,
+        input: this.#inputEl(),
       });
       if (signal.aborted) return;
 
@@ -1249,21 +1761,25 @@ export class Combobox {
         result,
       });
     } catch (error) {
-      if (signal.aborted || error?.name === "AbortError") return;
+      const caught = /** @type {any} */ (error);
+      if (signal.aborted || caught?.name === "AbortError") return;
       // The error row mirrors loading: it replaces the list for this query and
       // is cleared by the next successful load or local search. Long-lived
       // selection lives on the native source and is untouched by a failed load.
-      this.loadError = error;
+      this.loadError = caught;
       emit(this.source, "combobox:loaderror", {
         query,
         combobox: this,
-        error,
+        error: caught,
       });
     } finally {
       if (!signal.aborted) this.loading = false;
     }
   }
 
+  /**
+   * @param {string} query
+   */
   #applyFilter(query) {
     const items = this.#items();
     const lookup = normalize(query);
@@ -1273,16 +1789,18 @@ export class Combobox {
       return this.#matches(item, query, lookup);
     });
 
+    const context = { combobox: this, source: this.source, input: this.#inputEl() };
+
     if (typeof this.options.filter === "function") {
-      visible = visible.filter((item) => this.options.filter(item, query, { combobox: this }));
+      visible = visible.filter((item) => this.options.filter(item, query, context));
     }
 
     if (typeof this.options.score === "function") {
-      visible = rankByScore(visible, (item, _index) => this.options.score(item, query, { combobox: this }));
+      visible = rankByScore(visible, (item, _index) => this.options.score(item, query, context));
     }
 
     if (typeof this.options.sort === "function") {
-      visible.sort((a, b) => this.options.sort(a, b, query, { combobox: this }));
+      visible.sort((a, b) => this.options.sort(a, b, query, context));
     }
 
     this.filteredItems = visible;
@@ -1300,19 +1818,27 @@ export class Combobox {
     );
   }
 
+  /**
+   * @param {import("./helpers.js").ComboboxItem} item
+   * @param {string} query
+   * @param {string} lookup
+   * @returns {boolean}
+   */
   #matches(item, query, lookup) {
     if (!query) return true;
 
     if (typeof this.options.match === "function") {
-      return this.options.match(item, query, { combobox: this });
+      return this.options.match(item, query, { combobox: this, source: this.source, input: this.#inputEl() });
     }
 
     const fields = Array.isArray(this.options.searchFields)
       ? this.options.searchFields
-      : [this.options.searchFields];
+      : this.options.searchFields
+        ? [this.options.searchFields]
+        : [];
     const values = fields.map((field) => {
-      if (field in item) return item[field];
-      return item.data?.[field] ?? "";
+      if (field in item) return String(item[field] ?? "");
+      return String(item.data?.[field] ?? "");
     });
     const text = normalize(values.join(" "));
     switch (String(this.options.match).toLowerCase()) {
@@ -1334,18 +1860,23 @@ export class Combobox {
     }
   }
 
+  /**
+   * @param {string | null | undefined} label
+   * @returns {boolean}
+   */
   #canCreate(label) {
     const value = String(label ?? "").trim();
     if (!this.isSelect || !this.options.create || !value) return false;
     if (
       this.options.maxItems > 0 &&
       this.isMultiple &&
-      this.source.selectedOptions.length >= this.options.maxItems
+      this.#selectSource().selectedOptions.length >= this.options.maxItems
     )
       return false;
     if (typeof this.options.createFilter === "function") {
       return (
-        this.options.createFilter(value, { combobox: this, source: this.source, input: this.input }) !== false
+        this.options.createFilter(value, { combobox: this, source: this.source, input: this.#inputEl() }) !==
+        false
       );
     }
     return true;
@@ -1356,8 +1887,8 @@ export class Combobox {
   /* ---------------------------------------------------------------------- */
 
   #renderList() {
-    this.listbox.replaceChildren();
-    this.status.textContent = "";
+    this.#listEl().replaceChildren();
+    this.#statusEl().textContent = "";
 
     if (this.loading) {
       this.#renderLoading();
@@ -1376,7 +1907,7 @@ export class Combobox {
         group.className = "cb-group";
         group.setAttribute("role", "presentation");
         setContent(group, this.options.render.group?.(item.group, { combobox: this }) ?? item.group);
-        this.listbox.append(group);
+        this.#listEl().append(group);
         previousGroup = item.group;
       }
 
@@ -1388,7 +1919,7 @@ export class Combobox {
       option.dataset.index = String(index);
       option.setAttribute("aria-selected", String(Boolean(item.selected)));
       // Preserve native <option title="…"> tooltips on the row.
-      if (item.option?.title || item.title) option.title = item.option?.title || item.title;
+      if (item.option?.title || item.title) option.title = item.option?.title ?? item.title ?? "";
       if (item.disabled) {
         option.setAttribute("aria-disabled", "true");
       }
@@ -1402,35 +1933,44 @@ export class Combobox {
       label.className = "cb-option-label";
       setContent(label, rendered ?? item.label);
       option.append(label);
-      this.listbox.append(option);
+      this.#listEl().append(option);
     }
 
     if (!this.filteredItems.length) {
-      if (this.#canCreate(this.input.value)) {
+      if (this.#canCreate(this.#inputEl().value)) {
         const create = document.createElement("div");
         create.className = "cb-option cb-create";
         create.tabIndex = -1;
         create.role = "option";
-        const query = this.input.value.trim();
+        const query = this.#inputEl().value.trim();
         const rendered = this.options.render.create?.(query, { combobox: this });
         const createLabel = document.createElement("span");
         createLabel.className = "cb-option-label";
-        setContent(createLabel, rendered ?? this.options.messages.create(query));
+        setContent(
+          createLabel,
+          rendered ??
+            this.options.messages.create?.(query, {
+              combobox: this,
+              source: this.source,
+              input: this.#inputEl(),
+            }) ??
+            query,
+        );
         create.append(createLabel);
-        this.listbox.append(create);
+        this.#listEl().append(create);
       } else {
         const empty = document.createElement("div");
         empty.className = "cb-empty";
         const rendered = this.options.render.noResults?.(this.query, { combobox: this });
         setContent(empty, rendered ?? this.options.messages.noResults);
-        this.listbox.append(empty);
-        this.status.textContent = this.options.messages.noResults;
+        this.#listEl().append(empty);
+        this.#statusEl().textContent = this.options.messages.noResults ?? "";
       }
     }
   }
 
   #renderLoading() {
-    this.listbox.replaceChildren();
+    this.#listEl().replaceChildren();
     // A loading/error row replaces the option list, so no row may stay active:
     // the previous aria-activedescendant would point at removed DOM.
     this.#setActive(-1);
@@ -1438,23 +1978,25 @@ export class Combobox {
     loading.className = "cb-empty cb-loading";
     const rendered = this.options.render.loading?.(this.query, { combobox: this });
     setContent(loading, rendered ?? this.options.messages.loading);
-    this.listbox.append(loading);
-    this.status.textContent = this.options.messages.loading;
+    this.#listEl().append(loading);
+    this.#statusEl().textContent = this.options.messages.loading ?? "";
   }
 
   #renderError() {
-    this.listbox.replaceChildren();
+    this.#listEl().replaceChildren();
     this.#setActive(-1);
     const error = document.createElement("div");
     error.className = "cb-empty cb-error";
     const rendered = this.options.render.error?.(this.query, { error: this.loadError, combobox: this });
     setContent(error, rendered ?? this.options.messages.loadError);
-    this.listbox.append(error);
-    this.status.textContent = this.options.messages.loadError;
+    this.#listEl().append(error);
+    this.#statusEl().textContent = this.options.messages.loadError ?? "";
   }
 
   #renderChips() {
-    this.chips.replaceChildren();
+    const chips = this.#chipsEl();
+    if (!chips) return;
+    chips.replaceChildren();
 
     for (const option of this.#selectedOptionsInOrder()) {
       // An empty value is not a real selection unless allowEmptyOption is on;
@@ -1496,12 +2038,12 @@ export class Combobox {
         chip.append(remove);
       }
 
-      this.chips.append(chip);
+      chips.append(chip);
     }
   }
 
   #selectedOptionsInOrder() {
-    const selected = Array.from(this.source.selectedOptions);
+    const selected = Array.from(this.#selectSource().selectedOptions);
     if (this.options.selectionOrder !== "selected") return selected;
 
     // Reconcile the remembered order against the actual selection. Options no
@@ -1511,19 +2053,35 @@ export class Combobox {
     return reconcileSelected(selected, this.selectionOrder);
   }
 
+  /**
+   * @param {HTMLOptionElement} option
+   */
   #rememberSelection(option) {
     if (!this.selectionOrder.includes(option)) this.selectionOrder.push(option);
   }
 
+  /**
+   * @param {HTMLOptionElement} option
+   */
   #forgetSelection(option) {
     const index = this.selectionOrder.indexOf(option);
     if (index >= 0) this.selectionOrder.splice(index, 1);
   }
 
+  /**
+   * Keyboard interaction on a focused chip.
+   * @param {KeyboardEvent} event
+   * @param {import("./helpers.js").ComboboxItem} item
+   */
   #onChipKeyDown(event, item) {
-    const chips = Array.from(this.chips.querySelectorAll(".cb-chip"));
-    const current = event.target.closest(".cb-chip");
-    const index = chips.indexOf(current);
+    const chips = /** @type {HTMLElement[]} */ (
+      Array.from(this.#chipsEl()?.querySelectorAll(".cb-chip") || [])
+    );
+    const current =
+      event.target instanceof HTMLElement
+        ? /** @type {HTMLElement | null} */ (event.target.closest(".cb-chip"))
+        : null;
+    const index = current ? chips.indexOf(current) : -1;
 
     // Ordered-mode keyboard reorder: Alt+Arrow/Home/End reorders a focused chip
     // without changing navigation keys. The gesture is consumed only when a real
@@ -1559,7 +2117,7 @@ export class Combobox {
       if (event.key === "ArrowRight") next = index + 1;
       if (event.key === "Home") next = 0;
       if (event.key === "End") next = chips.length - 1;
-      if (next >= chips.length) this.input.focus();
+      if (next >= chips.length) this.#inputEl().focus();
       else chips[next]?.focus();
       return;
     }
@@ -1569,9 +2127,11 @@ export class Combobox {
       void this.remove(item.option ?? item.value).then((removed) => {
         if (!removed) return;
         queueMicrotask(() => {
-          const remaining = Array.from(this.chips.querySelectorAll(".cb-chip"));
+          const remaining = /** @type {HTMLElement[]} */ (
+            Array.from(this.#chipsEl()?.querySelectorAll(".cb-chip") || [])
+          );
           remaining[Math.min(index, remaining.length - 1)]?.focus();
-          if (!remaining.length) this.input.focus();
+          if (!remaining.length) this.#inputEl().focus();
         });
       });
       return;
@@ -1579,30 +2139,41 @@ export class Combobox {
 
     if (event.key === "Escape") {
       event.preventDefault();
-      this.input.focus();
+      this.#inputEl().focus();
     }
   }
 
   /** Move a focused chip to an absolute position, keep it focused and announce. */
+  /**
+   * @param {import("./helpers.js").ComboboxItem} item
+   * @param {number} target
+   */
   #reorderChip(item, target) {
     const identity = item.option ?? item.value;
     if (!this.move(identity, target)) return;
-    const chips = Array.from(this.chips.querySelectorAll(".cb-chip"));
+    const chips = /** @type {HTMLElement[]} */ (
+      Array.from(this.#chipsEl()?.querySelectorAll(".cb-chip") || [])
+    );
     const chip = item.option
       ? chips.find((candidate) => this._chipOptions.get(candidate) === item.option)
       : chips.find((candidate) => candidate.dataset.value === item.value);
     chip?.focus();
-    this.status.textContent = this.options.messages.position(
-      item.label,
-      chips.indexOf(chip) + 1,
-      chips.length,
-    );
+    this.#statusEl().textContent =
+      this.options.messages.position?.(
+        item.label,
+        chips.indexOf(/** @type {HTMLElement} */ (chip)) + 1,
+        chips.length,
+        { combobox: this, source: this.source, input: this.#inputEl() },
+      ) ?? "";
   }
 
   /* ---------------------------------------------------------------------- */
   /* Selection / creation                                                   */
   /* ---------------------------------------------------------------------- */
 
+  /**
+   * @param {number} delta
+   */
   #moveActive(delta) {
     const visible = this.visibleItems;
     if (!visible.length) return;
@@ -1618,6 +2189,11 @@ export class Combobox {
   }
 
   /** Nearest selectable row at/after (`direction > 0`) or at/before an index, or -1. */
+  /**
+   * @param {number} from
+   * @param {number} direction
+   * @returns {number}
+   */
   #nearestSelectable(from, direction) {
     const visible = this.visibleItems;
     const len = visible.length;
@@ -1636,32 +2212,41 @@ export class Combobox {
 
   /** Rendered page height in selectable rows, used by PageUp/PageDown. */
   #pageSize() {
-    const first = this.listbox.querySelector(".cb-option");
+    const first = this.#listEl().querySelector(".cb-option");
     if (!first) return 1;
-    const row = first.offsetHeight || 48;
-    const view = this.popover.clientHeight || 0;
+    const row = /** @type {HTMLElement} */ (first).offsetHeight || 48;
+    const view = this.#popoverEl().clientHeight || 0;
     return Math.max(1, Math.floor(view / row));
   }
 
+  /**
+   * @param {number} index
+   */
   #setActive(index) {
     if (index >= this.visibleItems.length) index = -1;
     this.activeIndex = index;
 
     for (const item of this.#sourceItems()) item.option?.removeAttribute("data-active-option");
 
-    for (const option of this.listbox.querySelectorAll(".cb-option[data-index]")) {
-      const active = Number(option.dataset.index) === index;
-      option.toggleAttribute("data-active", active);
+    for (const option of this.#listEl().querySelectorAll(".cb-option[data-index]")) {
+      const el = /** @type {HTMLElement} */ (option);
+      const active = Number(el.dataset.index) === index;
+      el.toggleAttribute("data-active", active);
       if (active) {
-        this.input.setAttribute("aria-activedescendant", option.id);
+        this.#inputEl().setAttribute("aria-activedescendant", el.id);
         this.visibleItems[index]?.option?.setAttribute("data-active-option", "");
-        option.scrollIntoView({ block: "nearest" });
+        el.scrollIntoView({ block: "nearest" });
       }
     }
 
-    if (index < 0) this.input.removeAttribute("aria-activedescendant");
+    if (index < 0) this.#inputEl().removeAttribute("aria-activedescendant");
   }
 
+  /**
+   * @param {import("./helpers.js").ComboboxItem} item
+   * @param {{ materialize?: boolean }} [options]
+   * @returns {boolean}
+   */
   #selectItem(item, { materialize = true } = {}) {
     if (item.disabled) return false;
 
@@ -1679,7 +2264,9 @@ export class Combobox {
       if (!option && materialize) option = this.addOption(item);
       if (!option || option.disabled) return false;
 
-      const unchanged = this.isMultiple ? option.selected : this.source.selectedOptions[0] === option;
+      const unchanged = this.isMultiple
+        ? option.selected
+        : this.#selectSource().selectedOptions[0] === option;
       if (unchanged) {
         if (!this.isMultiple) this.hide();
         return false;
@@ -1687,7 +2274,7 @@ export class Combobox {
       if (
         this.isMultiple &&
         this.options.maxItems > 0 &&
-        this.source.selectedOptions.length >= this.options.maxItems
+        this.#selectSource().selectedOptions.length >= this.options.maxItems
       ) {
         return false;
       }
@@ -1709,10 +2296,11 @@ export class Combobox {
     if (before.defaultPrevented) return false;
 
     if (this.isSelect) {
+      const selectOption = /** @type {HTMLOptionElement} */ (option);
       if (this.isMultiple) {
-        option.selected = true;
-        this.#rememberSelection(option);
-        this.input.value = "";
+        selectOption.selected = true;
+        this.#rememberSelection(selectOption);
+        this.#inputEl().value = "";
         this.#commit();
         if (this.suppressReopen) this.refresh();
         else if (this.#closeOnSelect()) this.hide();
@@ -1720,9 +2308,9 @@ export class Combobox {
       } else {
         // Select the exact option rather than assigning source.value, so a
         // duplicate value keeps its own label and selectedIndex.
-        option.selected = true;
-        this.selectionOrder = [option];
-        this.input.value = item.label;
+        selectOption.selected = true;
+        this.selectionOrder = [selectOption];
+        this.#inputEl().value = item.label;
         this.#commit();
         if (this.#closeOnSelect()) this.hide();
       }
@@ -1737,6 +2325,10 @@ export class Combobox {
     return true;
   }
 
+  /**
+   * @param {string} label
+   * @returns {Promise<HTMLOptionElement | null>}
+   */
   async #createItem(label) {
     if (!this.#canCreate(label)) return null;
 
@@ -1762,6 +2354,7 @@ export class Combobox {
     );
     if (before.defaultPrevented) return null;
 
+    /** @type {import("./helpers.js").ComboboxItem} */
     let created = { value: label, label };
     if (typeof this.options.create === "function") {
       this.loading = true;
@@ -1771,11 +2364,11 @@ export class Combobox {
           signal: this.abortController.signal,
           combobox: this,
           source: this.source,
-          input: this.input,
+          input: this.#inputEl(),
         });
         if (!result) return null;
-        created = toItem(result, this.#fields());
-      } catch (error) {
+        created = /** @type {import("./helpers.js").ComboboxItem} */ (toItem(result, this.#fields()));
+      } catch (/** @type {any} */ error) {
         if (error?.name !== "AbortError")
           emit(this.source, "combobox:createerror", { combobox: this, label, error });
         return null;
@@ -1786,7 +2379,7 @@ export class Combobox {
 
     const option = this.addOption(created, { selected: true });
     this.#rememberSelection(option);
-    this.input.value = "";
+    this.#inputEl().value = "";
     this.#commit();
 
     emit(this.source, "combobox:create", {
@@ -1809,15 +2402,19 @@ export class Combobox {
    * Run an async guard. `false` is a voluntary refusal (no mutation, no
    * error). A rejected promise is an application error: a generic
    * `combobox:guarderror` event is emitted and the operation is blocked.
+   * @param {"add" | "remove" | "clear"} name
+   * @param {any} payload
+   * @returns {Promise<{ ok: boolean, refused?: boolean, error?: any }>}
    */
   async #runGuard(name, payload) {
-    const guard = this.options.guards?.[name];
+    const guards = this.options.guards;
+    const guard = guards[name];
     if (typeof guard !== "function") return { ok: true };
     try {
       const result = await guard(payload, {
         combobox: this,
         source: this.source,
-        input: this.input,
+        input: this.#inputEl(),
         signal: this.abortController.signal,
       });
       return { ok: result !== false, refused: result === false };
@@ -1827,10 +2424,16 @@ export class Combobox {
     }
   }
 
+  /**
+   * @returns {boolean}
+   */
   #closeOnSelect() {
     return this.options.closeOnSelect ?? !this.isMultiple;
   }
 
+  /**
+   * @returns {boolean}
+   */
   #separatorsActive() {
     return this.isMultiple && Array.isArray(this.options.separators) && this.options.separators.length > 0;
   }
@@ -1840,11 +2443,14 @@ export class Combobox {
    * seam: `tokenize(value, ctx) => { tokens: string[], rest?: string }`.
    * `tokens` are complete tokens to consume; `rest` is the trailing
    * incomplete text that must keep living in the input (defaults to `""`).
+   * @param {string} value
+   * @param {boolean} [final]
+   * @returns {{ entries: Array<{ text: string, sep: string }>, rest: string }}
    */
   #resolveTokens(value, final = false) {
     const custom = this.options.tokenize;
     if (typeof custom === "function") {
-      const result = custom(value, { combobox: this, source: this.source, input: this.input });
+      const result = custom(value, { combobox: this, source: this.source, input: this.#inputEl() });
       const tokens = result && Array.isArray(result.tokens) ? result.tokens : [];
       const entries = tokens.map((text) => ({ text: String(text), sep: "" }));
       return { entries, rest: final ? "" : String(result?.rest ?? "") };
@@ -1860,6 +2466,9 @@ export class Combobox {
    * token runs existing -> guard -> create -> select in order, re-evaluating
    * maxItems between tokens. On refusal/error/maxItems the unprocessed
    * remainder stays in the input; a trailing incomplete token stays too.
+   * @param {string} value
+   * @param {{ final?: boolean }} [options]
+   * @returns {Promise<{ consumed: boolean, rest: string } | null>}
    */
   async #processTokens(value, { final = false } = {}) {
     if (!this.#separatorsActive()) return null;
@@ -1870,7 +2479,7 @@ export class Combobox {
     let consumedLength = 0;
     for (let index = 0; index < entries.length; index++) {
       const entry = entries[index];
-      if (this.options.maxItems > 0 && this.source.selectedOptions.length >= this.options.maxItems) {
+      if (this.options.maxItems > 0 && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
         return { consumed: false, rest: value.slice(consumedLength) };
       }
       if (!(await this.#applyToken(entry.text))) {
@@ -1882,6 +2491,10 @@ export class Combobox {
   }
 
   /** Apply one token: existing option wins, otherwise guarded creation. */
+  /**
+   * @param {string | null | undefined} text
+   * @returns {Promise<boolean>}
+   */
   async #applyToken(text) {
     const term = String(text ?? "").trim();
     if (!term) return true;
@@ -1897,15 +2510,15 @@ export class Combobox {
   }
 
   async #handleTokenInput() {
-    const result = await this.#processTokens(this.input.value);
-    if (result?.consumed) this.input.value = result.rest;
-    this.search(this.input.value, { show: true, reason: "input" });
+    const result = await this.#processTokens(this.#inputEl().value);
+    if (result?.consumed) this.#inputEl().value = result.rest;
+    this.search(this.#inputEl().value, { show: true, reason: "input" });
   }
 
   async #commitEnterTokens() {
-    const result = await this.#processTokens(this.input.value, { final: true });
+    const result = await this.#processTokens(this.#inputEl().value, { final: true });
     if (result?.consumed) {
-      this.input.value = result.rest;
+      this.#inputEl().value = result.rest;
       this.search("", { show: true, reason: "create" });
     }
   }
@@ -1917,7 +2530,7 @@ export class Combobox {
 
   #commit() {
     this.source.removeAttribute("aria-invalid");
-    this.input?.removeAttribute("aria-invalid");
+    this.#inputEl()?.removeAttribute("aria-invalid");
     this.#dispatchNativeValueEvents();
   }
 
@@ -1925,6 +2538,12 @@ export class Combobox {
   /* Public state                                                           */
   /* ---------------------------------------------------------------------- */
 
+  /**
+   * Add a catalogue option to the select.
+   * @param {*} rawItem
+   * @param {{ selected?: boolean }} [options]
+   * @returns {HTMLOptionElement}
+   */
   addOption(rawItem, { selected = false } = {}) {
     if (!this.isSelect) throw new TypeError("addOption() is only available for select-backed comboboxes");
     const item = toItem(rawItem, this.#fields());
@@ -1941,17 +2560,19 @@ export class Combobox {
       option.disabled = Boolean(item.disabled);
       if (item.data) Object.assign(option.dataset, item.data);
       if (item.group) {
-        let group = Array.from(this.source.children).find(
-          (node) => node instanceof HTMLOptGroupElement && node.label === item.group,
+        let group = /** @type {HTMLOptGroupElement | undefined} */ (
+          Array.from(this.#selectSource().children).find(
+            (node) => node instanceof HTMLOptGroupElement && node.label === item.group,
+          )
         );
         if (!group) {
           group = document.createElement("optgroup");
           group.label = item.group;
-          this.source.append(group);
+          this.#selectSource().append(group);
         }
         group.append(option);
       } else {
-        this.source.add(option);
+        this.#selectSource().add(option);
       }
     }
     if (selected && !option.selected) option.selected = true;
@@ -1959,6 +2580,12 @@ export class Combobox {
     return option;
   }
 
+  /**
+   * Select an item. Bare values resolve to existing catalogue entries (never
+   * materialising new options); objects/options may materialise.
+   * @param {string | number | import("./helpers.js").ComboboxItem | HTMLOptionElement} itemOrValue
+   * @returns {boolean}
+   */
   select(itemOrValue) {
     const isObject = typeof itemOrValue === "object" && itemOrValue !== null;
 
@@ -1966,6 +2593,7 @@ export class Combobox {
       const item = isObject
         ? toItem(itemOrValue, this.#fields())
         : { value: String(itemOrValue), label: String(itemOrValue) };
+      if (!item) return false;
       const option =
         (this.isMultiple ? this.#findSelectableOption(item.value) : null) || this.#findOption(item.value);
       if (!option) {
@@ -1978,7 +2606,7 @@ export class Combobox {
       const unchanged = this.isMultiple ? option.selected : this.source.value === option.value;
       if (unchanged) return false;
       if (!this.isMultiple) {
-        for (const other of this.source.options) other.selected = false;
+        for (const other of this.#selectSource().options) other.selected = false;
       }
       option.selected = true;
       this.#rememberSelection(option);
@@ -1988,6 +2616,7 @@ export class Combobox {
 
     if (isObject) {
       const item = toItem(itemOrValue, this.#fields());
+      if (!item) return false;
       // An exact <option> passed to select() keeps its identity, so a
       // duplicate value is never resolved back to the first occurrence.
       if (itemOrValue instanceof HTMLOptionElement) item.option = itemOrValue;
@@ -1998,13 +2627,18 @@ export class Combobox {
     // creation, and each call resolves to the next selectable occurrence (see
     // #findSelectableOption), so select("2") x3 picks three distinct options.
     const value = String(itemOrValue);
-    const found =
+    const foundRaw =
       this.#items().find((candidate) => candidate.value === value) ||
       this.#sourceItems().find((candidate) => candidate.value === value);
+    const found = foundRaw ? /** @type {import("./helpers.js").ComboboxItem} */ (foundRaw) : null;
     if (!found) return false;
     return this.#selectItem({ value: found.value, label: found.label }, { materialize: false });
   }
 
+  /**
+   * @param {string | HTMLOptionElement} valueOrOption
+   * @returns {Promise<boolean>}
+   */
   async remove(valueOrOption) {
     if (!this.isSelect) return false;
     // An exact option is authoritative (the chip a user clicked); a bare value
@@ -2047,7 +2681,7 @@ export class Combobox {
       return true;
     }
 
-    const selected = Array.from(this.source.selectedOptions).filter((option) => !option.disabled);
+    const selected = Array.from(this.#selectSource().selectedOptions).filter((option) => !option.disabled);
     if (!selected.length) return false;
     const guard = await this.#runGuard("clear", {});
     if (!guard.ok) return false;
@@ -2062,11 +2696,17 @@ export class Combobox {
     return true;
   }
 
+  /**
+   * @returns {string[]}
+   */
   getSelectedValues() {
     if (!this.isSelect) return [this.source.value].filter(Boolean);
     return this.#selectedOptionsInOrder().map((option) => option.value);
   }
 
+  /**
+   * @returns {import("./helpers.js").ComboboxItem[]}
+   */
   getSelectedItems() {
     if (!this.isSelect)
       return [{ value: this.source.value, label: this.source.value }].filter((item) => item.value);
@@ -2078,6 +2718,11 @@ export class Combobox {
     }));
   }
 
+  /**
+   * @param {string | HTMLOptionElement} itemOrValue
+   * @param {number} index
+   * @returns {boolean}
+   */
   move(itemOrValue, index) {
     if (!this.isMultiple || this.options.selectionOrder !== "selected") return false;
     // An exact option moves that identity (duplicate values stay distinct); a
@@ -2123,22 +2768,22 @@ export class Combobox {
     if (this.mode !== "enhanced") return this;
 
     if (this.isSelect) {
-      this.input.disabled = this.source.disabled;
-      this.input.readOnly = this.source.hasAttribute("readonly");
-      for (const option of this.source.selectedOptions) this.#rememberSelection(option);
-      if (this.source.required) this.input.setAttribute("aria-required", "true");
-      else this.input.removeAttribute("aria-required");
+      this.#inputEl().disabled = this.source.disabled;
+      this.#inputEl().readOnly = this.source.hasAttribute("readonly");
+      for (const option of this.#selectSource().selectedOptions) this.#rememberSelection(option);
+      if (this.source.required) this.#inputEl().setAttribute("aria-required", "true");
+      else this.#inputEl().removeAttribute("aria-required");
       if (this.isMultiple) this.#renderChips();
       else this.#syncSingleLabel();
     }
 
-    this.#applyFilter(this.isSelect && !this.isMultiple ? "" : this.input.value);
+    this.#applyFilter(this.isSelect && !this.isMultiple ? "" : this.#inputEl().value);
     return this;
   }
 
   #syncSingleLabel() {
-    const selected = this.source.selectedOptions[0];
-    this.input.value = selected?.value ? selected.textContent.trim() : "";
+    const selected = this.#selectSource().selectedOptions[0];
+    this.#inputEl().value = selected?.value ? selected.textContent.trim() : "";
   }
 
   show() {
@@ -2151,9 +2796,9 @@ export class Combobox {
     if (before.defaultPrevented) return false;
 
     try {
-      this.popover.showPopover({ source: this.input });
+      this.#popoverEl().showPopover({ source: this.#inputEl() });
     } catch {
-      this.popover.showPopover();
+      this.#popoverEl().showPopover();
     }
     openCombobox = this;
     return true;
@@ -2163,13 +2808,13 @@ export class Combobox {
     if (this.mode !== "enhanced" || !this.isOpen()) return false;
     const before = emit(this.source, "combobox:beforeclose", { combobox: this }, { cancelable: true });
     if (before.defaultPrevented) return false;
-    this.popover.hidePopover();
+    this.#popoverEl().hidePopover();
     if (openCombobox === this) openCombobox = null;
     return true;
   }
 
   isOpen() {
-    return this.mode === "enhanced" && this.popover.matches(":popover-open");
+    return this.mode === "enhanced" && this.#popoverEl().matches(":popover-open");
   }
 
   dispose() {
@@ -2189,7 +2834,7 @@ export class Combobox {
     }
 
     if (openCombobox === this) openCombobox = null;
-    this.popover?.remove();
+    this.#popoverEl()?.remove();
 
     // Cleanup only touches real source options. An init that failed before the
     // datalist resolved (input without a valid `list`) never produced mirror
@@ -2215,18 +2860,19 @@ export class Combobox {
 
       // A placeholder that was consumed by a previous dispose() has no parent.
       // Restoring must also work when the whole wrapper subtree is detached.
-      if (!this.ownsInput && this.input && this.original.filterInputPlaceholder?.parentNode) {
-        this.original.filterInputPlaceholder.replaceWith(this.input);
+      if (!this.ownsInput && this.#inputEl() && this.original.filterInputPlaceholder?.parentNode) {
+        this.original.filterInputPlaceholder.replaceWith(this.#inputEl());
       }
-      this.input?.classList.remove("cb-input");
+      this.#inputEl()?.classList.remove("cb-input");
       this.inputSnapshot?.restore();
     } else {
       this.source.classList.remove("cb-text-control");
       this.source.style.removeProperty("anchor-name");
       // A placeholder that was consumed by a previous dispose() has no parent.
       // Restoring must also work when the whole wrapper subtree is detached.
-      if (this.original.datalistPlaceholder?.parentNode) {
-        this.original.datalistPlaceholder.replaceWith(this.datalist);
+      const datalist = this.datalist;
+      if (datalist && this.original.datalistPlaceholder?.parentNode) {
+        this.original.datalistPlaceholder.replaceWith(datalist);
       }
       this.inputSnapshot?.restore();
     }

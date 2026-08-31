@@ -2,12 +2,26 @@ import { Combobox } from "./combobox.js";
 import { booleanAttribute, parseInteger, parseList, parseSeparators } from "./helpers.js";
 
 /**
+ * @typedef {import("./combobox.js").ComboboxOptions} ComboboxOptions
+ * @typedef {import("./combobox.js").ComboboxSource} ComboboxSource
+ */
+
+/**
+ * Configuration of one `<combo-box>` attribute → option mapping.
+ * @typedef {Object} AttributeConfig
+ * @property {"boolean" | "integer"} [type] Built-in converter
+ * @property {string} [option] Override of the default kebab→camelCase name
+ * @property {(raw: string | null) => any} [parse] Explicit converter
+ */
+
+/**
  * Declarative surface: the canonical mapping of `<combo-box>` attributes to
  * engine options. This schema drives both `observedAttributes` and the option
  * resolver, so anything listed here is part of the HTML API — nothing is
  * inferred from `DEFAULTS`. `option` overrides the default kebab→camelCase
  * name; `parse` is an explicit converter; `type` selects a built-in converter
  * (`boolean`, `integer`, otherwise raw string).
+ * @type {Record<string, AttributeConfig>}
  */
 const OPTION_ATTRIBUTES = {
   create: { type: "boolean" },
@@ -30,6 +44,10 @@ const OPTION_ATTRIBUTES = {
   debounce: { type: "integer" },
 };
 
+/**
+ * @param {string} name
+ * @returns {string}
+ */
 function camelCase(name) {
   return name.replace(/-([a-z])/g, (_, char) => char.toUpperCase());
 }
@@ -51,12 +69,17 @@ export class ComboBoxElement extends HTMLElement {
 
   constructor() {
     super();
+    /** @type {Combobox | null} */
     this._combobox = null;
+    /** @type {ComboboxSource | null} */
     this._source = null;
+    /** @type {ComboboxOptions} */
     this._options = {};
+    /** @type {MutationObserver | null} */
     this._sourceObserver = null;
     this._revision = 0;
     this._rebuildQueued = false;
+    /** @type {Array<(combobox: Combobox) => void>} */
     this._readyResolvers = [];
 
     // Upgrade properties assigned while <combo-box> was still an unknown
@@ -82,23 +105,46 @@ export class ComboBoxElement extends HTMLElement {
     });
   }
 
+  /**
+   * @param {string} _name
+   * @param {string | null} oldValue
+   * @param {string | null} newValue
+   */
   attributeChangedCallback(_name, oldValue, newValue) {
     if (oldValue === newValue || !this._combobox) return;
     this.#scheduleRebuild();
   }
 
+  /**
+   * The enhanced source element, discovering it lazily when needed.
+   * @public
+   * @returns {ComboboxSource | null}
+   */
   get source() {
     return this._source || this.#findSource();
   }
 
+  /**
+   * The underlying Combobox engine instance, or null before upgrade.
+   * @public
+   * @returns {Combobox | null}
+   */
   get combobox() {
     return this._combobox;
   }
 
+  /**
+   * The merged JavaScript options currently applied to the element.
+   * @public
+   * @returns {ComboboxOptions}
+   */
   get options() {
     return { ...this._options };
   }
 
+  /**
+   * @param {ComboboxOptions} value
+   */
   set options(value) {
     if (value == null) value = {};
     if (typeof value !== "object") throw new TypeError("combo-box options must be an object");
@@ -106,7 +152,12 @@ export class ComboBoxElement extends HTMLElement {
     if (this._combobox) this.#scheduleRebuild();
   }
 
-  /** Merge JavaScript-only behavior such as load/create/render callbacks. */
+  /**
+   * Merge JavaScript-only behavior such as load/create/render callbacks.
+   * @public
+   * @param {ComboboxOptions} [options]
+   * @returns {this}
+   */
   configure(options = {}) {
     this.options = { ...this._options, ...options };
     return this;
@@ -114,7 +165,9 @@ export class ComboBoxElement extends HTMLElement {
 
   /**
    * Enhance the native child source. Safe to call repeatedly.
-   * Returns the Combobox instance, or null until a source child exists.
+   * @public
+   * @returns {Combobox | null} The Combobox instance, or null until a source
+   *   child exists.
    */
   upgrade() {
     const source = this.#findSource();
@@ -147,11 +200,20 @@ export class ComboBoxElement extends HTMLElement {
     return this._combobox;
   }
 
+  /**
+   * Resolves once the engine has upgraded the source child.
+   * @public
+   * @returns {Promise<Combobox>}
+   */
   whenReady() {
     if (this._combobox) return Promise.resolve(this._combobox);
     return new Promise((resolve) => this._readyResolvers.push(resolve));
   }
 
+  /**
+   * Tear the engine down and restore the native source.
+   * @public
+   */
   dispose() {
     this._sourceObserver?.disconnect();
     this._sourceObserver = null;
@@ -160,6 +222,9 @@ export class ComboBoxElement extends HTMLElement {
     this._source = null;
   }
 
+  /**
+   * @returns {ComboboxSource | null}
+   */
   #findSource() {
     // A select wins because a select-backed combobox may also contain its
     // explicit filter <input>. Otherwise require input[list] for free text.
@@ -180,7 +245,11 @@ export class ComboBoxElement extends HTMLElement {
     this._sourceObserver.observe(this, { childList: true });
   }
 
+  /**
+   * @returns {ComboboxOptions}
+   */
   #resolvedOptions() {
+    /** @type {Record<string, any>} */
     const attrs = {};
 
     for (const [attribute, config] of Object.entries(OPTION_ATTRIBUTES)) {
@@ -199,7 +268,7 @@ export class ComboBoxElement extends HTMLElement {
     }
 
     // JS wins over markup for behavior that needs an explicit override.
-    return { ...attrs, ...this._options };
+    return /** @type {ComboboxOptions} */ ({ ...attrs, ...this._options });
   }
 
   #scheduleRebuild() {
@@ -216,11 +285,16 @@ export class ComboBoxElement extends HTMLElement {
     });
   }
 
+  /**
+   * @param {string} name
+   */
   #upgradeProperty(name) {
     if (!Object.hasOwn(this, name)) return;
-    const value = this[name];
-    delete this[name];
-    this[name] = value;
+    // Reflect keeps the object index dynamic without aliasing `this` (which
+    // Biome flags) or widening the element type with a cast per access.
+    const value = Reflect.get(this, name);
+    Reflect.deleteProperty(this, name);
+    Reflect.set(this, name, value);
   }
 }
 
@@ -228,12 +302,16 @@ export class ComboBoxElement extends HTMLElement {
  * Explicit registration avoids surprising the global CustomElementRegistry.
  * A fresh subclass permits the same base implementation to be registered
  * under another application-specific name when desired.
+ * @param {string} [name]
+ * @param {CustomElementRegistry} [registry]
+ * @returns {typeof ComboBoxElement | null}
  */
 export function defineCombobox(name = "combo-box", registry = globalThis.customElements) {
   if (!registry) return null;
   const existing = registry.get(name);
   if (existing) {
-    if (existing.prototype instanceof ComboBoxElement) return existing;
+    if (existing.prototype instanceof ComboBoxElement)
+      return /** @type {typeof ComboBoxElement} */ (existing);
     throw new DOMException(`Custom element "${name}" is already defined`, "NotSupportedError");
   }
 

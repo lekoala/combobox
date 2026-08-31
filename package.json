@@ -5,6 +5,7 @@
   "type": "module",
   "license": "MIT",
   "packageManager": "bun@1.4.0",
+  "customElements": "custom-elements.json",
   "keywords": [
     "combobox",
     "select",
@@ -17,36 +18,56 @@
   "files": [
     "dist",
     "src",
+    "custom-elements.json",
     "LICENSE",
     "README.md"
   ],
   "exports": {
-    ".": "./src/index.js",
-    "./define": "./src/define.js",
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./define": {
+      "types": "./dist/types/define.d.ts",
+      "import": "./src/define.js"
+    },
     "./combobox.css": "./src/combobox.css",
-    "./dist/combobox.js": "./dist/combobox.js"
+    "./dist/combobox.js": "./dist/combobox.js",
+    "./dist/combobox.min.js": "./dist/combobox.min.js",
+    "./dist/combobox.css": "./dist/combobox.css",
+    "./dist/combobox.min.css": "./dist/combobox.min.css"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
-    "build": "bun build src/define.js --outfile=dist/combobox.js --format=iife",
     "dev": "bun run build && node test/server.js",
-    "test": "bun run test:unit && bun run test:browser && bun run test:dist",
-    "test:unit": "bun test test/unit",
-    "test:browser": "playwright test test/browser",
-    "test:browser:headed": "playwright test test/browser --headed",
-    "test:browser:chromium": "playwright test test/browser --project chromium",
-    "test:browser:matrix": "playwright test test/browser --project firefox --project webkit --workers 3",
-    "test:matrix": "bun run test:browser:matrix && bun run test:dist --project firefox --project webkit --workers 3",
-    "test:dist": "playwright test test/dist",
-    "pretest:dist": "bun run build",
+    "build:bundle": "bun scripts/build.js",
+    "build:types": "bun run types",
+    "build:manifest": "bun scripts/custom-elements.js",
+    "build": "bun run build:bundle && bun run build:types && bun run build:manifest",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc -p jsconfig.json",
+    "types": "tsc -p tsconfig.types.json",
+    "test": "bun test test/unit",
     "test:syntax": "node --check src/combobox.js && node --check src/combo-box.js && node --check src/helpers.js && node --check src/index.js && node --check src/define.js",
-    "lint": "biome check src test playwright.config.js",
-    "format": "biome format --write src test playwright.config.js",
-    "check": "bun run test:syntax && bun run lint && bun run test:unit && bun run build && bun run test:browser --project chromium && bun run test:dist --project chromium",
+    "test:types": "tsc -p test/types/tsconfig.json",
+    "test:browser": "playwright test test/browser --project chromium",
+    "test:browser:headed": "playwright test test/browser --project chromium --headed",
+    "test:browser:all": "playwright test test/browser",
+    "test:dist": "playwright test test/dist --project chromium",
+    "check:package": "bun scripts/check-package.js",
+    "check:generated": "git diff --exit-code -- dist custom-elements.json",
+    "check:static": "bun run test:syntax && bun run lint && bun run typecheck && bun run test && bun run build && bun run test:types && bun run check:package && bun run check:generated",
+    "check": "bun run check:static && bun run test:browser && bun run test:dist",
+    "check:all": "bun run check:static && bun run test:browser:all && bun run test:dist",
     "prepack": "bun run build",
-    "prepublishOnly": "bun run lint && bun run test:unit && bun run build"
+    "prepublishOnly": "bun run lint && bun run typecheck && bun run test && bun run build && bun run test:types && bun run check:package"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.8",
-    "@playwright/test": "^1.55.0"
+    "@biomejs/biome": "2.5.11",
+    "@playwright/test": "1.62.1",
+    "typescript": "7.0.2"
   }
 }
