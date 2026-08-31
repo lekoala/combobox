@@ -815,7 +815,8 @@ export class Combobox {
 
       let option = this.#findOption(created.value);
       if (!option) {
-        option = new Option(created.label, created.value, true, true);
+        // Creation changes live form state, never the form-reset baseline.
+        option = new Option(created.label, created.value, false, true);
         if (created.data) Object.assign(option.dataset, created.data);
         this.#selectSource().add(option);
       } else {
@@ -2618,7 +2619,10 @@ export class Combobox {
     const option =
       item.option instanceof HTMLOptionElement
         ? item.option
-        : new Option(item.label, item.value, selected, selected);
+        : // `selected` is live state only. `defaultSelected` belongs to authored
+          // markup (or an explicit setOptions catalogue replacement), otherwise
+          // a dynamic selection would silently rewrite form.reset()'s baseline.
+          new Option(item.label, item.value, false, selected);
     if (!(item.option instanceof HTMLOptionElement)) {
       option.disabled = Boolean(item.disabled);
       if (item.data) Object.assign(option.dataset, item.data);

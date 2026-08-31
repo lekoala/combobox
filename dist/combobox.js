@@ -464,7 +464,7 @@
         }
         let option = this.#findOption(created.value);
         if (!option) {
-          option = new Option(created.label, created.value, true, true);
+          option = new Option(created.label, created.value, false, true);
           if (created.data)
             Object.assign(option.dataset, created.data);
           this.#selectSource().add(option);
@@ -1734,7 +1734,7 @@
       const item = toItem(rawItem, this.#fields());
       if (!item?.value)
         throw new TypeError("Option requires a value");
-      const option = item.option instanceof HTMLOptionElement ? item.option : new Option(item.label, item.value, selected, selected);
+      const option = item.option instanceof HTMLOptionElement ? item.option : new Option(item.label, item.value, false, selected);
       if (!(item.option instanceof HTMLOptionElement)) {
         option.disabled = Boolean(item.disabled);
         if (item.data)

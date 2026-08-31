@@ -476,6 +476,8 @@ and nothing magically makes a single option selectable twice.
   string (the first selected occurrence in the current order).
 - `addOption()` always appends a new native option — it never dedupes by `value` — unless
   `item.option` is passed, in which case that exact option is adopted.
+- `addOption(item, { selected: true })` changes live selection only; it never
+  changes `defaultSelected` or rewrites the baseline used by `form.reset()`.
 
 `remove()` and `clear()` are async because they can await `guards`; they resolve `false` when refused (voluntary or guarded).
 

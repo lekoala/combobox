@@ -290,6 +290,36 @@ test("form reset restores native selection and chips", async ({ page }) => {
   expect(state.chips).toEqual(["1"]);
 });
 
+test("created selected options never rewrite the form reset baseline", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  await page.evaluate(() => {
+    Combobox.getOrCreateInstance(document.getElementById("tags"), { create: true });
+  });
+
+  const input = page.locator(control("tags"));
+  await input.fill("Plum");
+  await input.press("Enter");
+
+  const created = await page
+    .locator('#tags option[value="Plum"]')
+    .evaluate((option) => ({ selected: option.selected, defaultSelected: option.defaultSelected }));
+  expect(created).toEqual({ selected: true, defaultSelected: false });
+
+  await page.evaluate(() => document.querySelector("form").reset());
+  await page.waitForTimeout(40);
+
+  const reset = await page.evaluate(() => ({
+    selected: Array.from(document.getElementById("tags").selectedOptions, (option) => option.value),
+    chips: Array.from(document.querySelectorAll("#tags + .cb-control .cb-chip"), (chip) =>
+      chip.getAttribute("data-value"),
+    ),
+    createdStillDefault: document.querySelector('#tags option[value="Plum"]').defaultSelected,
+  }));
+  expect(reset.selected).toEqual(["1"]);
+  expect(reset.chips).toEqual(["1"]);
+  expect(reset.createdStillDefault).toBe(false);
+});
+
 test("closeOnSelect closes a multiple picker after selection", async ({ page }) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
   await page.evaluate(() => {
