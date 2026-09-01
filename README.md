@@ -1,198 +1,378 @@
 # @lekoala/combobox
 
-A small native-first combobox and filterable-select library built around native form controls, Popover, CSS Anchor Positioning, and progressive enhancement.
+A small, native-first combobox library for searchable selects, multiple values, tags and remote suggestions.
 
-The project deliberately starts from browser primitives and Open UI concepts. Working identity is intentionally boring: npm package `@lekoala/combobox`, engine class `Combobox`, primary element `<combo-box>`.
-
-> **Status:** v0.1.0. The source is pure ESM in `src/` with **zero globals**; a generated classic build (`dist/combobox.js`, from `src/define.js`) covers `file://` and classic `<script>` consumers, with committed minified CSS/JS, generated `dist/types` declarations and a Custom Elements Manifest. CSS Anchor Positioning + the Popover API are the only modern-feature floor; older engines degrade to native controls.
-
-Migrating from `bootstrap5-tags` or `bootstrap5-autocomplete`? See [Migrating to Combobox](docs/MIGRATION.md).
-
-## Surface status
-
-- **Supported in 0.1** — the engine (`select`/`multiple`/`input+datalist` value
-  models), `<combo-box>` + the frozen attribute surface, matching/filtering,
-  `create` (sync + async), `guards`, separators/tokenizer, `maxItems`/
-  `maxOptions`, selection order + `move()`, `clear()`, remote `load` +
-  materialization contract, form semantics, `dispose()` exact restoration.
-- **Experimental** — seams exported with a contract that may still evolve in a
-  later 0.x: `observeSource`, the custom `tokenize` seam, `loadMore()`/cursor
-  pagination, rich `render.*` overrides.
-- **Future / non-goal** — drag/drop chip sorting, virtualization, plugin
-  architecture, automatic DOM observation by default, built-in clear UI,
-  checkbox dropdowns, Bootstrap JS, a fallback picker engine. Native controls
-  remain the fallback and are never re-implemented as a second combobox.
-
-## Core idea
-
-One `Combobox` enhances two native value models:
-
-```text
-<input list="...">       free-form value
-        │
-        └── the input owns the submitted value
-
-<select>                  constrained single value
-<select multiple>         constrained multiple values
-        │
-        └── the select owns submitted values
-```
-
-For select-backed controls, the searchable input is an **unnamed interaction control**. It never replaces the select as the form-value owner.
-
-Modern mode uses:
-
-- Popover API (`popover="manual"`) for the top layer;
-- CSS Anchor Positioning for placement and flipping;
-- combobox/listbox/option ARIA semantics;
-- native `input` + `change` events for integration;
-- `AbortSignal` + promises for async work.
-
-There is intentionally **no JavaScript positioning engine** and **no global `window.*` API**.
-
-## Usage surfaces
-
-The same machinery is reached three ways, each free of global pollution:
-
-**Declarative `<combo-box>`** — the recommended API. Loading the element registers
-`<combo-box>` in the standard `customElements` registry and that is the only global
-action ever taken:
+It enhances regular `<input>`, `<datalist>` and `<select>` controls instead of replacing them with a custom form model.
 
 ```html
 <script type="module">
   import "@lekoala/combobox/define";
 </script>
+
 <combo-box create placeholder="Search or create a framework…">
   <select name="frameworks[]" multiple>
     <option value="react">React</option>
+    <option value="vue">Vue</option>
   </select>
 </combo-box>
 ```
 
-Configure JavaScript-only behavior (remote `load`, `create`, renderers, async `guards`)
-directly on the element, before or after upgrade:
+The library uses the browser where it can:
 
-```js
-const patients = document.getElementById("patients");
-patients.options = { minChars: 2, async load() { /* … */ } };
+* native form controls keep owning the value;
+* Popover handles the picker top layer;
+* CSS Anchor Positioning handles placement;
+* ARIA combobox/listbox semantics handle keyboard interaction;
+* native `input`, `change`, validation and form reset keep working.
+
+There is no JavaScript positioning engine, no Bootstrap dependency and no global `window.*` API.
+
+## Install
+
+```bash
+npm install @lekoala/combobox
 ```
 
-**Imperative ESM** — enhance an existing source without the element:
+or:
+
+```bash
+bun add @lekoala/combobox
+```
+
+## Three ways to use it
+
+### `<combo-box>`
+
+This is the simplest option for most applications.
+
+```html
+<script type="module">
+  import "@lekoala/combobox/define";
+</script>
+
+<combo-box search="fuzzy" placeholder="Choose a country…">
+  <select name="country">
+    <option value="">Choose…</option>
+    <option value="be">Belgium</option>
+    <option value="fr">France</option>
+  </select>
+</combo-box>
+```
+
+Importing `@lekoala/combobox/define` registers `<combo-box>`.
+
+Importing the main package does **not** register anything automatically.
+
+### JavaScript
+
+You can enhance a native control directly:
 
 ```js
 import Combobox from "@lekoala/combobox";
 
-const combo = new Combobox(document.querySelector("select"), { /* options */ });
+const combo = new Combobox(document.querySelector("select"), {
+  search: "fuzzy",
+  minChars: 1,
+});
 ```
 
-**Classic / file://** — the generated single-file build self-registers `<combo-box>`
-only (still no `window.Combobox`; the element is the whole surface):
+### Classic script / `file://`
+
+A standalone build is also available:
 
 ```html
 <script src="dist/combobox.js"></script>
-<combo-box><select>…</select></combo-box>
+
+<combo-box>
+  <select>
+    ...
+  </select>
+</combo-box>
 ```
 
-`defineCombobox()` is exported and stays idempotent — the second call returns
-the same constructor:
+The classic build registers `<combo-box>`, but still does not expose a global `Combobox` object.
+
+## Native controls stay native
+
+The original control remains the source of truth.
+
+For an input:
+
+```text
+<input list="cities">
+       │
+       └── owns the submitted value
+```
+
+For selects:
+
+```text
+<select>
+<select multiple>
+       │
+       └── own the submitted value(s)
+```
+
+The searchable input added around a `<select>` is only there for interaction. It has no `name` and never replaces the select in `FormData`.
+
+This also means things such as:
+
+* `required`;
+* `disabled`;
+* `form.reset()`;
+* native `input` and `change`;
+* server-rendered selections;
+
+continue to behave like normal form controls.
+
+## Searchable selects
+
+A regular select can be filtered without changing its value model:
+
+```html
+<combo-box search="includes">
+  <select name="doctor">
+    <option value="1">Dr Jane Smith</option>
+    <option value="2">Dr John Martin</option>
+  </select>
+</combo-box>
+```
+
+You can also provide your own interaction input:
+
+```html
+<input data-filter-for="doctor" placeholder="Search doctors…">
+
+<select id="doctor" name="doctor">
+  ...
+</select>
+```
+
+The input is only used for filtering. The select still owns the value.
+
+## Multiple values and tags
+
+Multiple selects are rendered as removable chips:
+
+```html
+<combo-box>
+  <select name="specialties[]" multiple>
+    <option value="cardiology">Cardiology</option>
+    <option value="neurology">Neurology</option>
+  </select>
+</combo-box>
+```
+
+Enable creation when users may enter new values:
+
+```html
+<combo-box create>
+  <select name="tags[]" multiple></select>
+</combo-box>
+```
+
+Created options are added to the native `<select>` just like normal options.
+
+## Matching
+
+Built-in search modes are:
+
+```text
+includes
+startswith
+fuzzy
+pattern
+```
+
+Search can cover several fields:
+
+```html
+<combo-box
+  search="fuzzy"
+  search-fields="label city specialty"
+>
+  ...
+</combo-box>
+```
+
+Each field is matched independently. Search never matches by accidentally joining fields together.
+
+Matching is case- and accent-friendly where appropriate, so values such as:
+
+```text
+Liège
+liege
+LIEGE
+liège
+```
+
+behave as expected.
+
+More specialized matching can be provided from JavaScript.
+
+## Remote results
+
+Remote search stays deliberately simple:
 
 ```js
-import { defineCombobox } from "@lekoala/combobox";
-defineCombobox();                 // registers <combo-box>
+combo.configure({
+  minChars: 2,
+
+  async load(query, { signal }) {
+    const response = await fetch(`/api/patients?q=${encodeURIComponent(query)}`, {
+      signal,
+    });
+
+    return response.json();
+  },
+});
 ```
 
-The official name is fixed. An application-specific tag is native subclassing
-on the exported `ComboBoxElement`:
+Remote results are **temporary suggestions**. They do not immediately become native `<option>` elements.
+
+Once a remote result is selected, it is added to the select so normal form submission continues to work.
+
+That distinction is intentional:
+
+```text
+catalogue        persistent native options
+results          temporary search results
+selection        native selected options
+```
+
+`setResults()` and `clearResults()` only deal with temporary results.
+
+`setOptions()` replaces the catalogue while keeping currently selected native options, including selected values that originally came from remote results or creation.
+
+## Empty values
+
+Empty option values are supported when explicitly enabled:
+
+```html
+<combo-box allow-empty-option>
+  <select>
+    <option value="">None</option>
+    <option value="a">Option A</option>
+  </select>
+</combo-box>
+```
+
+Without `allow-empty-option`, `""` is not treated as a normal selectable item when options are added programmatically.
+
+## JavaScript-only behavior
+
+Simple options have HTML attributes where that makes sense:
+
+```html
+<combo-box
+  create
+  search="fuzzy"
+  min-chars="2"
+  max-items="5"
+  max-options="20"
+  tab-select
+>
+```
+
+Behavior that requires functions stays in JavaScript:
 
 ```js
-import { ComboBoxElement } from "@lekoala/combobox";
-customElements.define("app-combobox", class extends ComboBoxElement {});
+element.configure({
+  async load(query, context) {
+    // ...
+  },
+
+  guards: {
+    async remove(item) {
+      return confirm(`Remove ${item.label}?`);
+    },
+  },
+
+  render: {
+    option(item) {
+      const strong = document.createElement("strong");
+      strong.textContent = item.label;
+      return strong;
+    },
+  },
+});
 ```
 
-`<combo-box>` is an autonomous custom element with no Shadow DOM; it is **not**
-form-associated and never owns the submitted value. Registering `combo-box` never
-happens implicitly — `import "@lekoala/combobox"` does not register anything, you
-must opt in via `@lekoala/combobox/define`, an explicit `defineCombobox()`, or the
-classic build.
+Strings are always rendered as text. Rich rendering uses DOM nodes rather than an `allowHtml` switch.
 
-Attributes map to options (`create`, `placeholder`, `search`, `min-chars`, `max-items`, `max-options`, `selection-order`, `separators`, `create-on-blur`, `close-on-select`, `autoselect-first`, `tab-select`, `search-fields`, `label-field`, `value-field`, `load-on-empty`, `allow-empty-option`, `debounce`; numeric attributes take integers, invalid values fall back to defaults). JavaScript-only behavior (remote `load`, `create`, renderers, async `guards`) is passed through `<element>.configure({ ... })`. See [Element API](docs/API.md#element-and-registration). `data-*` on source items is application metadata only — there is no `data-*` configuration surface.
+See [API](docs/API.md) for the full option and method reference.
+
+## Filtering events
+
+Filtering can be intercepted:
+
+```js
+combo.input.addEventListener("beforefilter", (event) => {
+  if (somethingSpecial) {
+    event.preventDefault();
+
+    // Application-defined behavior...
+  }
+});
+```
+
+`beforefilter` is cancellable and exposes the current query.
+
+Filtering events belong to the interaction input. `combobox:*` lifecycle events belong to the native source control.
+
+The full event table is documented in [API](docs/API.md).
+
+## Selection order
+
+For multiple selects, source order and selection order do not have to mean the same thing.
+
+When explicit selection order is enabled, values can be reordered with:
+
+```js
+combo.move(fromIndex, toIndex);
+```
+
+Drag-and-drop is intentionally not built into the core. An application can add whatever UI it wants and call `move()`.
 
 ## Progressive fallback
 
-If Popover + the required CSS Anchor features are unavailable, native controls stay visible and functional.
+If the browser does not support the Popover and CSS Anchor features needed by the enhanced picker, the original controls remain usable.
 
-- `input + datalist` → native datalist.
-- `select` → native select.
-- `select multiple` → native multiple select.
-- `select multiple` with `create` enabled → native select plus a small unnamed Add input/button. This is a cheap enhancement only; there is still no custom picker/placement fallback.
+* `input + datalist` stays a native datalist;
+* `select` stays a native select;
+* `select multiple` stays a native multiple select;
+* creatable multiple selects get a small native Add input/button.
 
-Use `?native=1` in the demo to force this mode.
+There is no second JavaScript picker implementation for older browsers.
 
-## Try the demo
+You can force this mode in the demo with:
 
-`demo/index.html` always loads the generated classic `dist/combobox.js`, so after a single
-`bun run sync` it works identically over `http(s)` and directly from `file://`, validating
-the distributed product. Run `bun run dev` to build and serve it at `http://127.0.0.1:4173/`.
-
-The demo covers:
-
-1. free-text `input + datalist`;
-2. filterable single select with an explicit sibling filter input;
-3. multiple select + chips + chip keyboard navigation;
-4. creatable multiple select with `createFilter`;
-5. explicit selection order + `move()`;
-6. async/remote result loading with transient results;
-7. programmatic selection of an externally created entity;
-8. declarative `<combo-box>` with attribute-driven options;
-9. JS-only options via `configure()` on the element;
-10. RTL;
-11. async `guards` (confirm add/remove/clear) + separators + `create-on-blur`;
-12. `max-items` without mutilating server-rendered over-limit selections;
-13. disabled options toggled at runtime;
-14. `max-options` as a pure rendering cap;
-15. rich renderers returning DOM `Node`s with hostile string data;
-16. application-authored clear affordance calling `clear()`;
-17. `label-field`/`value-field`/`search-fields` over data objects;
-18. declarative fuzzy search (`search="fuzzy"` + `search-fields` over `<option data-*>` metadata + `tab-select`, no JS);
-19. form reset restoring the native selection and chips;
-
-The demo also ships `demo/actual-css.html`, a standalone theme-bridge page that skins the
-combobox entirely with Actual CSS tokens (controls, removable badge chips, picker, states and a
-theme switcher) — no adapter package, just shared CSS contracts.
-
-`demo/query-builder.html` shows the minimal scoped-search composition: an
-input-backed combobox provides action suggestions while the application owns
-its scope/filter tokens and serialized filter state.
-
-Chip sizing is CSS-owned and proportional. One font-size token scales the
-label, spacing, remove target and icon together; the radius remains separately
-themeable:
-
-```css
-combo-box.compact { --cb-chip-font-size: 0.75em; }
-combo-box.comfortable { --cb-chip-font-size: 1em; }
-combo-box.large { --cb-chip-font-size: 1.125em; }
-combo-box.pills { --cb-chip-border-radius: 999px; }
+```text
+?native=1
 ```
 
-Appearance is orthogonal to size:
+## Styling
+
+The component ships with a small default stylesheet and is designed to be easy to theme with CSS custom properties.
+
+For example:
 
 ```css
+combo-box.compact {
+  --cb-chip-font-size: 0.75em;
+}
+
+combo-box.pills {
+  --cb-chip-border-radius: 999px;
+}
+
 combo-box.solid {
   --cb-chip-bg: #6d28d9;
   --cb-chip-color: white;
 }
-
-combo-box.outline {
-  --cb-chip-bg: transparent;
-  --cb-chip-color: #6d28d9;
-  --cb-chip-border-color: currentColor;
-  --cb-chip-border-width: 1px;
-}
 ```
 
-For per-item tones, return a marker node from `render.item`; modern `:has()`
-can then theme the generated chip without copying application `data-*` onto it:
+Applications can also return marker elements from renderers and style them with normal CSS:
 
 ```js
 render: {
@@ -212,116 +392,175 @@ render: {
 }
 ```
 
-## Important architecture contracts
+`demo/actual-css.html` shows the same component themed entirely with [Actual CSS](https://github.com/lekoala/actual-css) tokens.
 
-1. **Native source remains authoritative.** Form data, required/disabled state, reset and native integration start from the original input/select.
-2. **Option identity is the `<option>` element, not the `value` string.** Three `<option value="2">` are three distinct choices; selection, chips, removal, reorder and FormData all address the exact option. A bare `select("2")` picks the next *selectable* occurrence and never invents a fourth.
-3. **Catalogue, results and selection are separate concepts.** Remote search results do not become hundreds of `<option>` elements. A remote result becomes a native option when it is selected.
-4. **Selection order is explicit when needed.** Source order, result order and selection order must not be conflated.
-5. **Filtering is interceptable.** `beforefilter` is cancellable and exposes `event.query`, following the direction explored by Open UI.
-6. **Async transport is application-owned.** The core provides `load(query, context)`, debounce/abort/lifecycle seams; it does not invent `serverParams`, `queryParam`, `serverDataKey`, etc.
-7. **Rendering is safe by default.** Strings become text. Rich rendering returns DOM `Node`s; there is no global `allowHtml` switch.
-8. **Bootstrap is a skin, not a dependency.** The JS should not depend on Bootstrap JS or positioning utilities.
+## Demo
 
-See [Architecture](docs/ARCHITECTURE.md), [API](docs/API.md), [Use cases](docs/USE_CASES.md), and [References](docs/REFERENCES.md).
+The main demo covers:
 
-## Explicit non-goals
+* input + datalist;
+* searchable single selects;
+* multiple values and chips;
+* created values;
+* fuzzy and multi-field search;
+* remote loading;
+* custom renderers;
+* selection order;
+* guards;
+* separators;
+* maximum items/results;
+* RTL;
+* runtime disabled states;
+* form reset;
+* custom clear controls.
 
-For the initial library:
+Run it locally with:
 
-- no plugin framework;
-- no virtualization;
-- no built-in drag/drop of chips;
-- no virtual caret between chips;
-- no checkbox-picker mode;
-- no adapter/decorator architecture;
-- no JavaScript dropdown geometry fallback.
+```bash
+bun install
+bun run dev
+```
 
-Reordering **is** a core data concern; drag/drop is merely one possible UI for calling `move()` and therefore stays outside the core.
-
-## Repository layout
+Then open:
 
 ```text
-AGENTS.md                 implementation rules for coding agents/contributors
-README.md                 project overview
-demo/index.html           architecture demo (always loads the generated dist bundle/css)
-demo/actual-css.html      Actual CSS theme-bridge demo (combobox skinned via Actual CSS tokens)
-src/index.js              pure ESM exports: engine + element + helpers + public types
-src/define.js             single side-effect entry: registers <combo-box>
-src/helpers.js            pure helpers (normalization, items, separators/tokenizer)
-src/combobox.js           engine: Combobox class (ESM, no globals)
-src/combo-box.js          custom element wrapper: ComboBoxElement + defineCombobox()
-src/combobox.css          minimal demo/component skin
-dist/combobox.js          generated classic build (iife, unminified)
-dist/combobox.min.js      generated classic build (minified)
-dist/combobox.css         component stylesheet
-dist/combobox.min.css     minified component stylesheet
-dist/types/*.d.ts         generated TypeScript declarations (from JSDoc)
-custom-elements.json      generated Custom Elements Manifest
-jsconfig.json             strict JSDoc typecheck surface (tsc checkJs)
-tsconfig.types.json       declaration emission project (dist/types)
-scripts/build.js          bundle + CSS artifact build
-scripts/custom-elements.js custom-elements.json generator
-scripts/check-package.js  npm tarball contract gate
-docs/ARCHITECTURE.md      invariants and internal model
-docs/API.md               proposed public API/events
-docs/USE_CASES.md         real application scenarios
-docs/MIGRATION.md         migrating from bootstrap5-tags/autocomplete
-docs/TESTING.md           exhaustive test plan + reference suites
-test/unit/helpers.test.js pure-helper unit tests (bun, ESM source)
-test/browser/*.spec.js    Playwright behavioral suite (ESM source)
-test/dist/*.spec.js       Playwright smoke tests for the dist bundle
-test/types/consumer.ts    TypeScript consumer contract test against the published types
+http://127.0.0.1:4173/
 ```
+
+The demo uses the generated distribution build, not a special development-only version.
+
+## What is in 0.1
+
+The main 0.1 API covers:
+
+* input + datalist;
+* single and multiple selects;
+* `<combo-box>`;
+* filtering and matching;
+* multiple search fields;
+* creation;
+* remote loading;
+* chips;
+* separators;
+* `maxItems` and `maxOptions`;
+* selection order and `move()`;
+* `clear()`;
+* form semantics;
+* exact cleanup with `dispose()`.
+
+A few more advanced APIs are intentionally still experimental in 0.x:
+
+* `observeSource`;
+* custom `tokenize`;
+* cursor pagination / `loadMore()`;
+* rich `render.*` customization.
+
+Things that are deliberately **not** part of the library:
+
+* a plugin framework;
+* virtualization;
+* built-in drag/drop;
+* checkbox dropdowns;
+* Bootstrap JavaScript;
+* automatic DOM observation by default;
+* a built-in clear button;
+* a JavaScript positioning fallback.
+
+The goal is not to become another all-purpose Select2 clone. The library should stay small enough that native controls and browser APIs remain visible underneath it.
+
+## Custom element registration
+
+Registration is explicit:
+
+```js
+import { defineCombobox } from "@lekoala/combobox";
+
+defineCombobox();
+```
+
+Calling `defineCombobox()` more than once is safe.
+
+You can also build your own element name:
+
+```js
+import { ComboBoxElement } from "@lekoala/combobox";
+
+customElements.define(
+  "app-combobox",
+  class extends ComboBoxElement {},
+);
+```
+
+`<combo-box>` uses no Shadow DOM and does not become the form control itself.
 
 ## Development
 
-The library has **no runtime dependencies and no globals**. The only build is the
-generated distribution artifacts: `bun run sync` produces the `dist/` bundle (iife
-unminified + minified), the component CSS, the TypeScript declarations (`dist/types`)
-and the Custom Elements Manifest (`custom-elements.json`). All generated artifacts are
-committed and CI-enforced against drift.
+The source is pure ESM and has no runtime dependencies.
 
 ```bash
 bun install
 bunx playwright install chromium firefox webkit
+
 bun run check
 bun run test:browser
 bun run sync
 bun run verify
 ```
 
-`check` = syntax + lint + typecheck + unit — source quality only, it never builds and
-never looks at `dist/`. `sync` regenerates the committed artifacts once the source change
-is complete. `verify` is the final pre-commit/release gate: it re-runs `check`, regenerates
-with `sync`, then rejects any drift between committed artifacts and a fresh sync plus the
-published type/package contract. The browser suite runs against the **ESM source**
-(`src/…`); only `test/dist` exercises the generated bundle.
-`bun run check:all` / `bun run test:browser:all` extend the same suites to **Firefox +
-WebKit** (current Playwright engines all satisfy the Popover + Anchor feature gate, so the
-enhanced picker runs on all three). Popover, focus, form validation, keyboard behavior
-and Anchor Positioning need a real browser. Pure matching/tokenization/order helpers
-are unit-tested in `test/unit` (`bun run test`).
+A few useful commands:
 
-## Release gate
+```text
+bun run check
+    lint + typecheck + unit tests
 
-The 0.1.0 publishing shape is in place and CI-enforced: Chromium, Firefox and WebKit run
-the browser matrix, `verify` gates check/sync/types/package contract/generated drift, and
-`npm pack --dry-run` validates the tarball. Generated type declarations ship in
-`dist/types` and the consumer contract is locked by `test/types/consumer.ts`. Run
-`bun run check:all` before cutting a release.
+bun run test:browser
+    browser behavior tests against the ESM source
 
-### Packaging decisions
+bun run sync
+    regenerate dist JS/CSS, declarations and custom-elements.json
 
-- **ESM only** with a classic IIFE build (`dist/combobox.js`, from the single side-effect
-  entry `src/define.js`) for `file://`/`<script>` consumers and the demo.
-- `"sideEffects"` is explicit: only the self-registering classic bundles, the CSS files and
-  `src/define.js` are side-effectful. Everything else (the `src/…` ESM engine, types,
-  `custom-elements.json`) is tree-shakable — importing `@lekoala/combobox` never registers
-  `<combo-box>`.
-- **No runtime source maps ship in 0.1.** The `dist/` JS bundle is a committed, drift-gated
-  artifact built by `bun run sync`; runtime source maps would add tarball weight without a
-  consumer path (the browser suite debugs the ESM source directly). This is a conscious
-  trade-off, not an omission. The generated `dist/types/*.d.ts.map` *declaration* maps are
-  kept deliberately: they make "go to definition" jump to the JSDoc-typed `src/` sources
-  for TypeScript consumers at negligible cost.
+bun run verify
+    run the full consistency/package checks
+
+bun run check:all
+bun run test:browser:all
+    include Firefox and WebKit
+```
+
+Generated distribution files are committed so the demo, package contents and published artifacts can be checked directly.
+
+The package ships:
+
+* pure ESM entry points;
+* an opt-in `<combo-box>` registration entry;
+* a classic self-registering build;
+* CSS;
+* generated TypeScript declarations;
+* `custom-elements.json`.
+
+There are no runtime source maps in 0.1. Declaration maps are kept for TypeScript editor navigation.
+
+## Documentation
+
+More detail lives here:
+
+* [API](docs/API.md) — options, methods, attributes and events
+* [Architecture](docs/ARCHITECTURE.md) — internal model and design decisions
+* [Use cases](docs/USE_CASES.md) — practical examples
+* [Migration](docs/MIGRATION.md) — moving from `bootstrap5-tags` / `bootstrap5-autocomplete`
+* [Testing](docs/TESTING.md) — browser and behavior coverage
+* [References](docs/REFERENCES.md) — related browser and Open UI work
+
+## Design principles
+
+A few rules keep the library intentionally small:
+
+1. The native control owns the value.
+2. Remote results stay temporary until selected.
+3. Option identity comes from the actual `<option>`, not only its string value.
+4. Form behavior should remain native whenever possible.
+5. The browser handles placement and top-layer behavior.
+6. Rich rendering uses DOM nodes, not HTML strings.
+7. Application-specific transport and UI stay application-specific.
+
+That is most of the design.
