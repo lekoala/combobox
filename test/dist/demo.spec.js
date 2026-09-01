@@ -51,15 +51,15 @@ test("query-builder demo turns a suggestion into application state", async ({ pa
 
   const input = page.locator("#query");
   await input.fill("Martin");
-  await page.locator(".cb-popover:visible .cb-option", { hasText: "Nom" }).click();
+  await page.locator(".cb-popover:visible .cb-option", { hasText: "Name" }).click();
 
-  await expect(page.locator(".query-token-field .query-token-key-label")).toHaveText("Nom");
+  await expect(page.locator(".query-token-field .query-token-key-label")).toHaveText("Name");
   await expect(page.locator(".query-token-field .query-token-value")).toHaveText("Martin");
   await expect(input).toHaveValue("");
   const state = await page.locator("#filters-value").inputValue();
   expect(JSON.parse(state)).toEqual({
     scope: "people",
-    filters: [{ field: "name", label: "Nom", query: "Martin" }],
+    filters: [{ field: "name", label: "Name", query: "Martin" }],
     groupBy: null,
     favorite: false,
   });
@@ -79,7 +79,7 @@ test("query-builder demo turns a suggestion into application state", async ({ pa
 
   await page.locator("#picker-toggle").click();
   await page.locator('#query-menu button[data-group="salesperson"]').click();
-  await expect(page.locator(".query-token-group .query-token-value")).toHaveText("Vendeur");
+  await expect(page.locator(".query-token-group .query-token-value")).toHaveText("Salesperson");
   const colors = await page.evaluate(() => ({
     filter: getComputedStyle(document.querySelector(".query-token-field .query-token-key")).backgroundColor,
     group: getComputedStyle(document.querySelector(".query-token-group .query-token-key")).backgroundColor,
