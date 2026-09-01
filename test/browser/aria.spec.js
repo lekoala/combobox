@@ -39,7 +39,10 @@ test("aria-expanded tracks the picker open state", async ({ page }) => {
   await page.evaluate(() => Combobox.getOrCreateInstance(document.getElementById("capped")));
 
   const input = page.locator("#capped + .cb-control .cb-input");
-  await input.click();
+  // Focusing the input is what opens the picker (search({ show: true }) on
+  // focus). A physical click adds nothing here and flaked on WebKit actionability,
+  // so the interaction stays at the focus level the engine reacts to.
+  await input.focus();
   await expect(input).toHaveAttribute("aria-expanded", "true");
   await input.press("Escape");
   await expect(input).toHaveAttribute("aria-expanded", "false");
@@ -68,7 +71,7 @@ test("aria-activedescendant never references a row removed by a rerender", async
   await page.evaluate(() => Combobox.getOrCreateInstance(document.getElementById("capped")));
 
   const input = page.locator("#capped + .cb-control .cb-input");
-  await input.click();
+  await input.focus();
   await input.press("ArrowDown");
   const activeId = await input.getAttribute("aria-activedescendant");
   expect(activeId).not.toBeNull();
@@ -103,7 +106,7 @@ test("option rows reflect selection and disabled state", async ({ page }) => {
   });
 
   const input = page.locator("#capped + .cb-control .cb-input");
-  await input.click();
+  await input.focus();
   await input.press("ArrowDown");
   const rows = page.locator(".cb-popover:visible [role='option']");
   await expect(rows).toHaveCount(4);
