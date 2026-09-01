@@ -952,6 +952,35 @@ export class Combobox {
    * @param {HTMLInputElement} input
    */
   #copyAccessibleName(input) {
+    // The source's own aria-labelledby (e.g. a grid naming its filter select
+    // after the column header) is the authoritative accessible name — an
+    // association that no <label> traversal can rediscover. Only when it is
+    // absent do we fall back to derived labels, then aria-label.
+    const labelledBy = this.source.getAttribute("aria-labelledby");
+    if (labelledBy) {
+      input.setAttribute("aria-labelledby", labelledBy);
+    } else {
+      this.#copyLabeledNames(input);
+    }
+
+    const ariaLabel = this.source.getAttribute("aria-label");
+    if (!input.hasAttribute("aria-labelledby") && ariaLabel) {
+      input.setAttribute("aria-label", ariaLabel);
+    }
+    if (this.source.required) input.setAttribute("aria-required", "true");
+    const describedBy = this.source.getAttribute("aria-describedby");
+    if (describedBy) {
+      input.setAttribute("aria-describedby", describedBy);
+    }
+  }
+
+  /**
+   * Derive the accessible name from <label> associations: explicit
+   * `label[for=source]` links plus a wrapping label. Invented ids are recorded
+   * so dispose() can strip them again.
+   * @param {HTMLInputElement} input
+   */
+  #copyLabeledNames(input) {
     const labels = [];
     if (this.source.id) {
       labels.push(...document.querySelectorAll(`label[for="${CSS.escape(this.source.id)}"]`));
@@ -979,16 +1008,6 @@ export class Combobox {
       return label.id;
     });
     if (labelIds.length) input.setAttribute("aria-labelledby", labelIds.join(" "));
-
-    const ariaLabel = this.source.getAttribute("aria-label");
-    if (!input.hasAttribute("aria-labelledby") && ariaLabel) {
-      input.setAttribute("aria-label", ariaLabel);
-    }
-    if (this.source.required) input.setAttribute("aria-required", "true");
-    const describedBy = this.source.getAttribute("aria-describedby");
-    if (describedBy) {
-      input.setAttribute("aria-describedby", describedBy);
-    }
   }
 
   #sourceItems() {

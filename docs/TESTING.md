@@ -309,7 +309,7 @@ Automated browser assertions (`test/browser/aria.spec.js` for the role/attribute
 - [x] aria-controls lifecycle is valid.
 - [x] aria-activedescendant references existing active option and is removed when closed.
 - [x] aria-activedescendant is never left pointing at a row removed by a rerender (`aria.spec.js` direct regression test).
-- [x] accessible name comes from label/aria-label.
+- [x] accessible name comes from label/aria-label, with a source `aria-labelledby` winning verbatim (`source-adapters.spec.js` regression tests cover the generated and authored-filter-input paths).
 - [x] aria-describedby propagated.
 - [x] required/invalid/disabled state represented.
 - [x] status live region announces loading/no-results/reorder. **Decision:** `select`/`remove` are intentionally *not* announced — chips removal is visible and focus-managed, and announcing every token of a separator paste batch would be noise; documented API choice.

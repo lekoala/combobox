@@ -359,6 +359,36 @@ test.describe("label/description accessibility transfer", () => {
     expect(await page.locator(control("arialabel")).getAttribute("aria-label")).toBe("Accessible label test");
   });
 
+  test("source aria-labelledby wins as the accessible name", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+
+    // DataGrid names its filter selects after the column header: <th id> +
+    // aria-labelledby, with no <label> in sight. The enhanced input must reuse
+    // that association verbatim and never fall back to aria-label.
+    await init(page, "labelled");
+    const state = await page.evaluate(() => {
+      const input = document.querySelector("#labelled + .cb-control .cb-input");
+      return {
+        labelledby: input.getAttribute("aria-labelledby"),
+        ariaLabel: input.getAttribute("aria-label"),
+        headingId: document.getElementById("col-heading").id,
+      };
+    });
+    expect(state.labelledby).toBe("col-heading");
+    expect(state.ariaLabel).toBeNull();
+    expect(state.headingId).toBe("col-heading");
+  });
+
+  test("aria-labelledby is restored on dispose for an authored filter input", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+
+    await init(page, "labelledby-author");
+    expect(await page.locator("#labelled-filter").getAttribute("aria-labelledby")).toBe("col-heading");
+
+    await page.evaluate(() => Combobox.getInstance(document.getElementById("labelledby-author")).dispose());
+    await expect(page.locator("#labelled-filter")).not.toHaveAttribute("aria-labelledby");
+  });
+
   test("aria-describedby propagates to the filter input", async ({ page }) => {
     test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 

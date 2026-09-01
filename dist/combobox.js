@@ -583,6 +583,24 @@
       return { input: document.createElement("input"), inputSnapshot: null };
     }
     #copyAccessibleName(input) {
+      const labelledBy = this.source.getAttribute("aria-labelledby");
+      if (labelledBy) {
+        input.setAttribute("aria-labelledby", labelledBy);
+      } else {
+        this.#copyLabeledNames(input);
+      }
+      const ariaLabel = this.source.getAttribute("aria-label");
+      if (!input.hasAttribute("aria-labelledby") && ariaLabel) {
+        input.setAttribute("aria-label", ariaLabel);
+      }
+      if (this.source.required)
+        input.setAttribute("aria-required", "true");
+      const describedBy = this.source.getAttribute("aria-describedby");
+      if (describedBy) {
+        input.setAttribute("aria-describedby", describedBy);
+      }
+    }
+    #copyLabeledNames(input) {
       const labels = [];
       if (this.source.id) {
         labels.push(...document.querySelectorAll(`label[for="${CSS.escape(this.source.id)}"]`));
@@ -606,16 +624,6 @@
       });
       if (labelIds.length)
         input.setAttribute("aria-labelledby", labelIds.join(" "));
-      const ariaLabel = this.source.getAttribute("aria-label");
-      if (!input.hasAttribute("aria-labelledby") && ariaLabel) {
-        input.setAttribute("aria-label", ariaLabel);
-      }
-      if (this.source.required)
-        input.setAttribute("aria-required", "true");
-      const describedBy = this.source.getAttribute("aria-describedby");
-      if (describedBy) {
-        input.setAttribute("aria-describedby", describedBy);
-      }
     }
     #sourceItems() {
       if (this.isSelect) {

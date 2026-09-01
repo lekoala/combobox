@@ -59,6 +59,20 @@
       </select>
     </label>
 
+    <span id="col-heading" hidden>Country column</span>
+    <select id="labelled" name="labelled" aria-labelledby="col-heading">
+      <option value="">Choose</option>
+      <option value="be">Belgium</option>
+      <option value="fr">France</option>
+    </select>
+
+    <input type="text" id="labelled-filter" data-filter-for="labelledby-author" hidden>
+    <select id="labelledby-author" name="labelledby-author" aria-labelledby="col-heading">
+      <option value="">Choose</option>
+      <option value="de">Germany</option>
+      <option value="it">Italy</option>
+    </select>
+
     <select id="arialabel" name="arialabel" aria-label="Accessible label test">
       <option value="">Choose</option>
       <option value="al">Alfa</option>

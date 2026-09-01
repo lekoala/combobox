@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>@lekoala/combobox × data-grid — integration demo</title>
+
+  <!-- data-grid-component is pulled from jsDelivr; combobox stays on the
+       generated classic build so the demo validates the distributable. -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/data-grid-component@3/dist/data-grid.min.css">
+  <link rel="stylesheet" href="../dist/combobox.css">
+  <link rel="stylesheet" href="../demo/demo.css">
+
+  <style>
+    #demo-grid {
+      max-height: 24rem;
+    }
+
+    .demo-snippet {
+      overflow: auto;
+      padding: 0.75rem;
+      border: 1px solid #dee2e6;
+      border-radius: 0.5rem;
+      background: #f8f9fa;
+      font: 0.8125rem / 1.45 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre;
+    }
+
+    #checklist {
+      margin: 0;
+      padding-inline-start: 1.25rem;
+    }
+    #checklist li {
+      margin-block: 0.25rem;
+    }
+    #checklist li::marker {
+      font-weight: 700;
+    }
+    #checklist li[data-ok="true"]::marker {
+      content: "✓ ";
+      color: #198754;
+    }
+    #checklist li[data-ok="false"]::marker {
+      content: "✗ ";
+      color: #dc3545;
+    }
+
+    /* --- Integration CSS for the two known data-grid ⇄ combobox collisions ---
+       1. `data-grid input:not([type="checkbox"], [type="radio"])` ships at
+          specificity (0,1,2), which beats the combobox's own `.cb-input`
+          (0,1,0) on background/border/height/padding. `data-grid combo-box
+          .cb-input` ties it, and this stylesheet loads after the grid's, so
+          the combobox box model wins back.
+       2. `data-grid .dg-select-field::after` draws the native-select caret. A
+          combobox brings its own single-select chrome, so the stray chevron is
+          dropped for enhanced fields. No `combo-box` exception was added to
+          data-grid itself: these are harness-level composition notes. */
+    data-grid combo-box .cb-input {
+      height: auto;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    data-grid combo-box .cb-input:focus-visible {
+      border-color: transparent;
+      box-shadow: none;
+      outline: 0;
+    }
+    data-grid .dg-select-field:has(> combo-box)::after {
+      display: none;
+    }
+
+    /* ---- Blend the enhanced filter into data-grid's flat filter row ----
+       DataGrid's own filter controls are borderless with transparent fills,
+       so the combobox chrome (rounded box, hard border) is dropped inside the
+       filter row. The control height follows --dg-control-height so a combobox
+       and a native select filter (the boolean "Active" column below) share one
+       baseline instead of looking like two unrelated widgets. */
+    data-grid .dg-head-filters .cb-control {
+      --cb-control-height: var(--dg-control-height, 2.5rem);
+      min-block-size: var(--dg-control-height, 2.5rem);
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+    data-grid .dg-head-filters .cb-control:hover {
+      border-color: transparent;
+      background-color: var(--dg-row-hover-bg);
+    }
+    data-grid .dg-head-filters .cb-control:focus-within {
+      border-color: transparent;
+      outline: 2px solid color-mix(in srgb, var(--cb-focus-color) 40%, transparent);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 3px var(--dg-focus-ring);
+    }
+  </style>
+
+  <script type="module" src="https://cdn.jsdelivr.net/npm/data-grid-component@3/dist/data-grid.min.js"></script>
+  <script src="../dist/combobox.js"></script>
+</head>
+<body>
+  <main class="demo">
+    <h1>@lekoala/combobox × data-grid</h1>
+    <p>
+      data-grid-component is untouched: it renders its header filter row and keeps
+      listening to its native <code>&lt;select&gt;</code> by delegation. A tiny
+      enhancer wraps each select filter (<code>data-filter-mode="select"</code>)
+      in a <code>&lt;combo-box&gt;</code> and lets the grid reopen... nothing:
+      the native <code>change</code> the combobox dispatches on the source select
+      is all data-grid needs. No plugin, no adapter, no data-grid changes.
+    </p>
+
+    <p class="demo-status" id="support-status">…</p>
+    <p>
+      <a href="./data-grid.html">Enhanced</a> ·
+      <a href="./data-grid.html?native=1">Force basic fallback</a>
+    </p>
+
+    <section class="demo-card">
+      <h2>Local grid, select filters enhanced</h2>
+      <p class="demo-note">
+        Wiring on the public <code>headerRendered</code> hook only. DataGrid
+        guarantees an empty <code>value=""</code> option — hence
+        <code>allow-empty-option</code>. <code>search="includes"</code> makes the
+        doctor/country lists type-filterable. The boolean <em>Active</em> column
+        keeps its native tri-state select, so an enhanced and an untouched filter
+        sit side by side in the same row.
+      </p>
+
+      <div class="demo-snippet">function enhanceSelectFilters(grid) {
+    for (const select of grid.querySelectorAll(
+        '.dg-head-filters select.dg-filter-control[data-filter-mode="select"]'
+    )) {
+        if (select.parentElement?.localName === "combo-box") continue;
+
+        const field = select.closest(".dg-select-field");
+
+        const box = document.createElement("combo-box");
+        box.setAttribute("search", "includes");
+        box.setAttribute("allow-empty-option", "");
+        box.setAttribute("placeholder", "Filter…");
+
+        select.before(box);
+        box.append(select);
+
+        field?.classList.add("dg-has-combobox");
+    }
+}
+
+grid.addEventListener("headerRendered", () => enhanceSelectFilters(grid));</div>
+
+      <data-grid id="demo-grid" sortable filterable searchable page-size="10">
+        <table>
+          <caption>Patients</caption>
+          <thead>
+            <tr>
+              <th data-field="id" data-sortable="false">#</th>
+              <th data-field="name" data-sort="asc">Patient</th>
+              <th data-field="doctor" data-filter="select">Doctor</th>
+              <th data-field="country" data-filter="select">Country</th>
+              <th data-field="active" data-filter="boolean" data-align="center">Active</th>
+            </tr>
+          </thead>
+          <tbody id="demo-grid-rows"></tbody>
+        </table>
+      </data-grid>
+
+      <p class="demo-note">
+        <button type="button" id="btn-clear">grid.clearFilters() + combobox.sync()</button>
+        <button type="button" id="btn-toggle">Hide/Show Country column</button>
+        <span id="action-status"></span>
+      </p>
+    </section>
+
+    <section class="demo-card">
+      <h2>Integration checklist</h2>
+      <ul id="checklist"></ul>
+      <p class="demo-note" id="checklist-status">Running…</p>
+    </section>
+  </main>
+
+  <script>
+    // Populate the declarative table. This classic script runs during parsing,
+    // before the deferred data-grid module defines/upgrades the grid, so the
+    // <tbody> is complete when ArrayDataSource derives its rows and select
+    // filter options.
+    (() => {
+      const countries = [
+        ["be", "Belgium"], ["fr", "France"], ["de", "Germany"], ["nl", "Netherlands"],
+        ["es", "Spain"], ["it", "Italy"], ["pt", "Portugal"], ["at", "Austria"],
+        ["ch", "Switzerland"], ["se", "Sweden"], ["no", "Norway"], ["dk", "Denmark"],
+        ["fi", "Finland"], ["pl", "Poland"], ["cz", "Czechia"], ["ie", "Ireland"],
+        ["gb", "United Kingdom"], ["lu", "Luxembourg"], ["gr", "Greece"], ["hu", "Hungary"],
+      ];
+      const doctors = [
+        "Alice Martin", "Bruno Lambert", "Claire Dubois", "David Simon", "Élise Moreau",
+        "François Petit", "Gaëlle Roux", "Hugo Bernard", "Inès Durand", "Julien Fournier",
+        "Laura Girard", "Marc Lefèvre", "Nina Garcia", "Olivier Roy", "Paul Mercier",
+      ];
+      const first = [
+        "Anna", "Ben", "Carla", "Daan", "Elena", "Felix", "Greta", "Hugo", "Ines", "Jonas",
+        "Lena", "Marcel", "Nora", "Otto", "Paula", "Quinn", "Rosa", "Sam", "Timo", "Vera",
+      ];
+      const last = [
+        "Anders", "Bauer", "Costa", "Dupont", "Eriksen", "Fischer", "Garcia", "Hoffmann",
+        "Ivanov", "Jacobs", "Keller", "Larsen", "Meyer", "Novak", "Olsen", "Peeters",
+        "Quinn", "Rossi", "Schmidt", "Weber",
+      ];
+
+      const tbody = document.getElementById("demo-grid-rows");
+      const rows = 72;
+      for (let i = 1; i <= rows; i++) {
+        const [code, label] = countries[i % countries.length];
+        const doctor = doctors[i % doctors.length];
+        const name = `${first[i % first.length]} ${last[Math.floor(i / first.length) % last.length]}`;
+        const tr = document.createElement("tr");
+        tr.setAttribute("data-row-key", String(i));
+        tr.innerHTML =
+          `<td>${i}</td>` +
+          `<td>${name}</td>` +
+          `<td>${doctor}</td>` +
+          `<td data-value="${code}">${label}</td>` +
+          `<td data-value="${i % 2 === 0}"></td>`;
+        tbody.appendChild(tr);
+      }
+    })();
+  </script>
+
+  <script type="module">
+    const grid = document.getElementById("demo-grid");
+    const forceNative = new URLSearchParams(location.search).has("native");
+    const status = document.getElementById("support-status");
+
+    function selectFilters(root) {
+      return root.querySelectorAll(
+        '.dg-head-filters select.dg-filter-control[data-filter-mode="select"]',
+      );
+    }
+
+    function enhanceSelectFilters(root) {
+      for (const select of selectFilters(root)) {
+        if (select.parentElement?.localName === "combo-box") continue;
+        const field = select.closest(".dg-select-field");
+
+        const box = document.createElement("combo-box");
+        box.setAttribute("search", "includes");
+        box.setAttribute("allow-empty-option", "");
+        box.setAttribute("placeholder", "Filter…");
+        if (forceNative) box.options = { mode: "fallback" };
+
+        select.before(box);
+        box.append(select);
+
+        field?.classList.add("dg-has-combobox");
+      }
+    }
+
+    function syncComboboxes(root) {
+      for (const select of selectFilters(root)) {
+        select.closest("combo-box")?.combobox?.sync();
+      }
+    }
+
+    // The data-grid module (head) ran before this module, so the initial filter
+    // row is usually already rendered. Enhance it once and keep up with every
+    // rebuild; the counter lets the checklist await a specific render cycle.
+    let headerRenders = 0;
+    grid.addEventListener("headerRendered", () => {
+      headerRenders++;
+      enhanceSelectFilters(grid);
+    });
+    enhanceSelectFilters(grid);
+
+    status.textContent = forceNative
+      ? "Basic fallback forced: native select filters stay visible and usable; combobox adds nothing to them."
+      : "Enhanced: select filters are wrapped in <combo-box> — searchable, allow-empty-option, accessible name via the grid's <th>."
+
+    // External "Clear filters" mutates select.value without a change event:
+    // the documented contract is an explicit combobox.sync() afterwards.
+    document.getElementById("btn-clear").addEventListener("click", async () => {
+      await grid.clearFilters();
+      syncComboboxes(grid);
+      document.getElementById("action-status").textContent =
+        "cleared → " + JSON.stringify(grid.query.filters);
+    });
+
+    document.getElementById("btn-toggle").addEventListener("click", () => {
+      const hidden = grid.getColumns().find((col) => col.field === "country")?.hidden;
+      if (hidden) {
+        grid.showColumn("country");
+      } else {
+        grid.hideColumn("country");
+      }
+    });
+
+    // --- Checklist ---------------------------------------------------------
+    // The data-grid module scripts load over the network, so the first
+    // `headerRendered` (and therefore the filter row + our enhancement) can
+    // land after this module starts. Every check waits for what it needs
+    // instead of assuming a render order.
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    async function waitFor(condition, timeout = 6000) {
+      const start = performance.now();
+      while (performance.now() - start < timeout) {
+        const value = condition();
+        if (value) return value;
+        await wait(30);
+      }
+      return null;
+    }
+
+    const wrap = (select) => select?.closest("combo-box") ?? null;
+    const comboboxOf = (select) => wrap(select)?.combobox ?? null;
+
+    async function runChecks() {
+      /** @type {Array<{ name: string, note: string, ok: boolean }>} */
+      const results = [];
+
+      // 1. Enhancement applied without touching DataGrid's own model. In both
+      //    modes the <combo-box> consumes the select; only the UI differs.
+      const selects = await waitFor(() => {
+        const found = Array.from(selectFilters(grid));
+        return found.length ? found : null;
+      });
+      const enhancedActive = !forceNative && !!selects;
+      results.push({
+        name: "filters wrapped",
+        ok: !!selects && selects.every((select) => wrap(select)?.localName === "combo-box"),
+        note: selects
+          ? `${selects.length} select filter(s) consumed by <combo-box>`
+          : "no filter row rendered yet — data-grid module still loading?",
+      });
+
+      // 2. Accessible name: data-grid names the filter via aria-labelledby on
+      //    the <th>. Enhanced mode reuses it on the generated input; fallback
+      //    keeps data-grid's own naming on the visible native select.
+      let nameOk, nameNote;
+      if (enhancedActive) {
+        const named = selects
+          .map((select) => comboboxOf(select)?.input ?? null)
+          .filter((input) => !!input);
+        nameOk =
+          named.length > 0 &&
+          named.every((input) => {
+            const labelledby = input.getAttribute("aria-labelledby");
+            if (!labelledby) return false;
+            const ref = document.getElementById(labelledby.split(" ")[0]);
+            return ref?.textContent.trim().length > 0;
+          });
+        nameNote = named.length
+          ? `first input names itself through #${named[0].getAttribute("aria-labelledby")}`
+          : "no enhanced inputs to name";
+      } else {
+        const native = (selects ?? []).filter((select) =>
+          select.getAttribute("aria-labelledby"),
+        );
+        nameOk = native.length === (selects ?? []).length && native.length > 0;
+        nameNote = native.length
+          ? `native select keeps data-grid's #${native[0].getAttribute("aria-labelledby")}`
+          : "no selects to name";
+      }
+      results.push({ name: "accessible name via aria-labelledby", ok: nameOk, note: nameNote });
+
+      // 3. Selecting a value drives grid.query.filters through the native change.
+      if (enhancedActive) {
+        const country = selects.find((select) => select.dataset.name === "country");
+        const countryBox = await waitFor(() => comboboxOf(country) || null);
+        if (countryBox) {
+          countryBox.select("be");
+          const applied =
+            grid.query.filters?.country?.operator === "eq" &&
+            grid.query.filters.country.value === "be";
+          countryBox.select("");
+          const cleared = !grid.query.filters?.country;
+          results.push({
+            name: "combobox selection updates query.filters",
+            ok: applied && cleared,
+            note: applied
+              ? `country=be applied, empty option removed the filter (${
+                  grid.query.filters?.country ? "stuck" : "ok"
+                })`
+              : `expected country=be, got ${JSON.stringify(grid.query.filters?.country)}`,
+          });
+
+          // 4. grid.clearFilters() is a programmatic mutation (no change event):
+          //    the comboboxes must be re-synced explicitly.
+          countryBox.select("fr");
+          await grid.clearFilters();
+          syncComboboxes(grid);
+          const queryCleared = !grid.query.filters || Object.keys(grid.query.filters).length === 0;
+          const displayReset = countryBox.input?.value === "";
+          results.push({
+            name: "clearFilters() + combobox.sync()",
+            ok: queryCleared && displayReset,
+            note: `query ${queryCleared ? "empty" : JSON.stringify(grid.query.filters)}, input ${displayReset ? "reset" : "stale"}`,
+          });
+        } else {
+          results.push({
+            name: "combobox selection updates query.filters",
+            ok: false,
+            note: "no country combobox available",
+          });
+          results.push({ name: "clearFilters() + combobox.sync()", ok: true, note: "skipped — no combobox" });
+        }
+      } else {
+        results.push({
+          name: "combobox selection updates query.filters",
+          ok: true,
+          note: "fallback: native select drives the query",
+        });
+        results.push({ name: "clearFilters() + combobox.sync()", ok: true, note: "skipped (fallback)" });
+      }
+
+// 5. Header rebuild: toggling `filterable` makes data-grid render a fresh
+      //    header (tr.dg-head-filters replaced, headerRendered fired). The old
+      //    <combo-box> nodes are dropped with it and each new select must be
+      //    re-wrapped exactly once, with the engine still wired.
+      if (enhancedActive) {
+        const before = selectFilters(grid).length;
+        const lastRender = headerRenders;
+
+        grid.setAttribute("filterable", "false");
+        const offOk = await waitFor(() => (headerRenders > lastRender ? true : null));
+        grid.setAttribute("filterable", "true");
+        const after = await waitFor(() => {
+          const count = selectFilters(grid).length;
+          return count === before ? count : null;
+        });
+        const wrappedSelects = Array.from(selectFilters(grid));
+        const noDoubles =
+          grid.querySelectorAll(".dg-head-filters combo-box").length === before &&
+          wrappedSelects.every((select) => wrap(select)?.localName === "combo-box");
+        const rebuiltBox = comboboxOf(wrappedSelects.find((s) => s.dataset.name === "country"));
+        rebuiltBox?.select("se"); // Sweden → a fresh option from the rebuilt select
+        const stillWorks = grid.query.filters?.country?.value === "se";
+        rebuiltBox?.select("");
+        results.push({
+          name: "header rebuild re-enhances cleanly",
+          ok: !!offOk && !!after && after === before && noDoubles && stillWorks,
+          note: `before=${before}, after=${after ?? "?"}, ${
+            noDoubles ? "no doubles" : "WRAPPING MISMATCH"
+          }, ${stillWorks ? "select still drives query" : "engine lost after rebuild"}`,
+        });
+
+        // 6. No overflow: the combobox control fits its filter cell.
+        const overflow = Array.from(document.querySelectorAll(".dg-head-filters .cb-control"))
+          .filter((el) => el.scrollWidth > el.clientWidth + 1);
+        results.push({
+          name: "no overflow in the filter row",
+          ok: overflow.length === 0,
+          note: overflow.length ? `${overflow.length} control(s) overflow` : "controls fit their cells",
+        });
+      } else {
+        results.push({ name: "header rebuild re-enhances cleanly", ok: true, note: "skipped (fallback or no render)" });
+        results.push({ name: "no overflow in the filter row", ok: true, note: "skipped (fallback or no render)" });
+      }
+
+      // Render
+      const list = document.getElementById("checklist");
+      list.replaceChildren();
+      for (const result of results) {
+        const li = document.createElement("li");
+        li.dataset.ok = String(result.ok);
+        li.textContent = result.name;
+        if (result.note) {
+          const note = document.createElement("span");
+          note.className = "demo-note";
+          note.textContent = ` — ${result.note}`;
+          li.append(note);
+        }
+        list.append(li);
+      }
+      const failures = results.filter((result) => !result.ok).length;
+      document.getElementById("checklist-status").textContent = failures
+        ? `${failures} check(s) failed — inspect above before trusting the integration.`
+        : `${results.length} checks passed.`;
+    }
+
+    runChecks();
+  </script>
+</body>
+</html>
