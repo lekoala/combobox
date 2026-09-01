@@ -7,8 +7,37 @@
   function escapeRegExp(value) {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
+  function stripDiacritics(value) {
+    return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  }
   function normalize(value) {
-    return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase();
+    return stripDiacritics(value).toLocaleLowerCase();
+  }
+  function matchesField(value, query, mode) {
+    const normalized = normalize(value);
+    const lookup = normalize(query);
+    switch (String(mode).toLowerCase()) {
+      case "startswith":
+        return normalized.startsWith(lookup);
+      case "fuzzy":
+        return fuzzyMatch(normalized, lookup);
+      case "pattern":
+        return patternMatch(value, query);
+      default:
+        return normalized.includes(lookup);
+    }
+  }
+  function patternMatch(value, query) {
+    try {
+      const raw = String(value ?? "");
+      const source = String(query ?? "");
+      const pattern = new RegExp(source, "i");
+      const foldedQuery = stripDiacritics(source);
+      const foldedPattern = foldedQuery === source ? pattern : new RegExp(foldedQuery, "i");
+      return pattern.test(raw) || foldedPattern.test(stripDiacritics(raw));
+    } catch {
+      return false;
+    }
   }
   function toItem(raw, fields = null) {
     if (raw == null)
@@ -1187,11 +1216,10 @@
     }
     #applyFilter(query) {
       const items = this.#items();
-      const lookup = normalize(query);
       let visible = items.filter((item) => {
         if (this.isMultiple && item.selected)
           return false;
-        return this.#matches(item, query, lookup);
+        return this.#matches(item, query);
       });
       const context = { combobox: this, source: this.source, input: this.#inputEl() };
       if (typeof this.options.filter === "function") {
@@ -1211,7 +1239,7 @@
       this.#renderList();
       this.#setActive(this.options.autoselectFirst ? this.visibleItems.findIndex((item) => !item.disabled) : -1);
     }
-    #matches(item, query, lookup) {
+    #matches(item, query) {
       if (!query)
         return true;
       if (typeof this.options.match === "function") {
@@ -1223,22 +1251,7 @@
           return String(item[field] ?? "");
         return String(item.data?.[field] ?? "");
       });
-      const text = normalize(values.join(" "));
-      switch (String(this.options.match).toLowerCase()) {
-        case "startswith":
-          return values.some((value) => normalize(value).startsWith(lookup));
-        case "fuzzy":
-          return fuzzyMatch(text, lookup);
-        case "pattern":
-          try {
-            const pattern = new RegExp(query, "i");
-            return values.some((value) => pattern.test(String(value ?? "")));
-          } catch {
-            return false;
-          }
-        default:
-          return text.includes(lookup);
-      }
+      return values.some((value) => matchesField(value, query, this.options.match));
     }
     #canCreate(label) {
       const value = String(label ?? "").trim();

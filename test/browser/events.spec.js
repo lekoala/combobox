@@ -116,3 +116,71 @@ test("programmatic select/remove/clear each emit exactly one input then one chan
   expect(state.removeEvents).toEqual(["input", "change"]);
   expect(state.clearEvents).toEqual(["input", "change"]);
 });
+
+test.describe("single-select clear semantics (investigation)", () => {
+  test("clear() on a single select: measured native state, with and without an empty option", async ({
+    page,
+  }) => {
+    await setup(page, FEATURES);
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const make = (html) => {
+        const form = document.createElement("form");
+        const select = document.createElement("select");
+        select.name = "s";
+        select.innerHTML = html;
+        form.append(select);
+        document.body.append(form);
+        return { form, select };
+      };
+      const withEmpty = make(
+        `<option value="">Choose</option><option value="1">One</option><option value="2">Two</option>`,
+      );
+      const noEmpty = make(`<option value="a">A</option><option value="b">B</option>`);
+
+      const comboA = Combobox.getOrCreateInstance(withEmpty.select);
+      const comboB = Combobox.getOrCreateInstance(noEmpty.select);
+      comboA.select("1");
+      comboB.select("b");
+
+      const read = (form, select) => ({
+        value: select.value,
+        index: select.selectedIndex,
+        selectedCount: select.selectedOptions.length,
+        label: select.nextElementSibling?.querySelector(".cb-input")?.value ?? null,
+        formData: new FormData(form).get("s") ?? null,
+      });
+
+      const beforeA = read(withEmpty.form, withEmpty.select);
+      const beforeB = read(noEmpty.form, noEmpty.select);
+      const resultA = await comboA.clear();
+      const resultB = await comboB.clear();
+      return {
+        resultA,
+        resultB,
+        withEmpty: { before: beforeA, after: read(withEmpty.form, withEmpty.select) },
+        noEmpty: { before: beforeB, after: read(noEmpty.form, noEmpty.select) },
+      };
+    });
+    expect(state.resultA).toBe(true);
+    expect(state.resultB).toBe(true);
+    // Measured contract (2026-09): after clear() the browser collapses a single
+    // select to its first option — the blank placeholder stays blank, but a
+    // select without a value="" placeholder re-selects its first real option,
+    // so clear() is value-preserving there (b -> a). selectedIndex is never -1.
+    expect(state.withEmpty.after).toEqual({
+      value: "",
+      index: 0,
+      selectedCount: 1,
+      label: "",
+      formData: "",
+    });
+    expect(state.noEmpty.after).toEqual({
+      value: "a",
+      index: 0,
+      selectedCount: 1,
+      label: "A",
+      formData: "a",
+    });
+  });
+});

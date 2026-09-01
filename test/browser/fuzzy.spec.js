@@ -1,31 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { modernSupported, setup } from "./helpers.js";
+import { modernSupported, rowsFor, setup } from "./helpers.js";
 
 const HTML = "/test/fixtures/fuzzy.html";
 
 test.beforeEach(async ({ page }) => {
   await setup(page, HTML);
 });
-
-async function rowsFor(page, selectId, query) {
-  return page.evaluate(
-    async ({ id, value }) => {
-      const combo = Combobox.getOrCreateInstance(document.getElementById(id));
-      combo.input.focus();
-      combo.input.value = value;
-      combo.input.dispatchEvent(new Event("input", { bubbles: true }));
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      return {
-        rows: combo.filteredItems.map((item) => item.label),
-        listbox: Array.from(combo.listbox.querySelectorAll(".cb-option")).map((row) =>
-          row.textContent.trim(),
-        ),
-        empty: !!combo.listbox.querySelector(".cb-empty"),
-      };
-    },
-    { id: selectId, value: query },
-  );
-}
 
 test("search=fuzzy orders characters but keeps catalogue order", async ({ page }) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");

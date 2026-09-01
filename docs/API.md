@@ -252,18 +252,35 @@ Remote/transient results usually have no `option` until selected.
 
 ### Matching modes
 
-`match` selects the default predicate applied to the joined normalized
-`searchFields` text (empty queries skip matching entirely):
+Every strategy is applied to **each `searchField` value independently** — the
+fields are never concatenated, so a match can never span field boundaries. The
+strategy decides *how a field matches*, not *which fields are merged*. The
+pipeline is `query → match (per field) → filter → score/sort → maxOptions`;
+an empty query skips matching entirely (the matcher has nothing to decide) but
+`filter` admissibility still applies.
 
 | Mode | Behavior |
 |---|---|
-| `includes` (default) | plain substring |
-| `startswith` | any search field starts with the query |
-| `fuzzy` | lightweight subsequence match: every non-space query character appears in order (over already-normalized text, so `som` matches `Sómething`). It **never re-ranks** — catalogue order is preserved; use `score`/`sort` for custom ranking |
-| `pattern` | escape-hatch regex on any field |
+| `includes` (default) | plain substring within one field (case- and accent-insensitive) |
+| `startswith` | a field starts with the query |
+| `fuzzy` | lightweight subsequence match within one field: every non-space query character appears in order (over already-normalized text, so `som` matches `Sómething`). It **never re-ranks** — catalogue order is preserved; use `score`/`sort` for custom ranking |
+| `pattern` | escape-hatch regex on a field: the query string becomes a `RegExp` with the `i` flag only (never a caller-supplied regex, so no stateful `g`/`y` matcher); case- and accent-insensitive — `liège`, `Liège`, `LIEGE` and `liege` all match each other while regex structure (classes, anchors) is preserved. An invalid regex yields no results, never an error |
 | `function` | `match(item, query, { combobox })` fully owns matching |
 
+Multi-token cross-field matching (e.g. `jean paris` matching a name *and* a
+city) is deliberately **out of scope** for the matcher; it belongs to
+application-level query tokenization, not to `match`.
+
 Declarative entry: `<combo-box search="fuzzy">`; imperative: `match: "fuzzy"`.
+
+### `data-filtered` state mirror
+
+`data-filtered` mirrors the dataset's *filtered* state — not the picker's
+*visibility*. While a filter query is active, source `<option>`s that do not
+match carry the attribute; it is removed as soon as the query is empty and on
+`dispose()`. Opening or closing the popup does **not** touch it: visibility and
+filtering are orthogonal. Apps may style or query `[data-filtered]` as their
+temporary `:filtered` while the native primitive is not yet interoperable.
 
 ### `search(query, options)`
 
@@ -285,6 +302,14 @@ cancellable `combobox:beforeselect` handler.
 ### `applyFilter(query, { show })`
 
 Runs local filtering without firing `beforefilter` or initiating load. Intended after an application cancels `beforefilter` and provides results itself.
+
+**Choosing between the three search entry points:** `search(query, …)` is the
+complete pipeline (used to restart the current search or drive a remote
+datasource); `setQuery(value, …)` is the programmatic "type into the combobox"
+operation (visible text + `combo.query` + pipeline, no native `input`/`change`);
+`applyFilter(query, …)` is the low-level local-only primitive reserved for the
+canceled-`beforefilter` escape hatch. If you just want a filtered view of
+locally-known options, `setQuery` is the intended call.
 
 ### `setResults(items)`
 
@@ -481,6 +506,13 @@ and nothing magically makes a single option selectable twice.
 
 `remove()` and `clear()` are async because they can await `guards`; they resolve `false` when refused (voluntary or guarded).
 
+`clear()` on a **multiple** select deselects every selectable option. On a
+**single** select it deselects the current option and the browser collapses the
+select back to its first option — so author a `value=""` placeholder option as
+the first child, otherwise `clear()` silently re-selects the first real option
+instead of producing an empty value (`selectedIndex` is never `-1`; the
+collapse is the browser's native rule, not an engine behavior).
+
 Native `<option title="…">` tooltips propagate onto rendered rows and chips; richer
 tooltips are the job of `render`.
 
@@ -518,6 +550,24 @@ combo.dispose();
 
 ## Events
 
+Events split into two dispatch targets. This is deliberate: the `<select>` is
+the data/value owner while the interaction input is where filtering actually
+happens, so `beforefilter`/`filter` live on that input and `combobox:*`
+lifecycle/value events live on the source element.
+
+| Event | Target | Bubbles | Cancelable |
+|---|---:|---:|---:|
+| `beforefilter` | interaction input | yes | yes |
+| `filter` | interaction input | yes | no |
+| `combobox:*` (all others) | source element | yes | see below |
+
+`beforefilter` also mirrors Open UI by exposing `event.query` directly in
+addition to `event.detail.query`. For a select-backed combobox the interaction
+input is a sibling of the `<select>` (inside the generated control), so
+listeners attached to the `<select>` never see `beforefilter`/`filter` — listen
+on `combo.input` or on `document`; for `input+list` the source *is* the input,
+so both styles work.
+
 ### Open/close
 
 ```text
@@ -529,14 +579,13 @@ combobox:close
 
 ### Filtering
 
-On the filter/search input:
-
 ```text
 beforefilter           cancellable, event.query
 filter
 ```
 
-It also exposes the query in `event.detail.query`.
+`filter` fires with `manual: true` when triggered through `applyFilter()`.
+Both expose the query in `event.detail.query`.
 
 ### Loading
 

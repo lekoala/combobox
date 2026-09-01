@@ -346,7 +346,7 @@ test("createOnBlur creates on real leave but never on chip removal", async ({ pa
 
   const input = page.locator(control("tags"));
   await input.fill("plum");
-  await page.locator("body").click({ position: { x: 5, y: 5 } });
+  await page.locator("#blur-target").click();
   await page.waitForTimeout(40);
 
   const afterLeaf = await page.evaluate(() => ({
@@ -923,7 +923,13 @@ test("clear() keeps disabled selections and removes the rest", async ({ page }) 
 
 test("an external clear button clears through the public API, not DOM hacks", async ({ page }) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
-  await page.evaluate(() => Combobox.getOrCreateInstance(document.getElementById("tags")));
+  await page.evaluate(() => {
+    const combo = Combobox.getOrCreateInstance(document.getElementById("tags"));
+    // The button is harness-owned; the app wires it without touching DOM below
+    // the combobox — this binding lives in the test so the fixture never
+    // depends on the engine global being present at parse time.
+    document.getElementById("ext-clear").addEventListener("click", () => combo.clear());
+  });
   await page.locator("#ext-clear").click();
   await page.waitForTimeout(40);
   const state = await page.evaluate(() => {

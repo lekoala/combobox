@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
-const FEATURES = "/test/fixtures/features.html";
+const TAB_HTML = "/test/fixtures/tab.html";
 
 test.beforeEach(async ({ page }) => {
-  await setup(page, FEATURES);
+  await setup(page, TAB_HTML);
 });
 
 test("default tabSelect (false): Tab moves focus out without selecting", async ({ page }) => {
@@ -12,11 +12,6 @@ test("default tabSelect (false): Tab moves focus out without selecting", async (
 
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("capped"));
-    // A following field anchors native traversal: some engines (Firefox) do not
-    // wrap forward-tab from the last focusable element, Chromium does.
-    const next = document.createElement("input");
-    next.id = "tab-next";
-    document.body.append(next);
   });
 
   const input = page.locator("#capped + .cb-control .cb-input");
@@ -28,7 +23,7 @@ test("default tabSelect (false): Tab moves focus out without selecting", async (
     const select = document.getElementById("capped");
     return {
       value: select.value,
-      focusLeft: document.activeElement?.id === "tab-next",
+      focusLeft: document.activeElement?.id === "tab-after",
       pickerClosed: !document.querySelector(".cb-popover")?.matches(":popover-open"),
     };
   });
@@ -78,11 +73,7 @@ test("tabSelect true: Tab with nothing to commit keeps native traversal", async 
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
   await page.evaluate(() => {
-    const select = document.getElementById("capped");
-    Combobox.getOrCreateInstance(select, { tabSelect: true });
-    const next = document.createElement("input");
-    next.id = "tab-next";
-    document.body.append(next);
+    Combobox.getOrCreateInstance(document.getElementById("capped"), { tabSelect: true });
   });
 
   const input = page.locator("#capped + .cb-control .cb-input");
@@ -93,7 +84,7 @@ test("tabSelect true: Tab with nothing to commit keeps native traversal", async 
     const select = document.getElementById("capped");
     return {
       value: select.value,
-      focusLeft: document.activeElement?.id === "tab-next",
+      focusLeft: document.activeElement?.id === "tab-after",
     };
   });
   expect(state.value).toBe("");

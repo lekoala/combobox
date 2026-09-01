@@ -84,10 +84,53 @@ export type SplitResult = {
  */
 export declare function hasOwn(object: object, key: string): boolean;
 /**
+ * Strip combining diacritics only (NFD + remove the U+0300–U+036F block).
+ * Case is preserved — use `normalize()` when case-insensitivity is also
+ * wanted. Everything in the engine that is "accent-insensitive" funnels
+ * through here, so there is exactly one definition of accent folding.
+ *
+ * @param {*} value
+ * @returns {string}
+ */
+export declare function stripDiacritics(value: any): string;
+/**
  * @param {*} value
  * @returns {string}
  */
 export declare function normalize(value: any): string;
+/**
+ * Match a single `value` against `query` under a `match` strategy map
+ * ("includes" | "startswith" | "fuzzy" | "pattern").
+ *
+ * Contract: this helper decides **how a field matches** — it never receives
+ * more than one field value, so a match can never cross `searchFields`
+ * boundaries. The engine calls it as `values.some((value) => matchesField(value, query, mode))`.
+ *
+ * `pattern` is a string transformed into a `RegExp` with the `i` flag only
+ * (never a caller-supplied `RegExp`, so a stateful `g`/`y` matcher cannot
+ * leak between items). It first tests the raw value with the authored regex,
+ * then falls back to an accent-insensitive pass over `stripDiacritics()`
+ * text with a diacritics-folded spelling of the query — so `liège`, `Liège`,
+ * `LIEGE` and `liege` all match each other while `[A-Z]`-style regexes keep
+ * their original semantics (case is handled by `/i`, not by lowercasing).
+ * An invalid regex still yields `false` for every value.
+ *
+ * @param {*} value
+ * @param {*} query
+ * @param {*} mode
+ * @returns {boolean}
+ */
+export declare function matchesField(value: any, query: any, mode: any): boolean;
+/**
+ * Case- and accent-insensitive regex matching for a single value.
+ * See `matchesField` for the contract around the `i`-only flag and the
+ * additive accent-fold fallback; an invalid query returns `false`.
+ *
+ * @param {*} value
+ * @param {*} query
+ * @returns {boolean}
+ */
+export declare function patternMatch(value: any, query: any): boolean;
 /**
  * Convert any input to a canonical `{ value, label }`.
  *

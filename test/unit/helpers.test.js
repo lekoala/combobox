@@ -2,14 +2,17 @@ import { expect, test } from "bun:test";
 import {
   booleanAttribute,
   fuzzyMatch,
+  matchesField,
   moveValueInOrder,
   normalize,
   parseInteger,
   parseList,
   parseSeparators,
+  patternMatch,
   rankByScore,
   reconcileSelected,
   splitTokens,
+  stripDiacritics,
   toItem,
 } from "../../src/helpers.js";
 
@@ -17,6 +20,16 @@ test("normalize strips accents and lowercases", () => {
   expect(normalize("Liège")).toBe("liege");
   expect(normalize("  ÉéÀà  ")).toBe("  eeaa  ");
   expect(normalize(null)).toBe("");
+});
+
+test("stripDiacritics folds accents but preserves case", () => {
+  expect(stripDiacritics("Liège")).toBe("Liege");
+  expect(stripDiacritics("ÉÉÉ")).toBe("EEE");
+  expect(stripDiacritics("déjà-vu")).toBe("deja-vu");
+  expect(stripDiacritics("plain")).toBe("plain");
+  expect(stripDiacritics(null)).toBe("");
+  // single source of truth: normalize is stripDiacritics + lowercase.
+  expect(normalize("Liège")).toBe(stripDiacritics("Liège").toLocaleLowerCase());
 });
 
 test("toItem accepts strings, numbers and id/text objects", () => {
@@ -199,6 +212,51 @@ test("fuzzyMatch advances by full code points, not utf-16 units (surrogate pairs
   // "😀" is a surrogate pair; the next lookup char must not match inside it.
   expect(fuzzyMatch("😀 smile", "😀s")).toBe(true);
   expect(fuzzyMatch("😀", "😀")).toBe(true);
+});
+
+test("matchesField applies each strategy to a single value only", () => {
+  // includes: case/accent-insensitive substring within one field.
+  expect(matchesField("Banana", "an", "includes")).toBe(true);
+  expect(matchesField("Sómething sour", "something", "includes")).toBe(true);
+  expect(matchesField("Banana", "zzz", "includes")).toBe(false);
+  // A single value cannot be "across fields" — the engine never joins fields.
+  expect(matchesField("AABB", "BBCC", "includes")).toBe(false);
+  expect(matchesField("AABB", "BB", "includes")).toBe(true);
+
+  // startswith: prefix only, never a mid-field substring.
+  expect(matchesField("Banana", "ba", "startswith")).toBe(true);
+  expect(matchesField("Banana", "na", "startswith")).toBe(false);
+
+  // fuzzy: order-preserving subsequence inside one value.
+  expect(matchesField("Banana", "bnn", "fuzzy")).toBe(true);
+  expect(matchesField("AABB", "BD", "fuzzy")).toBe(false);
+
+  // unknown modes stay includes (same default as before extraction).
+  expect(matchesField("Banana", "an", "banana-mode")).toBe(true);
+});
+
+test("patternMatch is case- and accent-insensitive across the whole grille", () => {
+  // liège / Liège / LIEGE / liege all match each other.
+  for (const query of ["liège", "Liège", "LIEGE", "liege"]) {
+    for (const value of ["liège", "Liège", "LIEGE", "liege"]) {
+      expect(patternMatch(value, query)).toBe(true);
+    }
+  }
+  // Accent folding is additive: regex structure is preserved (diacritics
+  // stripped only from the query spelling and the tested value). `/i` keeps
+  // it case-insensitive, but character classes still constrain (digits etc).
+  expect(patternMatch("Bélgeux", "^belge")).toBe(true);
+  expect(patternMatch("ABC", "^[A-Z]{3}$")).toBe(true);
+  expect(patternMatch("ab3", "^[A-Z]{3}$")).toBe(false);
+  // Invalid queries fail safely, never throw.
+  expect(patternMatch("anything", "(")).toBe(false);
+  expect(patternMatch("anything", "")).toBe(true);
+});
+
+test("matchesField routes the pattern mode through the same accent contract", () => {
+  expect(matchesField("Sómething sour", "som", "pattern")).toBe(true);
+  expect(matchesField("Sómething sour", "sóm", "pattern")).toBe(true);
+  expect(matchesField("anything", "(", "pattern")).toBe(false);
 });
 
 test("parseList splits on commas, trims and drops empties", () => {

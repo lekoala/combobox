@@ -68,7 +68,8 @@ test("tap outside the picker closes it", async ({ page }) => {
   await tap(page, page.locator("#tags + .cb-control"));
   await expect(page.locator(".cb-popover:visible")).toHaveCount(1);
 
-  await page.touchscreen.tap(5, 5);
+  // The dedicated non-interactive target closes the picker from outside.
+  await tap(page, page.locator("#blur-target"));
   await page.waitForTimeout(60);
   await expect(page.locator(".cb-popover:visible")).toHaveCount(0);
 });

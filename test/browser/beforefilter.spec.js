@@ -9,6 +9,45 @@ test.beforeEach(async ({ page }) => {
   test.skip(!(await modernSupported(page)), MODERN);
 });
 
+test("beforefilter/filter dispatch on the interaction input, not the source", async ({ page }) => {
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("capped");
+    const events = { onSelect: [], onInput: [], onDocument: [], openOnSelect: 0 };
+    // Listening on the <select> (the pattern used by every combobox:* event)
+    // must NOT receive search events...
+    select.addEventListener("beforefilter", (event) =>
+      events.onSelect.push(["beforefilter", event.detail.query]),
+    );
+    select.addEventListener("filter", (event) => events.onSelect.push(["filter", event.detail.query]));
+    // ...while the interaction input and the document bubble path both do.
+    const combo = Combobox.getOrCreateInstance(select);
+    combo.input.addEventListener("beforefilter", (event) => {
+      if (event.detail.query === "Tw") events.onInput.push("beforefilter");
+    });
+    combo.input.addEventListener("filter", (event) => {
+      if (event.detail.query === "Tw") events.onInput.push("filter");
+    });
+    document.addEventListener("beforefilter", (event) => events.onDocument.push(event.type));
+    // Opposite split: combobox:* lifecycle events stay on the source element.
+    select.addEventListener("combobox:beforeopen", () => events.openOnSelect++);
+
+    const input = combo.input;
+    input.focus();
+    input.value = "Tw";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    combo.hide();
+    return events;
+  });
+  expect(state.onSelect).toEqual([]);
+  expect(state.onInput).toEqual(["beforefilter", "filter"]);
+  // Both the focus-driven and the "Tw" search bubble through the document;
+  // the point is they reach it at all, and never get filtered to a no-op.
+  expect(state.onDocument.length).toBeGreaterThan(0);
+  expect(state.onDocument.every((type) => type === "beforefilter")).toBe(true);
+  expect(state.openOnSelect).toBeGreaterThan(0);
+});
+
 test("the default pipeline fires beforefilter before filter with the matching query", async ({ page }) => {
   const state = await page.evaluate(async () => {
     const combo = Combobox.getOrCreateInstance(document.getElementById("capped"));

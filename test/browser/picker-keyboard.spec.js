@@ -275,7 +275,8 @@ test("option pointerdown keeps the filter focused; clicking outside closes", asy
   expect(keptFocus.focused).toBe(true);
   expect(keptFocus.open).toBe(true);
 
-  await page.mouse.click(3, 3);
+  // Clicking the dedicated non-interactive target closes the picker.
+  await page.locator("#blur-target").click();
   expect(await isOpen(page, "capped")).toBe(false);
 });
 

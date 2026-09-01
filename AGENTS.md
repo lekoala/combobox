@@ -101,6 +101,17 @@ final pre-commit/release gate — it regenerates (`sync`) and then rejects any d
 between committed artifacts and a fresh sync. The behavioral browser suite targets the
 ESM source; only `test/dist` exercises the generated bundle.
 
+An agent working on a change must **not** run `bun run verify`: its `check:generated`
+drift gate compares git HEAD against a fresh `sync`, so it fails as long as the
+regenerated artifacts are uncommitted — that is expected mid-task, not a bug. The
+agent's gates are:
+
+- after editing `src/`: `bun run check` + `bun run test:browser`, then `bun run sync`
+  followed by `bun run test:dist` so the regenerated bundle is exercised;
+- test-only/doc-only changes: `bun run check` + `bun run test:browser`.
+
+Committing (which makes `verify` green) happens only when the user explicitly asks.
+
 The demo (`demo/index.html`) always loads the generated classic `dist/combobox.js` and
 `dist/combobox.css` (self-registers `<combo-box>` with zero globals), so it works over
 both http(s) and `file://` after a single `bun run sync`. The demo validates the

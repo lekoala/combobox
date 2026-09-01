@@ -5,8 +5,6 @@
   <title>Feature fixtures</title>
 </head>
 <body>
-  <button id="ext-clear" type="button" style="position: fixed; inset-inline-start: 0; inset-block-end: 1rem;">Clear tags</button>
-
   <form id="form">
     <label for="twinlabels">Same label, distinct values</label>
     <select id="twinlabels" name="twinlabels[]" multiple>
@@ -52,11 +50,14 @@
     </select>
   </form>
 
-  <script>
-    document.getElementById("ext-clear").addEventListener("click", () => {
-      Combobox.getOrCreateInstance(document.getElementById("tags")).clear();
-    });
-  </script>
+  <button id="ext-clear" type="button">Clear tags</button>
+
+  <!-- Explicit, non-interactive target for "outside pointer closes" and
+       "blur leaves the combobox" tests. Tapping/clicking this div never steals
+       focus semantics from real inputs, so keyboard/accessibility tests stay
+       independent of where this sits in the document. -->
+  <div id="blur-target" style="position: fixed; inset-inline-end: 0; inset-block-end: 0; inline-size: 3rem; block-size: 3rem;"></div>
+
   <script type="module" src="../../src/define.js"></script>
 </body>
 </html>

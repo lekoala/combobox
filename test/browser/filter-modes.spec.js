@@ -1,26 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { modernSupported, setup } from "./helpers.js";
+import { modernSupported, rowsFor, setup } from "./helpers.js";
 
 const FUZZY = "/test/fixtures/fuzzy.html";
 const MODERN = "Modern Popover + Anchor support is required";
-
-async function rowsFor(page, id, value, options) {
-  return page.evaluate(
-    async ({ id, value, options }) => {
-      const combo = Combobox.getOrCreateInstance(document.getElementById(id), options ?? {});
-      const input = combo.input;
-      input.focus();
-      input.value = value;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      return {
-        rows: combo.filteredItems.map((item) => item.label),
-        empty: combo.listbox.querySelector(".cb-empty") !== null,
-      };
-    },
-    { id, value, options },
-  );
-}
 
 test.describe("match modes", () => {
   test.beforeEach(async ({ page }) => {
@@ -87,6 +69,17 @@ test.describe("match modes", () => {
     expect(state).toEqual(["Strawberry", "Blackberry", "Apple pie"]);
   });
 
+  test("match:pattern is case- and accent-insensitive", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    // "Sómething sour" matches through the folded spelling, from either side.
+    const noAccent = await rowsFor(page, "plain", "som", { match: "pattern" });
+    expect(noAccent.rows).toEqual(["Sómething sour"]);
+    const accented = await rowsFor(page, "plain", "sóm", { match: "pattern" });
+    expect(accented.rows).toEqual(["Sómething sour"]);
+    const upper = await rowsFor(page, "plain", "SOM", { match: "pattern" });
+    expect(upper.rows).toEqual(["Sómething sour"]);
+  });
+
   test("match:pattern with a malformed query fails safely to no-results", async ({ page }) => {
     test.skip(!(await modernSupported(page)), MODERN);
     const pageErrors = [];
@@ -95,6 +88,46 @@ test.describe("match modes", () => {
     expect(state.rows).toEqual([]);
     expect(state.empty).toBe(true);
     expect(pageErrors).toEqual([]);
+  });
+});
+
+test.describe("field boundaries", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, FUZZY);
+  });
+
+  test("includes never crosses searchFields boundaries", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    // With joined text "AABB CCDD" the old model matched "BBCC"; per-field it
+    // cannot span the label/data boundary.
+    const crossing = await rowsFor(page, "boundary", "BBCC", {
+      searchFields: ["label", "b"],
+    });
+    expect(crossing.rows).toEqual([]);
+
+    const single = await rowsFor(page, "boundary", "BB", {
+      searchFields: ["label", "b"],
+    });
+    expect(single.rows).toEqual(["AABB"]);
+
+    const dataOnly = await rowsFor(page, "boundary", "DD", {
+      searchFields: ["label", "b"],
+    });
+    expect(dataOnly.rows).toEqual(["AABB"]);
+  });
+
+  test("fuzzy never crosses searchFields boundaries", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const options = { match: "fuzzy", searchFields: ["label", "b"] };
+    // "BD" and "ABCD" were subsequences of the old joined text but not of any
+    // single field.
+    const crossing = await rowsFor(page, "boundary", "BD", options);
+    expect(crossing.rows).toEqual([]);
+    const crossing2 = await rowsFor(page, "boundary", "ABCD", options);
+    expect(crossing2.rows).toEqual([]);
+
+    const single = await rowsFor(page, "boundary", "AA", options);
+    expect(single.rows).toEqual(["AABB"]);
   });
 });
 
@@ -154,16 +187,69 @@ test.describe("list state recovery", () => {
       await new Promise((resolve) => setTimeout(resolve, 30));
       const duringQuery = filterState();
 
+      // Visibility and filtering are orthogonal: closing the picker does not
+      // reset the dataset's filtered state.
+      combo.hide();
+      const closedStillFiltered = filterState();
+      combo.input.focus();
       combo.input.value = "";
       combo.input.dispatchEvent(new Event("input", { bubbles: true }));
       await new Promise((resolve) => setTimeout(resolve, 30));
       const afterClearQuery = filterState();
 
       combo.dispose();
-      return { duringQuery, afterClearQuery, afterDispose: filterState() };
+      return { duringQuery, closedStillFiltered, afterClearQuery, afterDispose: filterState() };
     });
     expect(state.duringQuery).toEqual({ banana: false, strawberry: true });
+    expect(state.closedStillFiltered).toEqual({ banana: false, strawberry: true });
     expect(state.afterClearQuery).toEqual({ banana: false, strawberry: false });
     expect(state.afterDispose).toEqual({ banana: false, strawberry: false });
+  });
+});
+
+test.describe("pipeline contract", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, FUZZY);
+  });
+
+  test("an empty query never consults the matcher, even a custom one", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(() => {
+      let matchCalls = 0;
+      const combo = Combobox.getOrCreateInstance(document.getElementById("plain"), {
+        match: () => {
+          matchCalls++;
+          return false;
+        },
+      });
+      combo.refresh();
+      const afterRefresh = { matchCalls, rows: combo.filteredItems.map((item) => item.label) };
+      combo.input.focus();
+      combo.input.value = "x";
+      combo.input.dispatchEvent(new Event("input", { bubbles: true }));
+      const afterQuery = matchCalls;
+      return { afterRefresh, afterQuery };
+    });
+    // Empty query: the custom matcher is never asked, every option shows.
+    expect(state.afterRefresh).toEqual({
+      matchCalls: 0,
+      rows: ["Banana", "Strawberry", "Blackberry", "Sómething sour", "Apple pie"],
+    });
+    // Non-empty query: the custom matcher owns matching and rejects everything.
+    expect(state.afterQuery).toBeGreaterThan(0);
+  });
+
+  test("an empty query still applies the filter admissibility gate", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(() => {
+      const combo = Combobox.getOrCreateInstance(document.getElementById("plain"), {
+        filter: (item) => item.value !== "banana",
+      });
+      combo.refresh();
+      return combo.filteredItems.map((item) => item.label);
+    });
+    // "no textual search" is not "admit everything": the app-level filter vetoes
+    // one option even without a query.
+    expect(state).toEqual(["Strawberry", "Blackberry", "Sómething sour", "Apple pie"]);
   });
 });

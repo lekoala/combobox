@@ -207,6 +207,11 @@ If `beforefilter` is cancelled, the application owns filtering. It can asynchron
 
 Mirror Open UI-like future states today with data attributes (`data-filtered`, `data-active-option`). When interoperable native primitives ship, the adapter boundary can delegate more work to the platform without changing the public model.
 
+`data-filtered` mirrors the dataset's *filtered* state, not the popup's
+*visibility*: it is present while a filter query is active, removed when the
+query becomes empty and on `dispose()`. Opening or closing the popup never
+touches it.
+
 ## 6. Remote loading
 
 The core should know **how to schedule/cancel a load**, not how an application's API is shaped.
