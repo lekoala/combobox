@@ -569,7 +569,7 @@
     #resolveFilterInput() {
       let input = null;
       if (this.source.id) {
-        input = document.querySelector(`input[filter="${CSS.escape(this.source.id)}"]`);
+        input = document.querySelector(`input[data-filter-for="${CSS.escape(this.source.id)}"]`);
       }
       if (input instanceof HTMLInputElement) {
         const inputSnapshot = captureAttributes(input, INPUT_ATTRS);
@@ -705,7 +705,7 @@
         const catalog = [...preserved, ...normalized];
         const groups = new Map;
         for (const item of catalog) {
-          if (!item.value)
+          if (!item.value && !this.options.allowEmptyOption)
             continue;
           const option = new Option(item.label, item.value, Boolean(item.selected), Boolean(item.selected));
           option.disabled = Boolean(item.disabled);
@@ -1745,7 +1745,9 @@
       if (!this.isSelect)
         throw new TypeError("addOption() is only available for select-backed comboboxes");
       const item = toItem(rawItem, this.#fields());
-      if (!item?.value)
+      if (!item)
+        throw new TypeError("Option requires a value");
+      if (item.value === "" && !this.options.allowEmptyOption)
         throw new TypeError("Option requires a value");
       const option = item.option instanceof HTMLOptionElement ? item.option : new Option(item.label, item.value, false, selected);
       if (!(item.option instanceof HTMLOptionElement)) {

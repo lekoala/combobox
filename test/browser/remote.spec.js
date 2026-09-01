@@ -227,6 +227,79 @@ test("transient results stay out of the catalogue; selecting materializes only t
   expect(afterClear.rows).not.toContain("Remote Ten"); // transient result was dropped
 });
 
+test("clearResults() drops unselected transients and keeps a selected materialized option", async ({
+  page,
+}) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(() => {
+    const select = document.getElementById("remote");
+    const combo = Combobox.getOrCreateInstance(select, { debounce: 0 });
+
+    const hasOption = (value) => Array.from(select.options).some((option) => option.value === value);
+
+    combo.setResults([{ value: "tmp", label: "Temp" }]);
+    const beforeSelect = hasOption("tmp"); // setResults never touches the catalogue
+    combo.clearResults();
+    const afterClearUnselected = hasOption("tmp"); // still never materialized
+
+    combo.setResults([{ value: "mat", label: "Materialized" }]);
+    combo.select({ value: "mat", label: "Materialized" });
+    combo.clearResults();
+    const afterClearSelected = {
+      catalog: Array.from(select.options, (option) => option.value),
+      value: select.value,
+    };
+    return { beforeSelect, afterClearUnselected, afterClearSelected };
+  });
+  expect(state.beforeSelect).toBe(false);
+  expect(state.afterClearUnselected).toBe(false);
+  expect(state.afterClearSelected.catalog).toContain("mat");
+  expect(state.afterClearSelected.value).toBe("mat");
+});
+
+test("setOptions() preserves selected materialized options and drops unselected ones", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(() => {
+    const select = document.getElementById("remote");
+    const combo = Combobox.getOrCreateInstance(select, { debounce: 0 });
+    combo.select({ value: "kept", label: "Kept selected" });
+    combo.addOption({ value: "orphan", label: "Materialized, unselected" });
+    combo.setOptions([{ value: "c1", label: "Catalogue One" }]);
+    return {
+      catalog: Array.from(select.options, (option) => option.value),
+      value: select.value,
+    };
+  });
+  expect(state.catalog).toContain("kept"); // selected materialized survives
+  expect(state.catalog).toContain("c1");
+  expect(state.catalog).not.toContain("orphan"); // unselected materialized is dropped
+  expect(state.value).toBe("kept");
+});
+
+test("a deselected materialized remote disappears on the next setOptions()", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("remote-multi");
+    const combo = Combobox.getOrCreateInstance(select, { debounce: 0 });
+    combo.select({ value: "loop", label: "Loop A" });
+    const whileSelected = Array.from(select.selectedOptions, (option) => option.value);
+    await combo.remove("loop");
+    const afterDeselect = Array.from(select.selectedOptions, (option) => option.value);
+    combo.setOptions([{ value: "n1", label: "New One" }]);
+    return {
+      whileSelected,
+      afterDeselect,
+      catalog: Array.from(select.options, (option) => option.value),
+    };
+  });
+  expect(state.whileSelected).toContain("loop");
+  expect(state.afterDeselect).not.toContain("loop");
+  // preserveSelected only guarantees *selected* options: the deselected "loop"
+  // materialization is not part of the new catalogue and is gone.
+  expect(state.catalog).not.toContain("loop");
+  expect(state.catalog).toContain("n1");
+});
+
 test("cancelling beforeselect does not materialize a transient result", async ({ page }) => {
   test.skip(!(await modernSupported(page)), MODERN);
   await page.evaluate(() => {

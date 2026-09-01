@@ -99,6 +99,18 @@ for (const [subpath, entry] of Object.entries(pkg.exports ?? {})) {
   }
 }
 
+// Every sideEffects entry must resolve to a real file inside the tarball: a
+// stale CSS/bundle path there would silently break bundler tree-shaking slots.
+for (const target of pkg.sideEffects ?? []) {
+  const rel = target.replace(/^\.\//, "");
+  if (rel.includes("*")) {
+    continue;
+  }
+  if (!has(rel)) {
+    errors.push(`sideEffects -> ${target} not found in package`);
+  }
+}
+
 if (errors.length) {
   console.error("Package check failed:");
   for (const e of errors) {

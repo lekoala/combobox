@@ -85,7 +85,7 @@ Raw HTML:
 
 ```html
 <label for="doctor">Doctor</label>
-<input filter="doctor" hidden>
+<input data-filter-for="doctor" hidden>
 <select id="doctor" name="doctor">...</select>
 ```
 
@@ -156,7 +156,7 @@ The declarative contract splits structure from configuration: the native source 
 | score/sort/filter functions | ❌ | ✅ |
 | structured objects | generally ❌ | ✅ |
 
-`data-*` on source items is **application metadata** (`item.data`, e.g. feeding the `search-fields` attribute), never combobox configuration. An explicit filter input is declared structurally with a liaison attribute on the input itself: `<input filter="select-id" hidden>`. No source-level `data-*` configuration API exists.
+The wrapper owns only lifecycle (upgrade/dispose); the native source never changes hands and no generated filter input gets a `name`. `data-*` on source items is **application metadata** (`item.data`, e.g. feeding the `search-fields` attribute), never combobox configuration. An explicit filter input is declared structurally with a liaison attribute on the input itself: `<input data-filter-for="select-id" hidden>`. No source-level `data-*` configuration API exists.
 
 Fallback: without JS or on unsupported browsers the browser sees an unknown element wrapping a fully functional native control.
 
@@ -341,7 +341,8 @@ Not allowed:
 
 ## 11. Target implementation split
 
-Do not split merely for file count. Once tests are in place, likely boundaries are:
+Do not split merely for file count. The stabilized split keeps the pure seams
+isolated and the orchestration in one place:
 
 ```text
 helpers.js            pure helpers: normalize/toItem, separators/tokenizer
@@ -354,4 +355,4 @@ selection.js          chips/order/formdata
 events.js             event helpers/operation guards
 ```
 
-The current implementation intentionally keeps these as visible sections in one file until the contracts stabilize; `helpers.js` is already extracted so the pure functions can be unit-tested without a DOM shim.
+The current implementation intentionally keeps these as visible sections in one file; `helpers.js` is already extracted so the pure functions can be unit-tested without a DOM shim.

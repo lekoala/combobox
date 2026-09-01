@@ -320,6 +320,36 @@ test("created selected options never rewrite the form reset baseline", async ({ 
   expect(reset.createdStillDefault).toBe(false);
 });
 
+test("created options survive sync() and form.reset() with native reset semantics", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  await page.evaluate(async () => {
+    const combo = Combobox.getOrCreateInstance(document.getElementById("tags"), { create: true });
+    const input = combo.input;
+    input.value = "Plum";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  });
+
+  const select = page.locator("#tags");
+  const exists = () => page.locator('#tags option[value="Plum"]').count();
+
+  expect(await exists()).toBe(1);
+
+  await page.evaluate(() => Combobox.getInstance(document.getElementById("tags")).sync());
+  expect(await exists()).toBe(1);
+  expect(await select.evaluate((el) => Array.from(el.selectedOptions, (o) => o.value))).toContain("Plum");
+
+  // reset() restores the native/default selection; it never rewrites the
+  // catalogue, so the created option stays present but unselected.
+  await page.evaluate(() => document.querySelector("form").reset());
+  await page.waitForTimeout(40);
+
+  expect(await exists()).toBe(1);
+  expect(await select.evaluate((el) => Array.from(el.selectedOptions, (o) => o.value))).toEqual(["1"]);
+});
+
 test("closeOnSelect closes a multiple picker after selection", async ({ page }) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
   await page.evaluate(() => {

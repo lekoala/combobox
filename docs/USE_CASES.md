@@ -20,7 +20,7 @@ Requirements:
 ## UC2 — Filterable constrained single select
 
 ```html
-<input filter="doctor" hidden>
+<input data-filter-for="doctor" hidden>
 <select id="doctor" name="doctor" required>...</select>
 ```
 
@@ -173,7 +173,7 @@ Requirements:
 - `move(value,index)` updates order model;
 - ordered `FormData` can preserve that order;
 - no built-in drag/drop requirement;
-- keyboard reordering must be specified before release.
+- keyboard reordering is specified and implemented (Alt+ArrowLeft/Right and Alt+Home/End on a focused chip) and covered by `order.spec.js`; no built-in drag/drop — apps wire `move()` to their own UI.
 
 ## UC10 — Dynamic fragments / partial page updates
 

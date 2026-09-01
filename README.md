@@ -8,6 +8,21 @@ The project deliberately starts from browser primitives and Open UI concepts. Wo
 
 Migrating from `bootstrap5-tags` or `bootstrap5-autocomplete`? See [Migrating to Combobox](docs/MIGRATION.md).
 
+## Surface status
+
+- **Supported in 0.1** — the engine (`select`/`multiple`/`input+datalist` value
+  models), `<combo-box>` + the frozen attribute surface, matching/filtering,
+  `create` (sync + async), `guards`, separators/tokenizer, `maxItems`/
+  `maxOptions`, selection order + `move()`, `clear()`, remote `load` +
+  materialization contract, form semantics, `dispose()` exact restoration.
+- **Experimental** — seams exported with a contract that may still evolve in a
+  later 0.x: `observeSource`, the custom `tokenize` seam, `loadMore()`/cursor
+  pagination, rich `render.*` overrides.
+- **Future / non-goal** — drag/drop chip sorting, virtualization, plugin
+  architecture, automatic DOM observation by default, built-in clear UI,
+  checkbox dropdowns, Bootstrap JS, a fallback picker engine. Native controls
+  remain the fallback and are never re-implemented as a second combobox.
+
 ## Core idea
 
 One `Combobox` enhances two native value models:
@@ -288,10 +303,25 @@ enhanced picker runs on all three). Popover, focus, form validation, keyboard be
 and Anchor Positioning need a real browser. Pure matching/tokenization/order helpers
 are unit-tested in `test/unit` (`bun run test`).
 
-## Before publishing a v1
+## Release gate
 
-The v0.1.0 publishing shape is in place and CI-enforced: Chromium, Firefox and WebKit run
+The 0.1.0 publishing shape is in place and CI-enforced: Chromium, Firefox and WebKit run
 the browser matrix, `verify` gates check/sync/types/package contract/generated drift, and
 `npm pack --dry-run` validates the tarball. Generated type declarations ship in
 `dist/types` and the consumer contract is locked by `test/types/consumer.ts`. Run
 `bun run check:all` before cutting a release.
+
+### Packaging decisions
+
+- **ESM only** with a classic IIFE build (`dist/combobox.js`, from the single side-effect
+  entry `src/define.js`) for `file://`/`<script>` consumers and the demo.
+- `"sideEffects"` is explicit: only the self-registering classic bundles, the CSS files and
+  `src/define.js` are side-effectful. Everything else (the `src/…` ESM engine, types,
+  `custom-elements.json`) is tree-shakable — importing `@lekoala/combobox` never registers
+  `<combo-box>`.
+- **No runtime source maps ship in 0.1.** The `dist/` JS bundle is a committed, drift-gated
+  artifact built by `bun run sync`; runtime source maps would add tarball weight without a
+  consumer path (the browser suite debugs the ESM source directly). This is a conscious
+  trade-off, not an omission. The generated `dist/types/*.d.ts.map` *declaration* maps are
+  kept deliberately: they make "go to definition" jump to the JSDoc-typed `src/` sources
+  for TypeScript consumers at negligible cost.

@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Native-first <combo-box> combobox/filterable-select",
   "type": "module",
+  "sideEffects": [
+    "./dist/combobox.js",
+    "./dist/combobox.min.js",
+    "./dist/combobox.css",
+    "./dist/combobox.min.css",
+    "./src/combobox.css",
+    "./src/define.js"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

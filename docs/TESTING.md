@@ -23,7 +23,7 @@ Required for:
 - CSS Anchor behavior/layout;
 - pointer/outside click;
 - IME/composition;
-- DOM MutationObserver if adopted;
+- DOM MutationObserver (opt-in `observeSource`);
 - ARIA state timing.
 
 ### Unit tests — only pure logic
@@ -82,7 +82,7 @@ Coverage: `test/browser/matrix.spec.js` (auto enhanced/fallback per engine, forc
 - [x] Escape closes.
 - [x] opening a second combobox closes the first unless beforeclose cancels.
 - [x] beforeopen/beforeclose cancellation works.
-- [x] single closes after select by default; multiple default policy tested once decided.
+- [x] single closes after select by default; multiple stays open by default (policy decided, tested).
 - [x] no open/close event duplication.
 
 Prior-art coverage confirms close-after-select variants, Escape, reopen-after-close and keeping focus while interacting with picker content are the cases that regress.
@@ -99,7 +99,7 @@ Prior-art coverage confirms close-after-select variants, Escape, reopen-after-cl
 - [x] Home/End stay native text-editing in the editable input (caret per ARIA APG); picker navigation uses ArrowDown/Up and PageUp/PageDown (`picker-keyboard.spec.js`).
 - [x] PageDown/PageUp step by a page (viewport height ÷ row height) and clamp at the selectable edges.
 - [x] all picker navigation keys open a closed picker.
-- [x] Tab behavior explicitly tested once policy is fixed (`tabSelect` option; default native traversal, opt-in commit, IME-safe).
+- [x] Tab behavior explicitly tested (`tabSelect` option; default native traversal, opt-in commit, IME-safe).
 - [x] label click focuses enhanced input.
 
 Prior-art accessibility corpora cover the `aria-activedescendant`/`aria-controls` lifecycle and arrows through optgroups.
@@ -145,8 +145,8 @@ The event suite verifies `input` before `change`, single firing, disabled values
 
 ## H. Local filtering
 
-- [x] empty query behavior (stale: covered indirectly by the fuzzy/whitespace case and `maxOptions` baseline rows).
-- [x] includes (stale: default pipeline exercised throughout the local filter suite).
+- [x] empty query shows the source-backed set (stated policy: empty query skips matching, `filter` admissibility still applies).
+- [x] includes (default match pipeline).
 - [x] startswith (`filter-modes.spec.js`: label prefix, not arbitrary substring).
 - [x] accent-insensitive (`liege` matches `Liège` — `normalize` unit tests; the filter pipeline funnels through it in `applyFilter`).
 - [x] `searchFields` supports label and extra data fields (custom `searchFields` incl. item `data-*` metadata, `fuzzy.spec.js`).
@@ -159,8 +159,8 @@ The event suite verifies `input` before `change`, single firing, disabled values
 - [x] custom sort (`sort` comparator exercised by `order.spec.js`).
 - [x] invalid pattern query fails safely (`filter-modes.spec.js`: malformed `"("` → no options, no page error).
 - [x] backspacing from no-results restores options (`filter-modes.spec.js`).
-- [x] no-results state is visually stable and never horizontally scrolls (stale: `css-polish.spec.js`; the long-message containment variant lives in `layout.spec.js`).
-- [x] selected multiple values are excluded from results unless future policy says otherwise (stale: asserted by the `source-adapters.spec.js` sync test).
+- [x] no-results state is visually stable and never horizontally scrolls (`css-polish.spec.js`; long-message containment in `layout.spec.js`).
+- [x] selected multiple values are excluded from results (asserted by the `source-adapters.spec.js` sync test).
 - [x] data-filtered mirror state correct for local source options (`filter-modes.spec.js`).
 
 ## H2. Declarative configuration policy
@@ -169,7 +169,7 @@ The event suite verifies `input` before `change`, single firing, disabled values
 - [x] `tab-select` and `search-fields` attributes map (`declarative.spec.js`, `combobox-element.spec.js`).
 - [x] JS options win over wrapper attributes (`declarative.spec.js`).
 - [x] source `data-*` attributes are application metadata, never configuration — no third way (`declarative.spec.js`).
-- [x] item `data-*` is application metadata consumed by `searchFields` (`fuzzy.spec.js`); an explicit filter input uses the structural `filter="select-id"` link (`source-adapters.spec.js`).
+- [x] item `data-*` is application metadata consumed by `searchFields` (`fuzzy.spec.js`); an explicit filter input uses the structural `data-filter-for="select-id"` link (`source-adapters.spec.js`).
 
 ## I. `beforefilter` / app-owned filtering
 
@@ -200,6 +200,8 @@ Coverage lives in `test/browser/remote.spec.js` (`test/fixtures/remote.html`).
 - [x] aborted load does not emit loaderror/load.
 - [x] clearing query drops stale remote result store as designed.
 - [x] transient results stay out of the native catalogue; selecting a result materializes exactly that native option (single and multiple).
+- [x] `clearResults()` called directly drops unselected transients and keeps a selected materialized option; it never adds to the catalogue (`remote.spec.js`).
+- [x] `setOptions()` preserves selected materialized options and drops unselected ones; a deselected materialized remote disappears on the next `setOptions()` (`remote.spec.js`).
 
 Prior-art load coverage addresses preload/loading/no-results and query churn; our AbortSignal design is deliberately stricter about stale-response races.
 
@@ -215,8 +217,8 @@ Prior-art load coverage addresses preload/loading/no-results and query churn; ou
 - [x] beforecreate cancellation (covered by `features.spec.js`).
 - [x] maxItems blocks new selection/create but still allows removal (covered by `features.spec.js`).
 - [x] created item updates native select and native events (covered by the async-create event sequence).
-- [ ] selected created item survives sync as expected.
-- [ ] persistence/removal policy for temporary created options is explicitly decided.
+- [x] selected created item survives `sync()` (`features.spec.js` "created options survive sync() and form.reset()").
+- [x] persistence policy decided: created/materialized options are native; `setOptions()` preserves *selected* options and drops unselected ones (contract in API.md; `remote.spec.js` setOptions/clearResults tests).
 
 Prior-art tag coverage addresses trim/null, duplicate matching, tag insertion and cleanup, and created-option persistence behavior.
 
@@ -241,7 +243,7 @@ Tokenizer coverage must include the “a refused token must not cut the remainin
 - [x] beforeremove cancellation (`features.spec.js`).
 - [x] clear does not remove disabled selections unless policy explicitly allows it (`features.spec.js` `mixedclear` case).
 - [x] external clear button can call API without DOM hacks (`features.spec.js`, fixture-bound `#ext-clear`).
-- [x] async confirmation design gets dedicated tests once finalized (guards `add`/`remove`/`clear` refusals and rejections, `features.spec.js`).
+- [x] async confirmation design gets dedicated tests (guards `add`/`remove`/`clear` refusals and rejections, `features.spec.js`).
 
 ## N. Selection order
 
@@ -276,7 +278,7 @@ A prior-art regression physically reorders selected `<option>`s; our tests delib
 - [x] add selected native option → enhanced selection updates.
 - [x] remove unselected option → selection unchanged (`source-adapters.spec.js` external-sync sibling).
 - [x] remove selected option → selection updates according to native browser behavior.
-- [x] replace many options → one batched UI refresh if MutationObserver is implemented.
+- [x] replace many options → one batched UI refresh (`observeSource` debounce).
 - [x] update disabled/required/read-only after init → refresh/sync reflects it.
 - [x] syncing while search focused preserves focus/query unless contract says otherwise.
 
@@ -306,12 +308,13 @@ Automated browser assertions (`test/browser/aria.spec.js` for the role/attribute
 - [x] aria-expanded toggles exactly with picker state.
 - [x] aria-controls lifecycle is valid.
 - [x] aria-activedescendant references existing active option and is removed when closed.
+- [x] aria-activedescendant is never left pointing at a row removed by a rerender (`aria.spec.js` direct regression test).
 - [x] accessible name comes from label/aria-label.
 - [x] aria-describedby propagated.
 - [x] required/invalid/disabled state represented.
 - [x] status live region announces loading/no-results/reorder. **Decision:** `select`/`remove` are intentionally *not* announced — chips removal is visible and focus-managed, and announcing every token of a separator paste batch would be noise; documented API choice.
 
-Manual AT matrix before release:
+Manual AT matrix (deliberately outside the automated gate):
 
 - NVDA + Firefox/Chromium;
 - VoiceOver + Safari;
@@ -356,13 +359,18 @@ No virtualization target, but avoid pathological work:
 
 - [x] init dozens of controls without repeated layout reads (`init.spec.js`: 36 controls enhance and dispose with zero page errors; layout-read instrumentation stays qualitative).
 - [x] 4k local options: one source mutation batch should not produce thousands of refreshes (batching proven with the `observeSource` debounce).
-- [ ] filtering avoids unnecessary DOM reconstruction when future profiling justifies optimization.
+- [ ] filtering avoids unnecessary DOM reconstruction — a profiling-gated optimization, explicitly a non-goal for 0.1 (see ARCHITECTURE.md non-goals).
 - [x] remote searches do not grow native select catalogue indefinitely (`remote.spec.js` transient-results test).
 
 A prior-art regression batches 4000 option mutations into one selection update; use it as a batching sanity reference, not a virtualization requirement.
 
 ---
 
-# Starter release gate
+# Release gate
 
-Before calling the implementation “v1-ready”, all P0 cases above must be automated except the explicitly manual AT matrix. The suite runs on current Chromium, Firefox and WebKit (Playwright projects; `bun run test:browser:all` / `check:all` for the non-Chromium engines, `test:browser` stays Chromium-only for fast local loops), and forced-fallback tests run in every engine.
+Every case above is automated except the explicitly manual AT matrix, and the
+suite runs on current Chromium, Firefox and WebKit (Playwright projects;
+`bun run test:browser:all` / `check:all` for the non-Chromium engines,
+`test:browser` stays Chromium-only for fast local loops). Forced-fallback tests
+run in every engine. `verify` is the full pre-release gate (check + sync +
+types + package contract + generated drift).

@@ -408,7 +408,7 @@ const INPUT_ATTRS = [
  *
  * The modern select filter input is a separate, unnamed interaction control.
  * It may be generated, or supplied explicitly through a liaison attribute on
- * the input itself: <input filter="select-id" hidden>.
+ * the input itself: <input data-filter-for="select-id" hidden>.
  */
 export class Combobox {
   static supported = supportsModernCombobox();
@@ -918,17 +918,17 @@ export class Combobox {
 
   /**
    * Resolve the interaction filter input, preferring an author-supplied one
-   * declared via `<input filter="select-id">`. Returns the input together with
+   * declared via `<input data-filter-for="select-id">`. Returns the input together with
    * the snapshot needed by dispose() to restore the authored state.
    * @returns {{ input: HTMLInputElement, inputSnapshot: AttributeSnapshot | null }}
    */
   #resolveFilterInput() {
     let input = null;
     // An author-supplied filter input is declared with a liaison attribute on
-    // the input itself: <input filter="select-id">. Configuration stays on
-    // <combo-box> attributes or JS — the source select never carries data-*.
+    // the input itself: <input data-filter-for="select-id">. Configuration stays
+    // on <combo-box> attributes or JS — the source select never carries data-*.
     if (this.source.id) {
-      input = document.querySelector(`input[filter="${CSS.escape(this.source.id)}"]`);
+      input = document.querySelector(`input[data-filter-for="${CSS.escape(this.source.id)}"]`);
     }
 
     if (input instanceof HTMLInputElement) {
@@ -1145,7 +1145,9 @@ export class Combobox {
 
       const groups = new Map();
       for (const item of catalog) {
-        if (!item.value) continue;
+        // An empty value is a legitimate option only when allowEmptyOption
+        // admits it; otherwise it would shadow the collection's real entries.
+        if (!item.value && !this.options.allowEmptyOption) continue;
         const option = new Option(item.label, item.value, Boolean(item.selected), Boolean(item.selected));
         option.disabled = Boolean(item.disabled);
         if (item.data) Object.assign(option.dataset, item.data);
@@ -2604,7 +2606,10 @@ export class Combobox {
   addOption(rawItem, { selected = false } = {}) {
     if (!this.isSelect) throw new TypeError("addOption() is only available for select-backed comboboxes");
     const item = toItem(rawItem, this.#fields());
-    if (!item?.value) throw new TypeError("Option requires a value");
+    if (!item) throw new TypeError("Option requires a value");
+    // `""` is a legitimate value only when allowEmptyOption admits it; the
+    // empty-placeholder convention stays the single-select default otherwise.
+    if (item.value === "" && !this.options.allowEmptyOption) throw new TypeError("Option requires a value");
 
     // Each catalogue entry is its own identity: an existing value never
     // short-circuits a fresh option, so two distinct {value: "2"} entries stay

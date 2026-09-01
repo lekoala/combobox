@@ -146,7 +146,7 @@ test.describe("select single/multiple source mapping", () => {
     await expect(page.locator("#explicit-filter")).toHaveAttribute("hidden", /.*/);
   });
 
-  test("input[filter=id] discovery works", async ({ page }) => {
+  test("input[data-filter-for=id] discovery works", async ({ page }) => {
     test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
     await init(page, "disc");

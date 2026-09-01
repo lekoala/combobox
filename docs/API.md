@@ -1,6 +1,9 @@
-# Proposed API
+# API reference
 
-This documents the intended v1 shape. The implementation already covers most of these seams; items marked **TODO** are contract placeholders, not promises that behavior is complete.
+This documents the API surface shipped in `@lekoala/combobox` **0.1.0**. "Supported in
+0.1" below means the behavior is implemented, browser-tested and part of the public
+contract; "experimental" means the seam is exported and usable but its exact contract
+may still evolve in a later 0.x.
 
 ## Initialization
 
@@ -114,6 +117,27 @@ behavior. Native form semantics stay on the enhanced `<input>`/`<select>`.
 `item.data` (e.g. they feed `search-fields="label,email"`), never combobox
 configuration — there is no generic `data-*` → option mapping and no
 source-level `data-*` configuration API. Wrapper options (`_options`) take precedence over markup.
+
+### Declarative surface freeze (0.1)
+
+The `OPTION_ATTRIBUTES` schema is the **frozen declarative surface for 0.1**: the
+attribute → option table above is a commitment, not a proposal. The rule:
+
+- **primitive / simple serializable config** → an attribute (`present`/`absent`,
+  numbers, enums, short strings, pipe-delimited lists);
+- **function / object behavior** → JavaScript-only.
+
+Consequently these are intentionally **JS-only** and have no `<combo-box>`
+attribute: `create` (function form), `createFilter`, `tokenize`, `load`,
+`shouldLoad`, `filter`, `score`, `sort`, `guards`, `render`, `messages`,
+`observeSource`, `anchor`, and the `loadMore()` method. `maxItems`/`maxOptions`
+are documented separately: `maxItems` caps selection, `maxOptions` caps rendered
+rows (see Core options above).
+
+Config must never be smuggled onto the **source** element via `data-*`; the
+liaison between a `<select>` and an authored filter `<input>` uses the
+proprietary `data-filter-for` attribute (see ARCHITECTURE.md), which is
+configuration, not application metadata.
 
 ### Event
 
@@ -319,9 +343,39 @@ Sets transient picker results. Does not rewrite the native select catalogue.
 
 Returns to source-backed results.
 
-### `setOptions(items)`
+### `setOptions(items, { preserveSelected })`
 
 Explicitly replaces the durable native source catalogue. This is intentionally distinct from `setResults()`.
+
+### Durable catalogue vs transient results (contract)
+
+```text
+results transitoires
+      ↓ sélection / create
+source native matérialisée
+      ↓
+préservée lors des remplacements tant qu'elle est sélectionnée
+```
+
+Concretely:
+
+- **`setResults()`/`clearResults()` never touch the native source.** Transient
+  results exist only in the picker; dropping them cannot remove or add a single
+  `<option>`.
+- **Selecting a transient result materializes exactly that one native option**;
+  `create` materializes the created option. Both become ordinary catalogue
+  entries.
+- **`setOptions()` replaces the catalogue but preserves every native option that
+  is currently selected, whatever its origin** (`preserveSelected`, the default
+  for a select source). A created or materially-realized option therefore
+  survives `sync()`, `clearResults()` and a `setOptions()` **as long as it is
+  selected** — and a future `setOptions()` may drop it once it is not.
+- A native option that was materialized but is **not selected** is not protected:
+  the next `setOptions()` drops it when it is absent from the new catalogue. So
+  temporary remote collections never accumulate indefinitely in the `<select>`.
+- `form.reset()` follows native `<select>` semantics: it restores the authored
+  default selection and never rewrites the catalogue. A created option stays in
+  the source after a reset, it just stops being selected.
 
 ### `sync()`
 
@@ -503,6 +557,12 @@ and nothing magically makes a single option selectable twice.
   `item.option` is passed, in which case that exact option is adopted.
 - `addOption(item, { selected: true })` changes live selection only; it never
   changes `defaultSelected` or rewrites the baseline used by `form.reset()`.
+- Empty values are handled deliberately, never through truthiness: a selected
+  `<option value="">` reports `[""]` from `getSelectedValues()`/`getSelectedItems()`
+  for a select source, and an empty free-text input returns `[]` (nothing
+  selected). `""` only becomes a *creatable* value through `addOption()` /
+  `setOptions()` when `allow-empty-option` admits it; otherwise those APIs throw
+  / skip it so the placeholder convention stays the single-select default.
 
 `remove()` and `clear()` are async because they can await `guards`; they resolve `false` when refused (voluntary or guarded).
 
@@ -661,9 +721,9 @@ render: {
 
 Do not return trusted raw HTML strings as an implicit rendering mode. If an application needs rich HTML, it owns the DOM construction/sanitization.
 
-## P0 API questions still to settle
+## P0 API questions (all resolved before 0.1)
 
-Resolved:
+Resolved during design; kept as an audit trail:
 
 - async guards for create/remove/clear: `guards: { add, remove, clear }` — `false` refuses, rejected promises surface via `combobox:guarderror`;
 - tokenizer: separators splitter + optional `tokenize` seam, sequential token consumption, IME-safe;

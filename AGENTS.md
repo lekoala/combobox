@@ -8,6 +8,7 @@ Build a small, native-first combobox/filterable-select enhancer. Prefer browser/
 
 - The original `<input>` or `<select>` is the form-value owner.
 - Generated search/filter inputs are interaction controls and MUST NOT have a `name`.
+- The only engine-read attribute on a native element is the liaison `data-filter-for="<select id>"` on an author-supplied filter input (read-only, never written, not `data-*` application metadata). Everything else is configuration on `<combo-box>` or JS only.
 - `input+datalist` means free-form text; `select` means constrained values.
 - `<select multiple>` is the multiple-value model. Do not invent a hidden serialized state.
 - For a `<select>`, option identity is the `HTMLOptionElement`; `option.value` is serialized payload only. Duplicate `value`s are distinct choices; selection order, chips and `remove`/`move` key on the exact option (a `WeakMap` for chips keeps `data-value` inspection-only). Resolving a bare value means the first selectable matching option; a bare-value `select` never materializes a new option.
@@ -28,6 +29,7 @@ Build a small, native-first combobox/filterable-select enhancer. Prefer browser/
 - The JavaScript API and `<combo-box>` attributes are the **two** canonical configuration surfaces. `<combo-box>` attributes expose simple serializable behavior declaratively (booleans honor `="false"`); JavaScript options expose the same configuration plus functions and structured behavior. Native form semantics (name, multiple, required, disabled, optgroup, selected) remain on the enhanced `<input>`/`<select>`. `data-*` attributes on source items are application metadata exposed via `item.data`, never combobox configuration; there is no generic `data-*` → option mapping and no source-level `data-*` configuration API.
 - `createOnBlur` means actually leaving the combobox. A blur caused by internal interaction (picker click, adornment action, chip removal, clear) must never create input. IME composition (`isComposing`) also blocks blur-creation.
 - `maxItems` never corrects pre-existing native state at init/refresh. Six selected options with `max-items="5"` keep all six; the cap only blocks future additions. This matters for server-rendered content and form reset.
+- Persistence contract: `setResults()`/`clearResults()` never touch the native source. `setOptions()` replaces the catalogue but preserves every *selected* native option whatever its origin (created or materialized); a materialized option that is no longer selected is dropped when absent from the new catalogue. `form.reset()` restores the authored default selection and never rewrites the catalogue.
 - `labelField`/`valueField` map data objects only; real `<option>` elements are already canonical `{ value, label }` and are not reinterpreted.
 - No core option auto-injects a clear button. A clear affordance is authored by the application and calls `clear()`.
 

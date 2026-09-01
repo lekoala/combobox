@@ -1,4 +1,4 @@
-# References used for the POC
+# Design references
 
 ## Platform direction
 

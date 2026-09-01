@@ -34,10 +34,10 @@ configured (native semantics remain, unenhanced), and the new shape takes over:
 | `data-fuzzy="true"` | `<combo-box search="fuzzy">` |
 | `data-allow-new="true"` | `<combo-box create>` |
 | `data-add-on-blur="true"` | `<combo-box create-on-blur>` |
-| `data-filter-input="input-id"` | `<input filter="select-id" hidden>` |
+| `data-filter-input="input-id"` | `<input data-filter-for="select-id" hidden>` |
 | JS options (`load`, `create`, renderers) | `element.configure({ … })` |
 | imperative init | `Combobox.init("select.mine")` / `Combobox.getOrCreateInstance(source)` |
-| explicit filter input sibling | `<combo-box><input filter="select-id" hidden><select id="select-id">…</select></combo-box>` |
+| explicit filter input sibling | `<combo-box><input data-filter-for="select-id" hidden><select id="select-id">…</select></combo-box>` |
 
 The wrapper owns only lifecycle (upgrade/dispose); the native source never changes hands. `data-*` on source items remains **application metadata** (`item.data`), never configuration.
 

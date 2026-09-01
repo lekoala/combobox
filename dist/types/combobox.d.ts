@@ -278,7 +278,7 @@ export type ViewState = {
  *
  * The modern select filter input is a separate, unnamed interaction control.
  * It may be generated, or supplied explicitly through a liaison attribute on
- * the input itself: <input filter="select-id" hidden>.
+ * the input itself: <input data-filter-for="select-id" hidden>.
  */
 export declare class Combobox {
     #private;

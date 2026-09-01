@@ -64,6 +64,37 @@ test("aria-activedescendant references an existing option and is cleared on clos
   await expect(input).not.toHaveAttribute("aria-activedescendant");
 });
 
+test("aria-activedescendant never references a row removed by a rerender", async ({ page }) => {
+  await page.evaluate(() => Combobox.getOrCreateInstance(document.getElementById("capped")));
+
+  const input = page.locator("#capped + .cb-control .cb-input");
+  await input.click();
+  await input.press("ArrowDown");
+  const activeId = await input.getAttribute("aria-activedescendant");
+  expect(activeId).not.toBeNull();
+  expect(await page.evaluate((id) => document.getElementById(id)?.textContent.trim(), activeId)).toBe("One");
+
+  // The active row no longer matches the new query; the rerender must not leave
+  // aria-activedescendant silently repointed at the recycled id of another row.
+  await input.fill("Three");
+  await expect(input).not.toHaveAttribute("aria-activedescendant");
+
+  const state = await page.evaluate((old) => {
+    const active = document.querySelector(".cb-popover [data-active]");
+    const oldTarget = document.getElementById(old);
+    return {
+      activeRow: active?.textContent.trim() ?? null,
+      oldRowStillActive: oldTarget?.getAttribute("data-active"),
+      rows: Array.from(document.querySelectorAll(".cb-popover [role='option']")).map((row) =>
+        row.textContent.trim(),
+      ),
+    };
+  }, activeId);
+  expect(state.activeRow).toBeNull();
+  expect(state.oldRowStillActive).toBeNull();
+  expect(state.rows).toEqual(["Three"]);
+});
+
 test("option rows reflect selection and disabled state", async ({ page }) => {
   await page.evaluate(() => {
     const select = document.getElementById("capped");
