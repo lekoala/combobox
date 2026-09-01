@@ -92,3 +92,36 @@ test("Delete removes the focused chip and refocuses the neighbor", async ({ page
   expect(await page.locator("#overlimit + .cb-control .cb-chip").count()).toBe(0);
   expect(await page.locator('#overlimit option[value="1"]').evaluate((o) => o.selected)).toBe(false);
 });
+
+test("Left/Right inside a non-empty search move the caret and never focus a chip", async ({ page }) => {
+  const input = page.locator(inputLocator("overlimit"));
+  await input.focus();
+  await input.fill("abcde");
+
+  const caret = () =>
+    page.evaluate(() => {
+      const el = document.querySelector("#overlimit + .cb-control .cb-input");
+      return { start: el.selectionStart, end: el.selectionEnd };
+    });
+
+  expect(await caret()).toEqual({ start: 5, end: 5 });
+
+  await input.press("ArrowLeft");
+  await input.press("ArrowLeft");
+  expect(await caret()).toEqual({ start: 3, end: 3 });
+  expect(await activeIsInput(page)).toBe(true);
+
+  await input.press("ArrowRight");
+  expect(await caret()).toEqual({ start: 4, end: 4 });
+  expect(await activeIsInput(page)).toBe(true);
+
+  // A selection collapses to its near boundary instead of handing focus to a chip.
+  await input.press("Shift+ArrowLeft");
+  const selected = await page.evaluate(() => {
+    const el = document.querySelector("#overlimit + .cb-control .cb-input");
+    return el.selectionEnd - el.selectionStart;
+  });
+  expect(selected).toBe(1);
+  expect((await activeChip(page)).value).toBeNull();
+  expect(await activeIsInput(page)).toBe(true);
+});

@@ -108,3 +108,25 @@ test("the status live region announces no-results and never executes markup", as
   await expect(status).toHaveText("<b>rien</b>");
   await expect(status.locator("b")).toHaveCount(0);
 });
+
+test("dispose() tears down aria-controls and removes the listbox id", async ({ page }) => {
+  await setup(page, "/test/fixtures/sources.html");
+
+  // Case 1: an authored filter input — the input survives, aria-controls must not.
+  await page.evaluate(() => Combobox.getOrCreateInstance(document.getElementById("explicit")));
+  const explicitBox = await page.locator("#explicit-filter").getAttribute("aria-controls");
+  await expect(page.locator(`#${explicitBox}`)).toHaveAttribute("role", "listbox");
+
+  await page.evaluate(() => Combobox.getInstance(document.getElementById("explicit")).dispose());
+  await expect(page.locator("#explicit-filter")).not.toHaveAttribute("aria-controls");
+  await expect(page.locator(`#${explicitBox}`)).toHaveCount(0);
+
+  // Case 2: a generated filter input — the whole wrapper (including the input)
+  // is removed, so its aria-controls reference dies with it.
+  await page.evaluate(() => Combobox.getOrCreateInstance(document.getElementById("wrapped")));
+  const wrappedBox = await page.locator("#wrapped + .cb-control .cb-input").getAttribute("aria-controls");
+  expect(wrappedBox).toMatch(/^combobox-listbox-/);
+  await page.evaluate(() => Combobox.getInstance(document.getElementById("wrapped")).dispose());
+  await expect(page.locator(`#${wrappedBox}`)).toHaveCount(0);
+  await expect(page.locator("#wrapped + .cb-control .cb-input")).toHaveCount(0);
+});

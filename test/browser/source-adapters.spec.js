@@ -412,6 +412,35 @@ test.describe("external sync()", () => {
     expect(state.chipsAfterRemove).toEqual(["1"]);
   });
 
+  test("removing an unselected option leaves the selection model untouched", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+
+    const state = await page.evaluate(() => {
+      const select = document.getElementById("syncs");
+      const combo = Combobox.getOrCreateInstance(select);
+      select.append(new Option("Four", "4"));
+      combo.sync();
+
+      // Remove the unselected catalogue option directly from the DOM.
+      select.querySelector('option[value="4"]').remove();
+      combo.sync();
+
+      return {
+        selection: combo.getSelectedValues(),
+        chips: Array.from(document.querySelectorAll(".cb-chip")).map((chip) =>
+          chip.getAttribute("data-value"),
+        ),
+        catalogue: Array.from(select.options, (o) => o.value),
+        nativeSelected: Array.from(select.selectedOptions, (o) => o.value),
+      };
+    });
+
+    expect(state.selection).toEqual(["1"]);
+    expect(state.chips).toEqual(["1"]);
+    expect(state.catalogue).toEqual(["1", "2", "3"]);
+    expect(state.nativeSelected).toEqual(["1"]);
+  });
+
   test("sync() drops transient results back to the source catalogue", async ({ page }) => {
     test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
 
@@ -462,6 +491,73 @@ test.describe("external sync()", () => {
     });
     expect(state.enabled).toBe(true);
     expect(state.requiredGone).toBe(true);
+  });
+});
+
+test.describe("free-form pattern / FormData envelope", () => {
+  test("source input pattern stays the validation authority for free-form mode", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+
+    const state = await page.evaluate(() => {
+      const source = document.getElementById("pat");
+      const combo = Combobox.getOrCreateInstance(source);
+      const before = {
+        pattern: source.getAttribute("pattern"),
+        sameInput: combo.input === source,
+        generatedPattern: combo.input.getAttribute("pattern"),
+      };
+
+      // Value changes flow through the engine path.
+      const invalid = (() => {
+        source.value = "abc";
+        return source.checkValidity();
+      })();
+      const valid = (() => {
+        source.value = "ABC";
+        return source.checkValidity();
+      })();
+
+      combo.dispose();
+      return {
+        before,
+        invalid,
+        valid,
+        after: { pattern: source.getAttribute("pattern"), list: source.getAttribute("list") },
+      };
+    });
+
+    expect(state.before.pattern).toBe("[A-Z]{3}");
+    expect(state.before.sameInput).toBe(true);
+    expect(state.before.generatedPattern).toBe("[A-Z]{3}");
+    expect(state.invalid).toBe(false);
+    expect(state.valid).toBe(true);
+    expect(state.after.pattern).toBe("[A-Z]{3}");
+    expect(state.after.list).toBe("pat-list");
+  });
+
+  test("generated filter inputs never leak into FormData", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+
+    const state = await page.evaluate(() => {
+      Combobox.getOrCreateInstance(document.getElementById("syncs"));
+      Combobox.getOrCreateInstance(document.getElementById("city2"));
+      const form = document.getElementById("source-form");
+      const names = Array.from(new FormData(form).keys());
+      // Every named, non-disabled control the form actually contains — a
+      // literal enumeration against which FormData must match exactly.
+      const expected = Array.from(form.elements)
+        .filter((el) => el.name && !el.disabled)
+        .map((el) => el.name);
+      const selectFilterInputs = Array.from(document.querySelectorAll(".cb-control .cb-input")).map((el) =>
+        el.hasAttribute("name"),
+      );
+      return { names, expected, selectFilterInputs };
+    });
+
+    // Only the real source names appear — exactly the named controls the form
+    // contains, with no generated filter input contributing a name.
+    expect(state.names.sort()).toEqual(state.expected.sort());
+    expect(state.selectFilterInputs.every((named) => named === false)).toBe(true);
   });
 });
 

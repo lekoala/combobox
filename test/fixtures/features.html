@@ -5,7 +5,21 @@
   <title>Feature fixtures</title>
 </head>
 <body>
+  <button id="ext-clear" type="button" style="position: fixed; inset-inline-start: 0; inset-block-end: 1rem;">Clear tags</button>
+
   <form id="form">
+    <label for="twinlabels">Same label, distinct values</label>
+    <select id="twinlabels" name="twinlabels[]" multiple>
+      <option value="a">Shared label</option>
+      <option value="b">Shared label</option>
+    </select>
+
+    <label for="mixedclear">Clear with a disabled selection</label>
+    <select id="mixedclear" name="mixedclear[]" multiple>
+      <option value="1" selected>Enabled one</option>
+      <option value="2" selected disabled>Disabled two</option>
+    </select>
+
     <label for="tags">Tags</label>
     <select id="tags" name="tags[]" multiple>
       <option value="1" selected>Apple</option>
@@ -38,6 +52,11 @@
     </select>
   </form>
 
+  <script>
+    document.getElementById("ext-clear").addEventListener("click", () => {
+      Combobox.getOrCreateInstance(document.getElementById("tags")).clear();
+    });
+  </script>
   <script type="module" src="../../src/define.js"></script>
 </body>
 </html>

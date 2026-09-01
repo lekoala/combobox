@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Layout fixtures</title>
+  <link rel="stylesheet" href="../../src/combobox.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 1rem;
+      font: 16px/1.4 system-ui, sans-serif;
+    }
+
+    .wrap {
+      inline-size: 300px;
+    }
+
+    .gap {
+      block-size: 45vh;
+    }
+
+    .bottom-right {
+      position: fixed;
+      inset-block-end: 0.5rem;
+      inset-inline-end: 0.5rem;
+      inline-size: 280px;
+    }
+
+    .input-group {
+      display: flex;
+      inline-size: 300px;
+    }
+
+    .input-group .prepend {
+      border: 1px solid #adb5bd;
+      border-inline-end: 0;
+      padding-block: 0.5rem;
+      padding-inline: 0.6rem;
+      background: #e9ecef;
+    }
+
+    .input-group select {
+      flex: 1;
+      min-inline-size: 0;
+    }
+
+    .float-wrap {
+      inline-size: 300px;
+      margin-block-start: 1rem;
+      position: relative;
+    }
+
+    .float-wrap > label {
+      position: absolute;
+      inset-block-start: -0.55rem;
+      inset-inline-start: 0.5rem;
+      background: #fff;
+      padding-inline: 0.25rem;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin-block-start: 1rem;
+    }
+
+    td {
+      border: 1px solid #adb5bd;
+      padding: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <label for="chips">Many chips</label>
+    <select id="chips" name="chips[]" multiple>
+      <option value="1" selected>Alpha</option>
+      <option value="2" selected>Beta</option>
+      <option value="3" selected>Gamma</option>
+      <option value="4" selected>Delta</option>
+      <option value="5" selected>Epsilon</option>
+      <option value="6" selected>Zeta</option>
+      <option value="7" selected>Eta</option>
+      <option value="8" selected>Theta</option>
+      <option value="9">Iota</option>
+      <option value="10">Kappa</option>
+    </select>
+  </div>
+
+  <h2>Containers</h2>
+  <div class="input-group">
+    <span class="prepend">@</span>
+    <select id="grouped" name="grouped">
+      <option value="">Choose</option>
+      <option value="1">One</option>
+      <option value="2">Two</option>
+    </select>
+  </div>
+
+  <div class="float-wrap">
+    <label for="floaty">Floating label</label>
+    <select id="floaty" name="floaty">
+      <option value="">Choose</option>
+      <option value="1">One</option>
+      <option value="2">Two</option>
+    </select>
+  </div>
+
+  <table>
+    <tr>
+      <td>
+        <label for="tcell">Table cell</label>
+        <select id="tcell" name="tcell">
+          <option value="">Choose</option>
+          <option value="1">One</option>
+          <option value="2">Two</option>
+        </select>
+      </td>
+    </tr>
+  </table>
+
+  <div class="gap"></div>
+
+  <div class="wrap">
+    <label for="mid">Mid control</label>
+    <select id="mid" name="mid">
+      <option value="">Choose</option>
+      <option value="1">One</option>
+      <option value="2">Two</option>
+      <option value="3">Three</option>
+    </select>
+  </div>
+
+  <div class="gap"></div>
+
+  <div class="bottom-right">
+    <label for="bottom">Bottom control</label>
+    <select id="bottom" name="bottom">
+      <option value="">Choose</option>
+      <option value="1">One</option>
+      <option value="2">Two</option>
+      <option value="3">Three</option>
+    </select>
+  </div>
+
+  <input id="lcity" name="lcity" list="lcity-list">
+  <datalist id="lcity-list">
+    <option value="Local"></option>
+  </datalist>
+
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>

@@ -2575,7 +2575,13 @@ export class Combobox {
 
   async #handleTokenInput() {
     const result = await this.#processTokens(this.#inputEl().value);
-    if (result?.consumed) this.#inputEl().value = result.rest;
+    // #processTokens always returns the computed remainder (`rest`): the
+    // trailing incomplete token on a full consumption, or the unconsumed tail
+    // (including a refused token) on a refusal/maxItems stop. #createItem
+    // clears the interaction input for each created token, so the remainder
+    // must be written back in both cases — otherwise a mid-batch refusal
+    // would silently swallow the rest of the pasted text.
+    if (result) this.#inputEl().value = result.rest;
     this.search(this.#inputEl().value, { show: true, reason: "input" });
   }
 

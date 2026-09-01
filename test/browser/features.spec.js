@@ -706,3 +706,235 @@ test("guards.clear rejection surfaces guarderror and keeps the selection", async
   expect(state.unhandled).toEqual([]);
   expect(state.selected).toEqual(["1"]);
 });
+
+test("blank and whitespace never create an option", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    const combo = Combobox.getOrCreateInstance(select, { create: true });
+    const input = combo.input;
+    input.focus();
+    input.value = "   ";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return {
+      hasWhitespace: Array.from(select.options, (o) => o.value).includes("   "),
+      inputValue: input.value,
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+    };
+  });
+  expect(state.hasWhitespace).toBe(false);
+  expect(state.inputValue).toBe("   ");
+  expect(state.selected).toEqual(["1"]);
+});
+
+test("case-insensitive existing label is selected, never duplicated", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    select.querySelector('option[value="2"]').selected = false;
+    const combo = Combobox.getOrCreateInstance(select, { create: true });
+    const input = combo.input;
+    input.focus();
+    input.value = "BANANA";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return {
+      bananaSelected: Array.from(select.selectedOptions, (o) => o.value).includes("2"),
+      bananaCount: Array.from(select.options, (o) => o.value).filter((v) => v === "2").length,
+      hasDuplicate: Array.from(select.options, (o) => o.textContent.trim()).includes("BANANA"),
+    };
+  });
+  expect(state.bananaSelected).toBe(true);
+  expect(state.bananaCount).toBe(1);
+  expect(state.hasDuplicate).toBe(false);
+});
+
+test("same label with different values stays two selectable identities", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(() => {
+    const select = document.getElementById("twinlabels");
+    const combo = Combobox.getOrCreateInstance(select);
+    const a = combo.select("a");
+    const b = combo.select("b");
+    return {
+      a,
+      b,
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+      values: combo.getSelectedValues(),
+    };
+  });
+  expect(state.a).toBe(true);
+  expect(state.b).toBe(true);
+  expect(state.selected).toEqual(["a", "b"]);
+});
+
+test("separator paste keeps the remaining term when a middle token is refused", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    const combo = Combobox.getOrCreateInstance(select, {
+      create: true,
+      separators: [","],
+      createFilter: (value) => value !== "REFUSED",
+    });
+    const input = combo.input;
+    input.focus();
+    input.value = "a,REFUSED,b";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    return {
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+      options: Array.from(select.options, (o) => o.value),
+      inputValue: input.value,
+    };
+  });
+  // "a" is created; the refused middle token leaves the trailing term intact
+  // and "b" is never auto-created.
+  expect(state.selected).toContain("a");
+  expect(state.selected).not.toContain("b");
+  expect(state.options).not.toContain("b");
+  expect(state.inputValue).toContain("REFUSED");
+  expect(state.inputValue).toContain("b");
+});
+
+test("a duplicate token is created or selected exactly once", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    const combo = Combobox.getOrCreateInstance(select, { create: true, separators: [","] });
+    const input = combo.input;
+    input.focus();
+    input.value = "zap,zap,";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    return {
+      zapCount: Array.from(select.options, (o) => o.value).filter((v) => v === "zap").length,
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+    };
+  });
+  expect(state.zapCount).toBe(1);
+  expect(state.selected).toEqual(["1", "zap"]);
+});
+
+test("separated text is not tokenized mid-IME-composition", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const during = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    const combo = Combobox.getOrCreateInstance(select, { create: true, separators: [","] });
+    const input = combo.input;
+    input.focus();
+    input.dispatchEvent(new CompositionEvent("compositionstart"));
+    input.value = "한글,한글";
+    input.dispatchEvent(new InputEvent("input", { bubbles: true, isComposing: true }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return {
+      hasToken: Array.from(select.options, (o) => o.value).includes("한글"),
+      inputValue: input.value,
+    };
+  });
+  expect(during.hasToken).toBe(false);
+  expect(during.inputValue).toBe("한글,한글");
+
+  const after = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    const combo = Combobox.getInstance(select);
+    const input = combo.input;
+    input.dispatchEvent(new CompositionEvent("compositionend"));
+    input.value = "한글,한글";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    return {
+      hasToken: Array.from(select.options, (o) => o.value).includes("한글"),
+      inputValue: input.value,
+    };
+  });
+  expect(after.hasToken).toBe(true);
+});
+
+test("combobox:beforeremove cancel keeps the chip and skips combobox:remove", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    const events = [];
+    select.addEventListener("combobox:beforeremove", (event) => event.preventDefault());
+    select.addEventListener("combobox:remove", () => events.push("remove"));
+    select.addEventListener("input", () => events.push("input"));
+    select.addEventListener("change", () => events.push("change"));
+    const combo = Combobox.getOrCreateInstance(select);
+    const result = await combo.remove("1");
+    return {
+      result,
+      events,
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+      chips: Array.from(document.querySelectorAll("#tags + .cb-control .cb-chip")).map((chip) =>
+        chip.getAttribute("data-value"),
+      ),
+    };
+  });
+  expect(state.result).toBe(false);
+  expect(state.events).toEqual([]);
+  expect(state.selected).toEqual(["1"]);
+  expect(state.chips).toEqual(["1"]);
+});
+
+test("combobox:beforeclear cancel keeps the selection and skips combobox:clear", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("tags");
+    const events = [];
+    select.addEventListener("combobox:beforeclear", (event) => event.preventDefault());
+    select.addEventListener("combobox:clear", () => events.push("clear"));
+    select.addEventListener("input", () => events.push("input"));
+    select.addEventListener("change", () => events.push("change"));
+    const combo = Combobox.getOrCreateInstance(select);
+    const result = await combo.clear();
+    return {
+      result,
+      events,
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+    };
+  });
+  expect(state.result).toBe(false);
+  expect(state.events).toEqual([]);
+  expect(state.selected).toEqual(["1"]);
+});
+
+test("clear() keeps disabled selections and removes the rest", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("mixedclear");
+    const combo = Combobox.getOrCreateInstance(select);
+    const result = await combo.clear();
+    return {
+      result,
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+      chips: Array.from(document.querySelectorAll("#mixedclear + .cb-control .cb-chip")).map((chip) =>
+        chip.getAttribute("data-value"),
+      ),
+    };
+  });
+  expect(state.result).toBe(true);
+  expect(state.selected).toEqual(["2"]);
+  expect(state.chips).toEqual(["2"]);
+});
+
+test("an external clear button clears through the public API, not DOM hacks", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  await page.evaluate(() => Combobox.getOrCreateInstance(document.getElementById("tags")));
+  await page.locator("#ext-clear").click();
+  await page.waitForTimeout(40);
+  const state = await page.evaluate(() => {
+    const form = document.getElementById("form");
+    return {
+      selected: Array.from(document.getElementById("tags").selectedOptions, (o) => o.value),
+      chips: document.querySelectorAll("#tags + .cb-control .cb-chip").length,
+      formData: new FormData(form).getAll("tags[]"),
+    };
+  });
+  expect(state.selected).toEqual([]);
+  expect(state.chips).toBe(0);
+  expect(state.formData).toEqual([]);
+});

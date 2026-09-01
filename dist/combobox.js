@@ -1708,7 +1708,7 @@
     }
     async#handleTokenInput() {
       const result = await this.#processTokens(this.#inputEl().value);
-      if (result?.consumed)
+      if (result)
         this.#inputEl().value = result.rest;
       this.search(this.#inputEl().value, { show: true, reason: "input" });
     }

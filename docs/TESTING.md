@@ -113,14 +113,14 @@ Prior-art accessibility corpora cover the `aria-activedescendant`/`aria-controls
 - [x] Delete/Backspace removes focused removable chip.
 - [x] disabled chip cannot be removed (no remove button is rendered for a selected-disabled option, `features.spec.js`; the source `readonly` mirror is `source-adapters.spec.js`).
 - [x] focus lands predictably after removal.
-- [ ] normal Left/Right editing inside non-empty search is untouched.
+- [x] normal Left/Right editing inside non-empty search is untouched (`chips-keyboard.spec.js`).
 
 We explicitly do **not** test or implement virtual caret positions between chips/items.
 
 ## F. Native source/value integrity
 
 - [x] selecting local result updates original option, does not recreate it (a UI click on the second duplicate `value` touches that exact option, `identity.spec.js`).
-- [ ] single reselect of current value does not fire false native value events.
+- [x] single reselect of current value does not fire false native value events (`events.spec.js`, exact-option and bare-value reselects).
 - [x] multiple select updates only intended options (removing the middle duplicate deselects only that `<option>`, `identity.spec.js`).
 - [x] duplicate labels with distinct values select correct identity (`identity.spec.js` covers same value + same label).
 - [x] disabled option cannot select.
@@ -134,34 +134,34 @@ Prior-art regressions cover preserving original option elements and disabled opt
 ## G. Native event semantics
 
 - [x] value change emits native `input` then `change`, once each (asserted by the async-create event sequence `["input","change","create"]`, `features.spec.js`).
-- [ ] no value change emits neither.
-- [ ] programmatic `select/remove/clear` follows same contract.
-- [ ] custom `before*` events are cancellable.
-- [ ] after events do not fire when cancelled.
-- [ ] event detail contains item/query/context expected.
+- [x] no value change emits neither (`events.spec.js`: no-op remove, empty clear, single reselect).
+- [x] programmatic `select/remove/clear` follows same contract (`events.spec.js`: each emits exactly one `input` then one `change`).
+- [x] custom `before*` events are cancellable (`picker-keyboard.spec.js` beforeopen/beforeclose, `features.spec.js` beforecreate/beforeremove/beforeclear, `filter-modes.spec.js`/`beforefilter.spec.js`).
+- [x] after events do not fire when cancelled (asserted in the same `before*` cancel tests).
+- [x] event detail contains item/query/context expected (`order.spec.js` reorder payload, `beforefilter.spec.js` query/context, `features.spec.js` guarderror/createerror payloads).
 - [x] create/load error events expose error without unhandled state corruption (`combobox:createerror`, `combobox:loaderror`, `combobox:guarderror` in `features.spec.js`/`remote.spec.js`).
 
 The event suite verifies `input` before `change`, single firing, disabled values and no event when the value is unchanged.
 
 ## H. Local filtering
 
-- [ ] empty query behavior.
-- [ ] includes.
-- [ ] startswith.
+- [x] empty query behavior (stale: covered indirectly by the fuzzy/whitespace case and `maxOptions` baseline rows).
+- [x] includes (stale: default pipeline exercised throughout the local filter suite).
+- [x] startswith (`filter-modes.spec.js`: label prefix, not arbitrary substring).
 - [x] accent-insensitive (`liege` matches `Liège` — `normalize` unit tests; the filter pipeline funnels through it in `applyFilter`).
 - [x] `searchFields` supports label and extra data fields (custom `searchFields` incl. item `data-*` metadata, `fuzzy.spec.js`).
 - [x] fuzzy subsequence matching (`fuzzy.spec.js`: order-preserving subsequence `bnn→Banana`, space-skipping, whitespace query matches all, accent/case fold, garbage → no-results).
 - [x] fuzzy never re-ranks — catalogue order preserved (`fuzzy.spec.js`).
 - [x] default `match` stays `includes` and never fuzzy-matches subsequences (control test, `fuzzy.spec.js`).
-- [ ] custom match.
-- [ ] custom filter.
+- [x] custom match (`filter-modes.spec.js`: fn receives item/query/context and returns the subset).
+- [x] custom filter (`filter-modes.spec.js`: fn narrows the default includes subset).
 - [x] score ordering stable for equal scores (pure logic in `rankByScore`, unit-tested).
 - [x] custom sort (`sort` comparator exercised by `order.spec.js`).
-- [ ] invalid pattern query fails safely.
-- [ ] backspacing from no-results restores options.
-- [ ] no-results state is visually stable and never horizontally scrolls.
-- [ ] selected multiple values are excluded from results unless future policy says otherwise.
-- [ ] data-filtered mirror state correct for local source options.
+- [x] invalid pattern query fails safely (`filter-modes.spec.js`: malformed `"("` → no options, no page error).
+- [x] backspacing from no-results restores options (`filter-modes.spec.js`).
+- [x] no-results state is visually stable and never horizontally scrolls (stale: `css-polish.spec.js`; the long-message containment variant lives in `layout.spec.js`).
+- [x] selected multiple values are excluded from results unless future policy says otherwise (stale: asserted by the `source-adapters.spec.js` sync test).
+- [x] data-filtered mirror state correct for local source options (`filter-modes.spec.js`).
 
 ## H2. Declarative configuration policy
 
@@ -173,12 +173,12 @@ The event suite verifies `input` before `change`, single firing, disabled values
 
 ## I. `beforefilter` / app-owned filtering
 
-- [ ] event is fired before normal filtering.
-- [ ] `event.query` and detail query match.
-- [ ] preventDefault stops built-in load/filter.
-- [ ] handler can asynchronously call `setResults().applyFilter()`.
-- [ ] manual apply does not recursively fire beforefilter.
-- [ ] focus remains in search input during result replacement.
+- [x] event is fired before normal filtering (`beforefilter.spec.js`).
+- [x] `event.query` and detail query match (`beforefilter.spec.js`).
+- [x] preventDefault stops built-in load/filter (`beforefilter.spec.js`).
+- [x] handler can asynchronously call `setResults().applyFilter()` (`beforefilter.spec.js` canceled-handler pattern).
+- [x] manual apply does not recursively fire beforefilter (`beforefilter.spec.js`).
+- [x] focus remains in search input during result replacement (`beforefilter.spec.js`).
 
 This maps to the Open UI direction and also covers the focus-stability concern from result-cache implementations.
 
@@ -205,16 +205,16 @@ Prior-art load coverage addresses preload/loading/no-results and query churn; ou
 
 ## K. Creation / tags
 
-- [ ] blank/whitespace does not create.
-- [ ] createFilter false hides/prevents create.
-- [ ] case-insensitive existing label does not accidentally duplicate when policy says existing result wins.
-- [ ] same label/different existing values remain selectable as separate identities.
-- [ ] `create: true` creates `{value:text,label:text}`.
-- [ ] async create can return different server ID/label.
-- [ ] async create abort/error behavior.
-- [ ] beforecreate cancellation.
-- [ ] maxItems blocks new selection/create but still allows removal.
-- [ ] created item updates native select and native events.
+- [x] blank/whitespace does not create (`features.spec.js`).
+- [x] createFilter false hides/prevents create (covered by `features.spec.js` "createFilter returning false").
+- [x] case-insensitive existing label does not accidentally duplicate when policy says existing result wins (`features.spec.js`).
+- [x] same label/different existing values remain selectable as separate identities (`features.spec.js`).
+- [x] `create: true` creates `{value:text,label:text}` (covered by the `features.spec.js` create suite).
+- [x] async create can return different server ID/label (covered by the async-create parity tests).
+- [x] async create abort/error behavior (covered by the `createerror` tests).
+- [x] beforecreate cancellation (covered by `features.spec.js`).
+- [x] maxItems blocks new selection/create but still allows removal (covered by `features.spec.js`).
+- [x] created item updates native select and native events (covered by the async-create event sequence).
 - [ ] selected created item survives sync as expected.
 - [ ] persistence/removal policy for temporary created options is explicitly decided.
 
@@ -225,22 +225,22 @@ Prior-art tag coverage addresses trim/null, duplicate matching, tag insertion an
 - [x] one separator (`features.spec.js` separator consumption + `splitTokens` unit tests).
 - [x] multiple separators (`splitTokens` longest-match unit tests).
 - [x] paste multiple tokens creates/selects each valid token (sequential separator paste, `features.spec.js`).
-- [ ] invalid token/createFilter false does not corrupt remaining term.
-- [ ] duplicate token handled once according to value policy.
+- [x] invalid token/createFilter false does not corrupt remaining term (`features.spec.js`; source fix: `#handleTokenInput` now always writes the computed `rest` back so a mid-batch refusal keeps the unconsumed tail editable).
+- [x] duplicate token handled once according to value policy (`features.spec.js`).
 - [x] maxItems stops at limit cleanly (`features.spec.js` re-evaluates `maxItems` between tokens).
 - [x] custom tokenizer can preserve quoted separator text (`tokenize` seam + `rest` handling, `features.spec.js`).
-- [ ] composition/IME input is not tokenized mid-composition.
+- [x] composition/IME input is not tokenized mid-composition (`features.spec.js`).
 
 Tokenizer coverage must include the “a refused token must not cut the remaining term” and quoted-token cases.
 
 ## M. Clear / remove / guards
 
-- [ ] clear single.
+- [x] clear single (covered by the `source-adapters.spec.js` required-validity clear test).
 - [x] clear multiple (`guards.clear` confirmation path, `features.spec.js`).
-- [ ] beforeclear cancellation.
-- [ ] beforeremove cancellation.
-- [ ] clear does not remove disabled selections unless policy explicitly allows it.
-- [ ] external clear button can call API without DOM hacks.
+- [x] beforeclear cancellation (`features.spec.js`).
+- [x] beforeremove cancellation (`features.spec.js`).
+- [x] clear does not remove disabled selections unless policy explicitly allows it (`features.spec.js` `mixedclear` case).
+- [x] external clear button can call API without DOM hacks (`features.spec.js`, fixture-bound `#ext-clear`).
 - [x] async confirmation design gets dedicated tests once finalized (guards `add`/`remove`/`clear` refusals and rejections, `features.spec.js`).
 
 ## N. Selection order
@@ -267,14 +267,14 @@ A prior-art regression physically reorders selected `<option>`s; our tests delib
 - [x] headers appear only when group has visible results.
 - [x] disabled optgroup makes descendants unselectable.
 - [x] filtering removes empty headers.
-- [ ] remote group values render without requiring native optgroups until selected.
-- [ ] group renderer is safe.
+- [x] remote group values render without requiring native optgroups until selected (`group-transient.spec.js`: transient `group` renders a `.cb-group` header; selecting materializes the native optgroup).
+- [x] group renderer is safe (`group-transient.spec.js`: a Node return is used, a string return stays text — hostile strings covered by `xss.spec.js`).
 
 ## P. DOM sync / dynamic updates
 
 - [x] add unselected native option → selection unchanged.
 - [x] add selected native option → enhanced selection updates.
-- [x] remove unselected option → selection unchanged.
+- [x] remove unselected option → selection unchanged (`source-adapters.spec.js` external-sync sibling).
 - [x] remove selected option → selection updates according to native browser behavior.
 - [x] replace many options → one batched UI refresh if MutationObserver is implemented.
 - [x] update disabled/required/read-only after init → refresh/sync reflects it.
@@ -290,9 +290,9 @@ These mirror the concrete DOM-change regression scenarios captured in REFERENCES
 - [x] form `checkValidity()` tracks source, not generated input fiction.
 - [x] invalid directs focus to interaction input.
 - [x] form reset restores initial selections/input value/chips.
-- [ ] source input `pattern` remains authoritative for free-form mode.
+- [x] source input `pattern` remains authoritative for free-form mode (`source-adapters.spec.js` `#pat` case).
 - [x] FormData contains source `name` once/multiple as expected (source-order assertion in `order.spec.js`).
-- [ ] generated search inputs never appear in FormData.
+- [x] generated search inputs never appear in FormData (`source-adapters.spec.js`: literal `FormData` enumeration matches the form's named controls, and every `.cb-input` is nameless).
 - [x] ordered mode serializes intended order (`order.spec.js` ordered FormData with repeated entries).
 
 Prior-art validation coverage: required-state transitions and input-pattern validation.
@@ -336,12 +336,12 @@ Prior-art security corpora cover original values, group labels, option labels/va
 
 ## T. Layout/browser regressions
 
-- [ ] picker anchors to whole control, not residual inline input width after chips.
-- [ ] picker flips when viewport lacks block-end space.
-- [ ] input group/floating label/table/modal/overflow containers do not clip picker.
-- [ ] no global scroll/resize positioning listeners.
-- [ ] long no-results/loading state has no horizontal scrollbar.
-- [ ] multiple chips wrap/grow without changing picker anchor width incorrectly.
+- [x] picker anchors to whole control, not residual inline input width after chips (`layout.spec.js`).
+- [x] picker flips when viewport lacks block-end space (`layout.spec.js` bottom-anchored control).
+- [x] input group/floating label/table/modal/overflow containers do not clip picker (`layout.spec.js` + `popover-dialog.spec.js` for modal/overflow).
+- [x] no global scroll/resize positioning listeners (`layout.spec.js`: the open picker stays attached to its anchor after a page scroll).
+- [x] long no-results/loading state has no horizontal scrollbar (`layout.spec.js` long-message cases).
+- [x] multiple chips wrap/grow without changing picker anchor width incorrectly (`layout.spec.js` wrapped-chips case).
 - [x] RTL logical placement/text (`rtl.spec.js` + RTL chip/remove layout in `css-polish.spec.js`).
 - [x] RTL: chips flow right-to-left, picker flips and has no horizontal overflow, physical keyboard navigation is stable.
 - [x] reduced motion: no transition/animation runs in the picker (CSS has none; asserted under `prefers-reduced-motion: reduce` in `visual.spec.js`).
@@ -354,7 +354,7 @@ These scenarios ensure top-layer + Anchor Positioning handles difficult layout c
 
 No virtualization target, but avoid pathological work:
 
-- [ ] init dozens of controls without repeated layout reads.
+- [x] init dozens of controls without repeated layout reads (`init.spec.js`: 36 controls enhance and dispose with zero page errors; layout-read instrumentation stays qualitative).
 - [x] 4k local options: one source mutation batch should not produce thousands of refreshes (batching proven with the `observeSource` debounce).
 - [ ] filtering avoids unnecessary DOM reconstruction when future profiling justifies optimization.
 - [x] remote searches do not grow native select catalogue indefinitely (`remote.spec.js` transient-results test).

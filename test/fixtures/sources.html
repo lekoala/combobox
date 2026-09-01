@@ -82,6 +82,13 @@
       <option value="Brussels"></option>
       <option value="Ghent"></option>
     </datalist>
+
+    <label for="pat">Patterned free-form</label>
+    <input id="pat" name="pat" list="pat-list" pattern="[A-Z]{3}">
+    <datalist id="pat-list">
+      <option value="ABC"></option>
+      <option value="DEF"></option>
+    </datalist>
   </form>
 
   <input type="text" id="nolist" name="nolist" placeholder="no datalist">
