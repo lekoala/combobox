@@ -31,7 +31,7 @@ jobs:
         run: bunx playwright install --with-deps ${{ matrix.browser }}
       - run: bun run sync
       - name: Browser behavior suite
-        run: bun run test:browser --project ${{ matrix.browser }}
+        run: bunx playwright test test/browser --project ${{ matrix.browser }}
       - name: Dist smoke (Chromium only)
         if: matrix.browser == 'chromium'
         run: bun run test:dist
