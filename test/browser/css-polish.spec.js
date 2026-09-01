@@ -312,6 +312,34 @@ test("rtl mirrors chips and keeps remove at the inline start", async ({ page }) 
   expect(rtl.removeBeforeLabel).toBe(true);
 });
 
+test("selected rows draw a mask checkmark tinted with the row color", async ({ page }) => {
+  await setup(page, "/");
+  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+
+  await page.locator("#tags + .cb-control .cb-input").click();
+  await expect(page.locator(".cb-popover:visible")).toHaveCount(1);
+
+  const check = await page.evaluate(() => {
+    const row = document.querySelector('.cb-popover .cb-option[aria-selected="true"]');
+    if (!row) return null;
+    const after = getComputedStyle(row, "::after");
+    const rowStyle = getComputedStyle(row);
+    return {
+      content: after.content,
+      maskSet: after.maskImage !== "none" || after.webkitMaskImage !== "none",
+      size: parseFloat(after.width) || 0,
+      tint: after.backgroundColor,
+      rowColor: rowStyle.color,
+    };
+  });
+
+  expect(check).not.toBeNull();
+  expect(check.content).toBe('""');
+  expect(check.maskSet).toBe(true);
+  expect(check.size).toBeGreaterThan(0);
+  expect(check.tint).toBe(check.rowColor);
+});
+
 test("screenshot catalog for manual review", async ({ page }) => {
   test.skip(!process.env.CSS_SHOTS, "Set CSS_SHOTS=1 to write screenshots");
   await setup(page, "/");

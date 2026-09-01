@@ -217,6 +217,9 @@
             },
             {
               "name": "--cb-option-min-height"
+            },
+            {
+              "name": "--cb-check-size"
             }
           ]
         }
