@@ -6,10 +6,12 @@ import { setDefaultMessages } from "../messages.js";
  * @type {import("../messages.js").Messages}
  */
 const messages = {
+  add: "Add",
   noResults: "No results",
   loading: "Loading…",
   loadError: "Failed to load results",
   create: (query) => `Create “${query}”`,
+  remove: (label) => `Remove ${label}`,
   position: (label, position, total) => `${label} position ${position} of ${total}`,
 };
 

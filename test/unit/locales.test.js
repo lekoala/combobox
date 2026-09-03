@@ -14,8 +14,9 @@ test("every locale mirrors the canonical key set with non-empty strings and func
     const mod = await load(lang);
     expect(Object.keys(mod.default).sort()).toEqual(expected);
     expect(typeof mod.default.create).toBe("function");
+    expect(typeof mod.default.remove).toBe("function");
     expect(typeof mod.default.position).toBe("function");
-    for (const key of ["noResults", "loading", "loadError"]) {
+    for (const key of ["add", "noResults", "loading", "loadError"]) {
       expect(mod.default[key]).toBeTypeOf("string");
       expect(mod.default[key].length).toBeGreaterThan(0);
     }

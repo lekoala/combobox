@@ -308,3 +308,149 @@ test("fallback create runs guards.add, beforecreate and createerror like the enh
   expect(state.successState.inputName).toBeNull();
   expect(state.erroredState).toEqual({ createErrors: ["boom"], hasPlum: false });
 });
+
+test("fallback create matches an existing native option by label before creating", async ({ page }) => {
+  await setup(page, ELEMENTS_HTML);
+
+  const state = await page.evaluate(async () => {
+    const select = document.createElement("select");
+    select.multiple = true;
+    select.innerHTML = `<option value="be">Belgium</option>`;
+    document.body.append(select);
+
+    const creates = [];
+    const guards = [];
+    const inputEvents = [];
+    select.addEventListener("combobox:create", (event) => creates.push(event.detail.item.value));
+    Combobox.getOrCreateInstance(select, {
+      mode: "fallback",
+      create: true,
+      guards: {
+        add: (payload) => {
+          guards.push(payload.label);
+          return true;
+        },
+      },
+    });
+    select.addEventListener("input", () => inputEvents.push("input"));
+    select.addEventListener("change", () => inputEvents.push("change"));
+
+    const input = select.nextElementSibling.querySelector(".cb-fallback-input");
+    input.value = "Belgium";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    return {
+      creates,
+      guards,
+      inputEvents,
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+      values: Array.from(select.options, (o) => o.value),
+      inputCleared: input.value === "",
+    };
+  });
+
+  // Passing the label must resolve to the existing <option value="be"> instead
+  // of materializing a duplicate value="Belgium" — the same value-or-label
+  // match the enhanced picker runs.
+  expect(state.creates).toEqual([]);
+  expect(state.guards).toEqual([]);
+  expect(state.inputEvents).toEqual(["input", "change"]);
+  expect(state.selected).toEqual(["be"]);
+  expect(state.values).toEqual(["be"]);
+  expect(state.inputCleared).toBe(true);
+});
+
+test("fallback create/createFilter/guards receive the real Add input on their context", async ({ page }) => {
+  await setup(page, ELEMENTS_HTML);
+
+  const state = await page.evaluate(async () => {
+    const select = document.createElement("select");
+    select.multiple = true;
+    select.innerHTML = `<option value="1">One</option>`;
+    document.body.append(select);
+
+    const combo = Combobox.getOrCreateInstance(select, {
+      mode: "fallback",
+      create: (_label, _ctx) => {
+        return { value: "placeholder", label: "placeholder" };
+      },
+      createFilter: () => true,
+      guards: { add: () => true },
+    });
+    const input = select.nextElementSibling.querySelector(".cb-fallback-input");
+
+    const observed = {};
+    combo.options.create = (label, ctx) => {
+      observed.create = { isInput: ctx.input instanceof HTMLInputElement, same: ctx.input === input };
+      return { value: label, label };
+    };
+    combo.options.createFilter = (_value, ctx) => {
+      observed.createFilter = { isInput: ctx.input instanceof HTMLInputElement, same: ctx.input === input };
+      return true;
+    };
+    combo.options.guards = {
+      add: (_payload, ctx) => {
+        observed.guard = { isInput: ctx.input instanceof HTMLInputElement, same: ctx.input === input };
+        return true;
+      },
+    };
+
+    input.value = "plum";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    // The create callback also flags the fallback mode for applications.
+    return { observed, fallbackFlag: Object.keys(observed).every((key) => observed[key] !== undefined) };
+  });
+
+  // The guards/createFilter contract promises an HTMLInputElement; the fallback
+  // path must hand them the live Add control, never a null input.
+  expect(state.observed.create).toEqual({ isInput: true, same: true });
+  expect(state.observed.createFilter).toEqual({ isInput: true, same: true });
+  expect(state.observed.guard).toEqual({ isInput: true, same: true });
+});
+
+test("fallback guards/createFilter receive the Add input on a refused create too", async ({ page }) => {
+  await setup(page, ELEMENTS_HTML);
+
+  const state = await page.evaluate(async () => {
+    const select = document.createElement("select");
+    select.multiple = true;
+    document.body.append(select);
+    const combo = Combobox.getOrCreateInstance(select, {
+      mode: "fallback",
+      create: true,
+      createFilter: () => true,
+      guards: { add: () => false },
+    });
+    const input = select.nextElementSibling.querySelector(".cb-fallback-input");
+
+    const observed = { createFilter: null, guard: null };
+    combo.options.createFilter = (_value, ctx) => {
+      observed.createFilter = ctx.input === input;
+      return true;
+    };
+    combo.options.guards = {
+      add: (_payload, ctx) => {
+        observed.guard = ctx.input === input;
+        return false;
+      },
+    };
+
+    input.value = "plum";
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    return {
+      observed,
+      hasPlum: Array.from(select.options, (o) => o.value).includes("plum"),
+      // A refusal leaves the typed text editable rather than clearing it.
+      inputKept: input.value === "plum",
+    };
+  });
+
+  expect(state.observed).toEqual({ createFilter: true, guard: true });
+  expect(state.hasPlum).toBe(false);
+  expect(state.inputKept).toBe(true);
+});

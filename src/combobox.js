@@ -1,15 +1,17 @@
 import { autoUpdate, reposition } from "@lekoala/floating";
-import {
-  hasOwn,
-  matchesField,
-  moveValueInOrder,
-  normalize,
-  rankByScore,
-  reconcileSelected,
-  splitTokens,
-  toItem,
-} from "./helpers.js";
+import { hasOwn, moveValueInOrder, reconcileSelected, splitTokens, toItem } from "./helpers.js";
 import { DEFAULT_MESSAGES, getDefaultMessages, setDefaultMessages } from "./messages.js";
+import { computeFilteredItems, shouldLoadRemote, visibleItemsFor } from "./results.js";
+import {
+  appendCatalogOption,
+  fieldsFor,
+  findCreateMatch,
+  findOptionByValue,
+  findSelectableOption,
+  readSourceItems,
+  replaceCatalogue,
+  selectSourceOf,
+} from "./source.js";
 
 /* ---------------------------------------------------------------------- */
 /* Public type contracts                                                  */
@@ -673,10 +675,7 @@ export class Combobox {
    * @returns {HTMLSelectElement}
    */
   #selectSource() {
-    if (!(this.source instanceof HTMLSelectElement)) {
-      throw new TypeError("Expected a select-backed combobox");
-    }
-    return this.source;
+    return selectSourceOf(this);
   }
 
   /**
@@ -745,13 +744,15 @@ export class Combobox {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "cb-fallback-add";
-    button.textContent = "Add";
+    button.textContent = this.options.messages.add ?? "Add";
 
     const add = async () => {
       const label = input.value.trim();
-      if (!this.#canCreate(label)) return;
-      await this.#createFallbackOption(label, input);
-      input.value = "";
+      if (!label) return;
+      // The input is cleared only on a real selection or creation (an existing
+      // native match by normalized value or label now selects instead of
+      // creating a duplicate native option). On refusal the text stays editable.
+      if (await this.#createFallbackOption(label, input)) input.value = "";
       input.focus();
     };
 
@@ -773,58 +774,33 @@ export class Combobox {
   }
 
   /**
-   * Native-fallback creation: run the guard/create pipeline and materialize the
-   * option on the visible select.
+   * Native-fallback creation. Runs the same decision pipeline as the enhanced
+   * path: existing native match by value **or** label is selected, else the
+   * shared `#materializeCreated` guard/create pipeline runs with the fallback
+   * Add control as the context input (never `null`).
    * @param {string} label
    * @param {HTMLInputElement} input The fallback Add control
    * @returns {Promise<HTMLOptionElement | null>}
    */
   async #createFallbackOption(label, input) {
-    const guard = await this.#runGuard("add", { label });
-    if (!guard.ok) return null;
+    if (!this.#canCreate(label, input)) return null;
 
-    const before = emit(
-      this.source,
-      "combobox:beforecreate",
-      { combobox: this, label },
-      { cancelable: true },
-    );
-    if (before.defaultPrevented) return null;
-
-    /** @type {import("./helpers.js").ComboboxItem} */
-    let created = { value: label, label };
-    try {
-      if (typeof this.options.create === "function") {
-        const result = await this.options.create(label, {
-          signal: this.abortController.signal,
-          combobox: this,
-          source: this.source,
-          input,
-          fallback: true,
-        });
-        if (!result) return null;
-        created = /** @type {import("./helpers.js").ComboboxItem} */ (toItem(result, this.#fields()));
+    const existing = this.#findCreateMatch(label);
+    if (existing) {
+      const option = existing.option;
+      if (option && !option.disabled) {
+        // No-op re-entries are idempotent and must not fire value events.
+        if (!option.selected) {
+          option.selected = true;
+          this.#rememberSelection(option);
+          this.#dispatchNativeValueEvents();
+        }
       }
-
-      let option = this.#findOption(created.value);
-      if (!option) {
-        // Creation changes live form state, never the form-reset baseline.
-        option = new Option(created.label, created.value, false, true);
-        if (created.data) Object.assign(option.dataset, created.data);
-        this.#selectSource().add(option);
-      } else {
-        option.selected = true;
-      }
-      this.#rememberSelection(option);
-      this.#dispatchNativeValueEvents();
-      emit(this.source, "combobox:create", { combobox: this, item: { ...created, option, selected: true } });
-      return option;
-    } catch (/** @type {any} */ error) {
-      if (error?.name !== "AbortError") {
-        emit(this.source, "combobox:createerror", { combobox: this, label, error });
-      }
-      return null;
+      return option ?? null;
     }
+
+    const item = await this.#materializeCreated(label, input, { fallback: true });
+    return item?.option ?? null;
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1004,32 +980,7 @@ export class Combobox {
   }
 
   #sourceItems() {
-    if (this.isSelect) {
-      return Array.from(this.#selectSource().options)
-        .filter((option) => option.value || this.options.allowEmptyOption)
-        .map((option) => ({
-          value: option.value,
-          label: option.textContent.trim(),
-          disabled:
-            option.disabled ||
-            (option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.disabled : false),
-          selected: option.selected,
-          group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
-          option,
-          data: { ...option.dataset },
-        }));
-    }
-
-    if (!this.datalist) return [];
-    return Array.from(this.datalist.options).map((option) => ({
-      value: option.value,
-      label: option.label || option.value,
-      disabled: option.disabled,
-      selected: this.source.value === option.value,
-      group: option.dataset.group || "",
-      option,
-      data: { ...option.dataset },
-    }));
+    return readSourceItems(this);
   }
 
   #items() {
@@ -1048,16 +999,13 @@ export class Combobox {
 
   /** Map data objects to canonical items when label/value fields are set. */
   #fields() {
-    const { labelField, valueField } = this.options;
-    return labelField || valueField ? { labelField, valueField } : null;
+    return fieldsFor(this);
   }
 
   // maxOptions is a rendering cap only: the result store (filteredItems) may
   // be large, but at most maxOptions options are ever rendered/navigated.
   get visibleItems() {
-    return this.options.maxOptions > 0
-      ? this.filteredItems.slice(0, this.options.maxOptions)
-      : this.filteredItems;
+    return visibleItemsFor(this);
   }
 
   /** Set transient picker results without turning the select into a remote cache. */
@@ -1085,9 +1033,7 @@ export class Combobox {
    * @returns {HTMLOptionElement | null}
    */
   #findOption(value) {
-    if (!this.isSelect) return null;
-    const select = this.#selectSource();
-    return Array.from(select.options).find((option) => option.value === String(value)) || null;
+    return findOptionByValue(this, value);
   }
 
   /**
@@ -1100,27 +1046,16 @@ export class Combobox {
    * @returns {HTMLOptionElement | null}
    */
   #findSelectableOption(value) {
-    if (!this.isSelect) return null;
-    const wanted = String(value);
-    return (
-      Array.from(this.#selectSource().options).find(
-        (option) =>
-          option.value === wanted && !option.disabled && (this.isMultiple && option.selected) === false,
-      ) || null
-    );
+    return findSelectableOption(this, value);
   }
 
-  /** Match a token to an existing native option by value or label. */
+  /** Match a create/token term to an existing native option by value or label. */
   /**
    * @param {string} label
    * @returns {import("./helpers.js").ComboboxItem | null}
    */
   #findCreateMatch(label) {
-    const lookup = normalize(label);
-    for (const item of this.#sourceItems()) {
-      if (normalize(item.value) === lookup || normalize(item.label) === lookup) return item;
-    }
-    return null;
+    return findCreateMatch(this, label);
   }
 
   /** Replace the native catalogue explicitly. Prefer setResults() for remote search. */
@@ -1134,60 +1069,7 @@ export class Combobox {
       (item) => item !== null,
     );
 
-    if (this.isSelect) {
-      const select = this.#selectSource();
-      /** @type {import("./helpers.js").ComboboxItem[]} */
-      const preserved = preserveSelected
-        ? Array.from(select.selectedOptions).map((option) => ({
-            value: option.value,
-            label: option.textContent.trim(),
-            selected: true,
-            disabled: option.disabled,
-            group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
-          }))
-        : [];
-
-      const emptyOption = Array.from(select.options).find((option) => !option.value);
-      select.replaceChildren();
-      if (emptyOption && !this.isMultiple) select.append(emptyOption);
-
-      // No value-based dedupe: catalogue identity is the <option> element, so
-      // repeated values in the payload map to their own options.
-      const catalog = [...preserved, ...normalized];
-
-      const groups = new Map();
-      for (const item of catalog) {
-        // An empty value is a legitimate option only when allowEmptyOption
-        // admits it; otherwise it would shadow the collection's real entries.
-        if (!item.value && !this.options.allowEmptyOption) continue;
-        const option = new Option(item.label, item.value, Boolean(item.selected), Boolean(item.selected));
-        option.disabled = Boolean(item.disabled);
-        if (item.data) Object.assign(option.dataset, item.data);
-
-        if (item.group) {
-          let group = groups.get(item.group);
-          if (!group) {
-            group = document.createElement("optgroup");
-            group.label = item.group;
-            groups.set(item.group, group);
-            select.append(group);
-          }
-          group.append(option);
-        } else {
-          select.append(option);
-        }
-      }
-    } else {
-      if (!this.datalist) return this;
-      this.datalist.replaceChildren();
-      for (const item of normalized) {
-        const option = document.createElement("option");
-        option.value = item.value;
-        if (item.label !== item.value) option.label = item.label;
-        if (item.data) Object.assign(option.dataset, item.data);
-        this.datalist.append(option);
-      }
-    }
+    replaceCatalogue(this, normalized, { preserveSelected });
 
     this.clearResults();
     if (this.mode === "enhanced") this.refresh();
@@ -1618,7 +1500,8 @@ export class Combobox {
       }
       const active = this.visibleItems[this.activeIndex];
       if (active) this.#selectItem(active);
-      else if (this.#canCreate(this.#inputEl().value)) void this.#createItem(this.#inputEl().value.trim());
+      else if (this.#canCreate(this.#inputEl().value, this.#inputEl()))
+        void this.#createItem(this.#inputEl().value.trim());
       return;
     }
 
@@ -1644,7 +1527,7 @@ export class Combobox {
           this.#selectItem(active);
           return;
         }
-        if (this.#canCreate(this.#inputEl().value)) {
+        if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
           event.preventDefault();
           void this.#createItem(this.#inputEl().value.trim());
           return;
@@ -1793,17 +1676,7 @@ export class Combobox {
    * @returns {boolean}
    */
   #shouldLoad(query) {
-    if (
-      typeof this.options.shouldLoad === "function" &&
-      !this.options.shouldLoad(query, { combobox: this, source: this.source, input: this.#inputEl() })
-    ) {
-      return false;
-    }
-    return (
-      typeof this.options.load === "function" &&
-      query.length >= Number(this.options.minChars || 0) &&
-      (query.length > 0 || this.options.loadOnEmpty)
-    );
+    return shouldLoadRemote(this, query);
   }
 
   /**
@@ -1887,26 +1760,7 @@ export class Combobox {
    */
   #applyFilter(query) {
     const items = this.#items();
-
-    let visible = items.filter((item) => {
-      if (this.isMultiple && item.selected) return false;
-      return this.#matches(item, query);
-    });
-
-    const context = { combobox: this, source: this.source, input: this.#inputEl() };
-
-    if (typeof this.options.filter === "function") {
-      visible = visible.filter((item) => this.options.filter(item, query, context));
-    }
-
-    if (typeof this.options.score === "function") {
-      visible = rankByScore(visible, (item, _index) => this.options.score(item, query, context));
-    }
-
-    if (typeof this.options.sort === "function") {
-      visible.sort((a, b) => this.options.sort(a, b, query, context));
-    }
-
+    const visible = computeFilteredItems(this, items, query);
     this.filteredItems = visible;
 
     // Mirror the proposed :filtered state on the actual source option so the
@@ -1923,40 +1777,12 @@ export class Combobox {
   }
 
   /**
-   * Decision helper: an empty query is "no textual search", so the matcher
-   * (including a custom match) has nothing to decide — everything passes the
-   * match stage (`filter` admissibility still applies independently).
-   * For any other query, the strategy is applied **per `searchField` value**:
-   * `matchesField` owns every strategy and receives exactly one value, so a
-   * match can never cross field boundaries.
-   * @param {import("./helpers.js").ComboboxItem} item
-   * @param {string} query
-   * @returns {boolean}
-   */
-  #matches(item, query) {
-    if (!query) return true;
-
-    if (typeof this.options.match === "function") {
-      return this.options.match(item, query, { combobox: this, source: this.source, input: this.#inputEl() });
-    }
-
-    const fields = Array.isArray(this.options.searchFields)
-      ? this.options.searchFields
-      : this.options.searchFields
-        ? [this.options.searchFields]
-        : [];
-    const values = fields.map((field) => {
-      if (field in item) return String(item[field] ?? "");
-      return String(item.data?.[field] ?? "");
-    });
-    return values.some((value) => matchesField(value, query, this.options.match));
-  }
-
-  /**
    * @param {string | null | undefined} label
+   * @param {HTMLInputElement} input The interaction input (enhanced picker or
+   *   fallback Add control) handed to `createFilter`.
    * @returns {boolean}
    */
-  #canCreate(label) {
+  #canCreate(label, input) {
     const value = String(label ?? "").trim();
     if (!this.isSelect || !this.options.create || !value) return false;
     if (
@@ -1966,10 +1792,7 @@ export class Combobox {
     )
       return false;
     if (typeof this.options.createFilter === "function") {
-      return (
-        this.options.createFilter(value, { combobox: this, source: this.source, input: this.#inputEl() }) !==
-        false
-      );
+      return this.options.createFilter(value, { combobox: this, source: this.source, input }) !== false;
     }
     return true;
   }
@@ -2029,7 +1852,7 @@ export class Combobox {
     }
 
     if (!this.filteredItems.length) {
-      if (this.#canCreate(this.#inputEl().value)) {
+      if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
         const create = document.createElement("div");
         create.className = "cb-option cb-create";
         create.tabIndex = -1;
@@ -2126,7 +1949,14 @@ export class Combobox {
         remove.type = "button";
         remove.className = "cb-chip-remove";
         remove.append(createRemoveIcon());
-        remove.setAttribute("aria-label", `Remove ${item.label}`);
+        remove.setAttribute(
+          "aria-label",
+          this.options.messages.remove?.(item.label, {
+            combobox: this,
+            source: this.source,
+            input: this.#inputEl(),
+          }) ?? `Remove ${item.label}`,
+        );
         chip.append(remove);
       }
 
@@ -2426,7 +2256,7 @@ export class Combobox {
    * @returns {Promise<HTMLOptionElement | null>}
    */
   async #createItem(label) {
-    if (!this.#canCreate(label)) return null;
+    if (!this.#canCreate(label, this.#inputEl())) return null;
 
     const existing = this.#findCreateMatch(label);
     if (existing) {
@@ -2436,7 +2266,39 @@ export class Combobox {
 
     // guards.add is about creating a brand-new item; existing matches are
     // selected above without running it.
-    const guard = await this.#runGuard("add", { label });
+    const item = await this.#materializeCreated(label, this.#inputEl());
+    if (!item) return null;
+
+    this.#inputEl().value = "";
+    if (this.isMultiple) {
+      if (this.suppressReopen) this.refresh();
+      else if (this.#closeOnSelect()) this.hide();
+      else this.search("", { show: true, reason: "create" });
+    } else {
+      this.hide();
+    }
+    this.#markEngineMutation();
+    return item.option;
+  }
+
+  /**
+   * Shared create pipeline for the enhanced picker and the native fallback:
+   * guard → `combobox:beforecreate` → async `create` → materialize → native
+   * events → `combobox:create`. Keeping both paths on one primitive guarantees
+   * the same contract — same guard context input, same existing-value
+   * resolution, same created-option shape.
+   *
+   * The caller already ruled out an existing native match and ran
+   * `#canCreate`. Materialization goes through `addOption` so group/disabled/
+   * `allowEmptyOption` rules are identical on both paths.
+   * @param {string} label
+   * @param {HTMLInputElement} input The interaction input exposed on the
+   *   `create` and guard contexts.
+   * @param {{ fallback?: boolean }} [options]
+   * @returns {Promise<import("./helpers.js").ComboboxItem & { option: HTMLOptionElement } | null>}
+   */
+  async #materializeCreated(label, input, { fallback = false } = {}) {
+    const guard = await this.#runGuard("add", { label }, input);
     if (!guard.ok) return null;
 
     const before = emit(
@@ -2454,13 +2316,15 @@ export class Combobox {
     let created = { value: label, label };
     if (typeof this.options.create === "function") {
       this.loading = true;
-      this.#renderLoading();
+      // The fallback has no picker to paint a loading row in.
+      if (!fallback) this.#renderLoading();
       try {
         const result = await this.options.create(label, {
           signal: this.abortController.signal,
           combobox: this,
           source: this.source,
-          input: this.#inputEl(),
+          input,
+          ...(fallback ? { fallback: true } : {}),
         });
         if (!result) return null;
         created = /** @type {import("./helpers.js").ComboboxItem} */ (toItem(result, this.#fields()));
@@ -2474,24 +2338,20 @@ export class Combobox {
     }
 
     const option = this.addOption(created, { selected: true });
-    this.#rememberSelection(option);
-    this.#inputEl().value = "";
-    this.#commit();
-
-    emit(this.source, "combobox:create", {
-      combobox: this,
-      item: { ...created, option, selected: true },
+    if (!option) return null;
+    const item = /** @type {import("./helpers.js").ComboboxItem & { option: HTMLOptionElement }} */ ({
+      ...created,
+      option,
+      selected: true,
     });
-
-    if (this.isMultiple) {
-      if (this.suppressReopen) this.refresh();
-      else if (this.#closeOnSelect()) this.hide();
-      else this.search("", { show: true, reason: "create" });
-    } else {
-      this.hide();
-    }
-    this.#markEngineMutation();
-    return option;
+    // A successful create clears any stale validation marker before the value
+    // events fire — this is the shared commit step for both paths (the enhanced
+    // wrapper must not re-dispatch native events afterwards).
+    this.source.removeAttribute("aria-invalid");
+    this.input?.removeAttribute("aria-invalid");
+    this.#dispatchNativeValueEvents();
+    emit(this.source, "combobox:create", { combobox: this, item });
+    return item;
   }
 
   /**
@@ -2500,9 +2360,12 @@ export class Combobox {
    * `combobox:guarderror` event is emitted and the operation is blocked.
    * @param {"add" | "remove" | "clear"} name
    * @param {any} payload
+   * @param {HTMLInputElement} [input] The interaction input exposed on the
+   *   context; defaults to the enhanced filter input. The fallback path passes
+   *   its own Add control so guards never observe a `null` input.
    * @returns {Promise<{ ok: boolean, refused?: boolean, error?: any }>}
    */
-  async #runGuard(name, payload) {
+  async #runGuard(name, payload, input = this.#inputEl()) {
     const guards = this.options.guards;
     const guard = guards[name];
     if (typeof guard !== "function") return { ok: true };
@@ -2510,7 +2373,7 @@ export class Combobox {
       const result = await guard(payload, {
         combobox: this,
         source: this.source,
-        input: this.#inputEl(),
+        input,
         signal: this.abortController.signal,
       });
       return { ok: result !== false, refused: result === false };
@@ -2600,7 +2463,7 @@ export class Combobox {
       this.#selectItem(existing);
       return true;
     }
-    if (!this.#canCreate(term)) return false;
+    if (!this.#canCreate(term, this.#inputEl())) return false;
     const created = await this.#createItem(term);
     return created !== null;
   }
@@ -2654,36 +2517,7 @@ export class Combobox {
     // empty-placeholder convention stays the single-select default otherwise.
     if (item.value === "" && !this.options.allowEmptyOption) throw new TypeError("Option requires a value");
 
-    // Each catalogue entry is its own identity: an existing value never
-    // short-circuits a fresh option, so two distinct {value: "2"} entries stay
-    // distinct choices. An explicit item.option is adopted as-is instead.
-    const option =
-      item.option instanceof HTMLOptionElement
-        ? item.option
-        : // `selected` is live state only. `defaultSelected` belongs to authored
-          // markup (or an explicit setOptions catalogue replacement), otherwise
-          // a dynamic selection would silently rewrite form.reset()'s baseline.
-          new Option(item.label, item.value, false, selected);
-    if (!(item.option instanceof HTMLOptionElement)) {
-      option.disabled = Boolean(item.disabled);
-      if (item.data) Object.assign(option.dataset, item.data);
-      if (item.group) {
-        let group = /** @type {HTMLOptGroupElement | undefined} */ (
-          Array.from(this.#selectSource().children).find(
-            (node) => node instanceof HTMLOptGroupElement && node.label === item.group,
-          )
-        );
-        if (!group) {
-          group = document.createElement("optgroup");
-          group.label = item.group;
-          this.#selectSource().append(group);
-        }
-        group.append(option);
-      } else {
-        this.#selectSource().add(option);
-      }
-    }
-    if (selected && !option.selected) option.selected = true;
+    const option = appendCatalogOption(this, item, { selected });
     if (selected) this.#rememberSelection(option);
     return option;
   }

@@ -68,7 +68,8 @@ Coverage: `test/browser/matrix.spec.js` (auto enhanced/fallback per engine, forc
 - [x] multiple select remains native.
 - [x] no `.cb-popover` custom picker is created.
 - [x] creatable select gets unnamed fallback input and Add button only.
-- [x] fallback create selects existing option rather than duplicating it.
+- [x] fallback create selects existing option rather than duplicating it (value **or** label, matching the enhanced picker).
+- [x] fallback create/createFilter/guards receive the real Add input on their context (`combobox-element.spec.js`), never a null input.
 - [x] fallback create can materialize async `{value,label}`.
 - [x] fallback create respects createFilter/maxItems.
 - [x] fallback `dispose()` removes only fallback enhancement.

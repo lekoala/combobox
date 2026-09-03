@@ -458,10 +458,12 @@
 
   // src/messages.js
   var DEFAULT_MESSAGES = {
+    add: "Add",
     noResults: "No results",
     loading: "Loading…",
     loadError: "Failed to load results",
     create: (query) => `Create “${query}”`,
+    remove: (label) => `Remove ${label}`,
     position: (label, position, total) => `${label} position ${position} of ${total}`
   };
   function getDefaultMessages() {
@@ -469,6 +471,188 @@
   }
   function setDefaultMessages(messages) {
     Object.assign(DEFAULT_MESSAGES, messages);
+  }
+
+  // src/results.js
+  function matchesItem(combobox, item, query) {
+    if (!query)
+      return true;
+    const input = combobox.input;
+    if (typeof combobox.options.match === "function") {
+      return combobox.options.match(item, query, {
+        combobox,
+        source: combobox.source,
+        input
+      });
+    }
+    const fields = Array.isArray(combobox.options.searchFields) ? combobox.options.searchFields : combobox.options.searchFields ? [combobox.options.searchFields] : [];
+    const values = fields.map((field) => {
+      if (field in item)
+        return String(item[field] ?? "");
+      return String(item.data?.[field] ?? "");
+    });
+    return values.some((value) => matchesField(value, query, combobox.options.match));
+  }
+  function shouldLoadRemote(combobox, query) {
+    const input = combobox.input;
+    if (typeof combobox.options.shouldLoad === "function" && !combobox.options.shouldLoad(query, { combobox, source: combobox.source, input })) {
+      return false;
+    }
+    return typeof combobox.options.load === "function" && query.length >= Number(combobox.options.minChars || 0) && (query.length > 0 || combobox.options.loadOnEmpty);
+  }
+  function computeFilteredItems(combobox, items, query) {
+    const input = combobox.input;
+    let visible = items.filter((item) => {
+      if (combobox.isMultiple && item.selected)
+        return false;
+      return matchesItem(combobox, item, query);
+    });
+    const context = { combobox, source: combobox.source, input };
+    if (typeof combobox.options.filter === "function") {
+      visible = visible.filter((item) => combobox.options.filter(item, query, context));
+    }
+    if (typeof combobox.options.score === "function") {
+      visible = rankByScore(visible, (item, _index) => combobox.options.score(item, query, context));
+    }
+    if (typeof combobox.options.sort === "function") {
+      visible.sort((a, b) => combobox.options.sort(a, b, query, context));
+    }
+    return visible;
+  }
+  function visibleItemsFor(combobox) {
+    return combobox.options.maxOptions > 0 ? combobox.filteredItems.slice(0, combobox.options.maxOptions) : combobox.filteredItems;
+  }
+
+  // src/source.js
+  function selectSourceOf(combobox) {
+    if (!(combobox.source instanceof HTMLSelectElement)) {
+      throw new TypeError("Expected a select-backed combobox");
+    }
+    return combobox.source;
+  }
+  function readSourceItems(combobox) {
+    const { source, isSelect, options, datalist } = combobox;
+    if (isSelect) {
+      return Array.from(selectSourceOf(combobox).options).filter((option) => option.value || options.allowEmptyOption).map((option) => ({
+        value: option.value,
+        label: option.textContent.trim(),
+        disabled: option.disabled || (option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.disabled : false),
+        selected: option.selected,
+        group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
+        option,
+        data: { ...option.dataset }
+      }));
+    }
+    if (!datalist)
+      return [];
+    return Array.from(datalist.options).map((option) => ({
+      value: option.value,
+      label: option.label || option.value,
+      disabled: option.disabled,
+      selected: source.value === option.value,
+      group: option.dataset.group || "",
+      option,
+      data: { ...option.dataset }
+    }));
+  }
+  function findOptionByValue(combobox, value) {
+    if (!combobox.isSelect)
+      return null;
+    const select = selectSourceOf(combobox);
+    return Array.from(select.options).find((option) => option.value === String(value)) || null;
+  }
+  function findSelectableOption(combobox, value) {
+    if (!combobox.isSelect)
+      return null;
+    const wanted = String(value);
+    return Array.from(selectSourceOf(combobox).options).find((option) => option.value === wanted && !option.disabled && (combobox.isMultiple && option.selected) === false) || null;
+  }
+  function findCreateMatch(combobox, label) {
+    const lookup = normalize(label);
+    for (const item of readSourceItems(combobox)) {
+      if (normalize(item.value) === lookup || normalize(item.label) === lookup)
+        return item;
+    }
+    return null;
+  }
+  function fieldsFor(combobox) {
+    const { labelField, valueField } = combobox.options;
+    return labelField || valueField ? { labelField, valueField } : null;
+  }
+  function replaceCatalogue(combobox, normalized, { preserveSelected = combobox.isSelect } = {}) {
+    const { isSelect, isMultiple, options, datalist } = combobox;
+    if (isSelect) {
+      const select = selectSourceOf(combobox);
+      const preserved = preserveSelected ? Array.from(select.selectedOptions).map((option) => ({
+        value: option.value,
+        label: option.textContent.trim(),
+        selected: true,
+        disabled: option.disabled,
+        group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : ""
+      })) : [];
+      const emptyOption = Array.from(select.options).find((option) => !option.value);
+      select.replaceChildren();
+      if (emptyOption && !isMultiple)
+        select.append(emptyOption);
+      const catalog = [...preserved, ...normalized];
+      const groups = new Map;
+      for (const item of catalog) {
+        if (!item.value && !options.allowEmptyOption)
+          continue;
+        const option = new Option(item.label, item.value, Boolean(item.selected), Boolean(item.selected));
+        option.disabled = Boolean(item.disabled);
+        if (item.data)
+          Object.assign(option.dataset, item.data);
+        if (item.group) {
+          let group = groups.get(item.group);
+          if (!group) {
+            group = document.createElement("optgroup");
+            group.label = item.group;
+            groups.set(item.group, group);
+            select.append(group);
+          }
+          group.append(option);
+        } else {
+          select.append(option);
+        }
+      }
+      return;
+    }
+    if (!datalist)
+      return;
+    datalist.replaceChildren();
+    for (const item of normalized) {
+      const option = document.createElement("option");
+      option.value = item.value;
+      if (item.label !== item.value)
+        option.label = item.label;
+      if (item.data)
+        Object.assign(option.dataset, item.data);
+      datalist.append(option);
+    }
+  }
+  function appendCatalogOption(combobox, item, { selected = false } = {}) {
+    const source = selectSourceOf(combobox);
+    const option = item.option instanceof HTMLOptionElement ? item.option : new Option(item.label, item.value, false, selected);
+    if (!(item.option instanceof HTMLOptionElement)) {
+      option.disabled = Boolean(item.disabled);
+      if (item.data)
+        Object.assign(option.dataset, item.data);
+      if (item.group) {
+        let group = Array.from(source.children).find((node) => node instanceof HTMLOptGroupElement && node.label === item.group);
+        if (!group) {
+          group = document.createElement("optgroup");
+          group.label = item.group;
+          source.append(group);
+        }
+        group.append(option);
+      } else {
+        source.add(option);
+      }
+    }
+    if (selected && !option.selected)
+      option.selected = true;
+    return option;
   }
 
   // src/combobox.js
@@ -717,10 +901,7 @@
       instances.set(element, this);
     }
     #selectSource() {
-      if (!(this.source instanceof HTMLSelectElement)) {
-        throw new TypeError("Expected a select-backed combobox");
-      }
-      return this.source;
+      return selectSourceOf(this);
     }
     #inputEl() {
       return this.input;
@@ -751,13 +932,13 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "cb-fallback-add";
-      button.textContent = "Add";
+      button.textContent = this.options.messages.add ?? "Add";
       const add = async () => {
         const label = input.value.trim();
-        if (!this.#canCreate(label))
+        if (!label)
           return;
-        await this.#createFallbackOption(label, input);
-        input.value = "";
+        if (await this.#createFallbackOption(label, input))
+          input.value = "";
         input.focus();
       };
       button.addEventListener("click", add, { signal: this.abortController.signal });
@@ -772,45 +953,22 @@
       this.fallbackControl = control;
     }
     async#createFallbackOption(label, input) {
-      const guard = await this.#runGuard("add", { label });
-      if (!guard.ok)
+      if (!this.#canCreate(label, input))
         return null;
-      const before = emit(this.source, "combobox:beforecreate", { combobox: this, label }, { cancelable: true });
-      if (before.defaultPrevented)
-        return null;
-      let created = { value: label, label };
-      try {
-        if (typeof this.options.create === "function") {
-          const result = await this.options.create(label, {
-            signal: this.abortController.signal,
-            combobox: this,
-            source: this.source,
-            input,
-            fallback: true
-          });
-          if (!result)
-            return null;
-          created = toItem(result, this.#fields());
+      const existing = this.#findCreateMatch(label);
+      if (existing) {
+        const option = existing.option;
+        if (option && !option.disabled) {
+          if (!option.selected) {
+            option.selected = true;
+            this.#rememberSelection(option);
+            this.#dispatchNativeValueEvents();
+          }
         }
-        let option = this.#findOption(created.value);
-        if (!option) {
-          option = new Option(created.label, created.value, false, true);
-          if (created.data)
-            Object.assign(option.dataset, created.data);
-          this.#selectSource().add(option);
-        } else {
-          option.selected = true;
-        }
-        this.#rememberSelection(option);
-        this.#dispatchNativeValueEvents();
-        emit(this.source, "combobox:create", { combobox: this, item: { ...created, option, selected: true } });
-        return option;
-      } catch (error) {
-        if (error?.name !== "AbortError") {
-          emit(this.source, "combobox:createerror", { combobox: this, label, error });
-        }
-        return null;
+        return option ?? null;
       }
+      const item = await this.#materializeCreated(label, input, { fallback: true });
+      return item?.option ?? null;
     }
     #enhanceInput(source) {
       const listId = source.getAttribute("list");
@@ -927,28 +1085,7 @@
         input.setAttribute("aria-labelledby", labelIds.join(" "));
     }
     #sourceItems() {
-      if (this.isSelect) {
-        return Array.from(this.#selectSource().options).filter((option) => option.value || this.options.allowEmptyOption).map((option) => ({
-          value: option.value,
-          label: option.textContent.trim(),
-          disabled: option.disabled || (option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.disabled : false),
-          selected: option.selected,
-          group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
-          option,
-          data: { ...option.dataset }
-        }));
-      }
-      if (!this.datalist)
-        return [];
-      return Array.from(this.datalist.options).map((option) => ({
-        value: option.value,
-        label: option.label || option.value,
-        disabled: option.disabled,
-        selected: this.source.value === option.value,
-        group: option.dataset.group || "",
-        option,
-        data: { ...option.dataset }
-      }));
+      return readSourceItems(this);
     }
     #items() {
       if (!this.results)
@@ -961,11 +1098,10 @@
       });
     }
     #fields() {
-      const { labelField, valueField } = this.options;
-      return labelField || valueField ? { labelField, valueField } : null;
+      return fieldsFor(this);
     }
     get visibleItems() {
-      return this.options.maxOptions > 0 ? this.filteredItems.slice(0, this.options.maxOptions) : this.filteredItems;
+      return visibleItemsFor(this);
     }
     setResults(items) {
       this.results = Array.from(items || [], (item) => toItem(item, this.#fields())).filter((item) => item !== null);
@@ -977,76 +1113,17 @@
       return this;
     }
     #findOption(value) {
-      if (!this.isSelect)
-        return null;
-      const select = this.#selectSource();
-      return Array.from(select.options).find((option) => option.value === String(value)) || null;
+      return findOptionByValue(this, value);
     }
     #findSelectableOption(value) {
-      if (!this.isSelect)
-        return null;
-      const wanted = String(value);
-      return Array.from(this.#selectSource().options).find((option) => option.value === wanted && !option.disabled && (this.isMultiple && option.selected) === false) || null;
+      return findSelectableOption(this, value);
     }
     #findCreateMatch(label) {
-      const lookup = normalize(label);
-      for (const item of this.#sourceItems()) {
-        if (normalize(item.value) === lookup || normalize(item.label) === lookup)
-          return item;
-      }
-      return null;
+      return findCreateMatch(this, label);
     }
     setOptions(items, { preserveSelected = this.isSelect } = {}) {
       const normalized = Array.from(items || [], (item) => toItem(item, this.#fields())).filter((item) => item !== null);
-      if (this.isSelect) {
-        const select = this.#selectSource();
-        const preserved = preserveSelected ? Array.from(select.selectedOptions).map((option) => ({
-          value: option.value,
-          label: option.textContent.trim(),
-          selected: true,
-          disabled: option.disabled,
-          group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : ""
-        })) : [];
-        const emptyOption = Array.from(select.options).find((option) => !option.value);
-        select.replaceChildren();
-        if (emptyOption && !this.isMultiple)
-          select.append(emptyOption);
-        const catalog = [...preserved, ...normalized];
-        const groups = new Map;
-        for (const item of catalog) {
-          if (!item.value && !this.options.allowEmptyOption)
-            continue;
-          const option = new Option(item.label, item.value, Boolean(item.selected), Boolean(item.selected));
-          option.disabled = Boolean(item.disabled);
-          if (item.data)
-            Object.assign(option.dataset, item.data);
-          if (item.group) {
-            let group = groups.get(item.group);
-            if (!group) {
-              group = document.createElement("optgroup");
-              group.label = item.group;
-              groups.set(item.group, group);
-              select.append(group);
-            }
-            group.append(option);
-          } else {
-            select.append(option);
-          }
-        }
-      } else {
-        if (!this.datalist)
-          return this;
-        this.datalist.replaceChildren();
-        for (const item of normalized) {
-          const option = document.createElement("option");
-          option.value = item.value;
-          if (item.label !== item.value)
-            option.label = item.label;
-          if (item.data)
-            Object.assign(option.dataset, item.data);
-          this.datalist.append(option);
-        }
-      }
+      replaceCatalogue(this, normalized, { preserveSelected });
       this.clearResults();
       if (this.mode === "enhanced")
         this.refresh();
@@ -1370,7 +1447,7 @@
         const active = this.visibleItems[this.activeIndex];
         if (active)
           this.#selectItem(active);
-        else if (this.#canCreate(this.#inputEl().value))
+        else if (this.#canCreate(this.#inputEl().value, this.#inputEl()))
           this.#createItem(this.#inputEl().value.trim());
         return;
       }
@@ -1389,7 +1466,7 @@
             this.#selectItem(active);
             return;
           }
-          if (this.#canCreate(this.#inputEl().value)) {
+          if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
             event.preventDefault();
             this.#createItem(this.#inputEl().value.trim());
             return;
@@ -1482,10 +1559,7 @@
       return this;
     }
     #shouldLoad(query) {
-      if (typeof this.options.shouldLoad === "function" && !this.options.shouldLoad(query, { combobox: this, source: this.source, input: this.#inputEl() })) {
-        return false;
-      }
-      return typeof this.options.load === "function" && query.length >= Number(this.options.minChars || 0) && (query.length > 0 || this.options.loadOnEmpty);
+      return shouldLoadRemote(this, query);
     }
     async#load(query, { cursor = null, append = false, debounce = false } = {}) {
       this.loadController?.abort();
@@ -1548,21 +1622,7 @@
     }
     #applyFilter(query) {
       const items = this.#items();
-      let visible = items.filter((item) => {
-        if (this.isMultiple && item.selected)
-          return false;
-        return this.#matches(item, query);
-      });
-      const context = { combobox: this, source: this.source, input: this.#inputEl() };
-      if (typeof this.options.filter === "function") {
-        visible = visible.filter((item) => this.options.filter(item, query, context));
-      }
-      if (typeof this.options.score === "function") {
-        visible = rankByScore(visible, (item, _index) => this.options.score(item, query, context));
-      }
-      if (typeof this.options.sort === "function") {
-        visible.sort((a, b) => this.options.sort(a, b, query, context));
-      }
+      const visible = computeFilteredItems(this, items, query);
       this.filteredItems = visible;
       const visibleOptions = new Set(visible.map((item) => item.option));
       for (const item of items) {
@@ -1571,28 +1631,14 @@
       this.#renderList();
       this.#setActive(this.options.autoselectFirst ? this.visibleItems.findIndex((item) => !item.disabled) : -1);
     }
-    #matches(item, query) {
-      if (!query)
-        return true;
-      if (typeof this.options.match === "function") {
-        return this.options.match(item, query, { combobox: this, source: this.source, input: this.#inputEl() });
-      }
-      const fields = Array.isArray(this.options.searchFields) ? this.options.searchFields : this.options.searchFields ? [this.options.searchFields] : [];
-      const values = fields.map((field) => {
-        if (field in item)
-          return String(item[field] ?? "");
-        return String(item.data?.[field] ?? "");
-      });
-      return values.some((value) => matchesField(value, query, this.options.match));
-    }
-    #canCreate(label) {
+    #canCreate(label, input) {
       const value = String(label ?? "").trim();
       if (!this.isSelect || !this.options.create || !value)
         return false;
       if (this.options.maxItems > 0 && this.isMultiple && this.#selectSource().selectedOptions.length >= this.options.maxItems)
         return false;
       if (typeof this.options.createFilter === "function") {
-        return this.options.createFilter(value, { combobox: this, source: this.source, input: this.#inputEl() }) !== false;
+        return this.options.createFilter(value, { combobox: this, source: this.source, input }) !== false;
       }
       return true;
     }
@@ -1641,7 +1687,7 @@
         this.#listEl().append(option);
       }
       if (!this.filteredItems.length) {
-        if (this.#canCreate(this.#inputEl().value)) {
+        if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
           const create = document.createElement("div");
           create.className = "cb-option cb-create";
           create.tabIndex = -1;
@@ -1721,7 +1767,11 @@
           remove.type = "button";
           remove.className = "cb-chip-remove";
           remove.append(createRemoveIcon());
-          remove.setAttribute("aria-label", `Remove ${item.label}`);
+          remove.setAttribute("aria-label", this.options.messages.remove?.(item.label, {
+            combobox: this,
+            source: this.source,
+            input: this.#inputEl()
+          }) ?? `Remove ${item.label}`);
           chip.append(remove);
         }
         chips.append(chip);
@@ -1923,14 +1973,32 @@
       return true;
     }
     async#createItem(label) {
-      if (!this.#canCreate(label))
+      if (!this.#canCreate(label, this.#inputEl()))
         return null;
       const existing = this.#findCreateMatch(label);
       if (existing) {
         this.#selectItem(existing);
         return existing.option ?? null;
       }
-      const guard = await this.#runGuard("add", { label });
+      const item = await this.#materializeCreated(label, this.#inputEl());
+      if (!item)
+        return null;
+      this.#inputEl().value = "";
+      if (this.isMultiple) {
+        if (this.suppressReopen)
+          this.refresh();
+        else if (this.#closeOnSelect())
+          this.hide();
+        else
+          this.search("", { show: true, reason: "create" });
+      } else {
+        this.hide();
+      }
+      this.#markEngineMutation();
+      return item.option;
+    }
+    async#materializeCreated(label, input, { fallback = false } = {}) {
+      const guard = await this.#runGuard("add", { label }, input);
       if (!guard.ok)
         return null;
       const before = emit(this.source, "combobox:beforecreate", {
@@ -1942,13 +2010,15 @@
       let created = { value: label, label };
       if (typeof this.options.create === "function") {
         this.loading = true;
-        this.#renderLoading();
+        if (!fallback)
+          this.#renderLoading();
         try {
           const result = await this.options.create(label, {
             signal: this.abortController.signal,
             combobox: this,
             source: this.source,
-            input: this.#inputEl()
+            input,
+            ...fallback ? { fallback: true } : {}
           });
           if (!result)
             return null;
@@ -1962,27 +2032,20 @@
         }
       }
       const option = this.addOption(created, { selected: true });
-      this.#rememberSelection(option);
-      this.#inputEl().value = "";
-      this.#commit();
-      emit(this.source, "combobox:create", {
-        combobox: this,
-        item: { ...created, option, selected: true }
-      });
-      if (this.isMultiple) {
-        if (this.suppressReopen)
-          this.refresh();
-        else if (this.#closeOnSelect())
-          this.hide();
-        else
-          this.search("", { show: true, reason: "create" });
-      } else {
-        this.hide();
-      }
-      this.#markEngineMutation();
-      return option;
+      if (!option)
+        return null;
+      const item = {
+        ...created,
+        option,
+        selected: true
+      };
+      this.source.removeAttribute("aria-invalid");
+      this.input?.removeAttribute("aria-invalid");
+      this.#dispatchNativeValueEvents();
+      emit(this.source, "combobox:create", { combobox: this, item });
+      return item;
     }
-    async#runGuard(name, payload) {
+    async#runGuard(name, payload, input = this.#inputEl()) {
       const guards = this.options.guards;
       const guard = guards[name];
       if (typeof guard !== "function")
@@ -1991,7 +2054,7 @@
         const result = await guard(payload, {
           combobox: this,
           source: this.source,
-          input: this.#inputEl(),
+          input,
           signal: this.abortController.signal
         });
         return { ok: result !== false, refused: result === false };
@@ -2046,7 +2109,7 @@
         this.#selectItem(existing);
         return true;
       }
-      if (!this.#canCreate(term))
+      if (!this.#canCreate(term, this.#inputEl()))
         return false;
       const created = await this.#createItem(term);
       return created !== null;
@@ -2081,25 +2144,7 @@
         throw new TypeError("Option requires a value");
       if (item.value === "" && !this.options.allowEmptyOption)
         throw new TypeError("Option requires a value");
-      const option = item.option instanceof HTMLOptionElement ? item.option : new Option(item.label, item.value, false, selected);
-      if (!(item.option instanceof HTMLOptionElement)) {
-        option.disabled = Boolean(item.disabled);
-        if (item.data)
-          Object.assign(option.dataset, item.data);
-        if (item.group) {
-          let group = Array.from(this.#selectSource().children).find((node) => node instanceof HTMLOptGroupElement && node.label === item.group);
-          if (!group) {
-            group = document.createElement("optgroup");
-            group.label = item.group;
-            this.#selectSource().append(group);
-          }
-          group.append(option);
-        } else {
-          this.#selectSource().add(option);
-        }
-      }
-      if (selected && !option.selected)
-        option.selected = true;
+      const option = appendCatalogOption(this, item, { selected });
       if (selected)
         this.#rememberSelection(option);
       return option;

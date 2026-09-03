@@ -349,13 +349,23 @@ isolated and the orchestration in one place:
 
 ```text
 helpers.js            pure helpers: normalize/toItem, separators/tokenizer
+source.js             native catalogue: select/datalist reading, identity
+                      resolution, setOptions/addOption materialization
+results.js            filtering decisions: match/filter/score/sort, shouldLoad
+messages.js           generated UI text catalog (see section 8)
 combobox.js           orchestration/public API
-source/input.js       input+datalist adapter
-source/select.js      select adapter/native selection
-results.js            transient result store + matching
-picker.js             listbox/popover/active option
-selection.js          chips/order/formdata
-events.js             event helpers/operation guards
 ```
 
-The current implementation intentionally keeps these as visible sections in one file; `helpers.js` is already extracted so the pure functions can be unit-tested without a DOM shim.
+`source.js` and `results.js` are module-level functions that take the Combobox
+instance explicitly — they never touch `window`/`globalThis` and stay usable
+from the generated bundle. They own only decisions and native-DOM catalogue
+work; anything entangled with the picker, `activeIndex`, focus, chips, the
+observers or lifecycle stays on the class. `helpers.js` stays the only module
+that is pure/unit-testable without a DOM shim.
+
+The picker, keyboard, chips/selection and events are intentionally still
+sections inside `combobox.js`: they share the private instance state
+(`activeIndex`, focus, popover, ARIA, WeakMap chips) closely enough that
+extracting them now would turn private calls into a chatty internal API for
+little readability gain. Revisit only if the class becomes painful to read
+again.

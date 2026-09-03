@@ -1,8 +1,6 @@
 # API reference
 
-This documents the API surface shipped in `@lekoala/combobox` **0.1.0**. "Supported in
-0.1" below means the behavior is implemented, browser-tested and part of the public
-contract; "experimental" means the seam is exported and usable but its exact contract
+This documents the API surface shipped in `@lekoala/combobox`. Its exact contract
 may still evolve in a later 0.x.
 
 ## Initialization

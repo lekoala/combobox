@@ -193,6 +193,43 @@ test("setOptions() conserves [2,2,2] instead of deduping by value", async ({ pag
   expect(state.labels).toEqual(["Two a", "Two b", "Two c"]);
 });
 
+test("setOptions(preserveSelected) keeps a selected occurrence also present in the payload", async ({
+  page,
+}) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+  const state = await page.evaluate(() => {
+    const select = document.createElement("select");
+    select.multiple = true;
+    document.body.append(select);
+    const combo = Combobox.getOrCreateInstance(select);
+    // A materialized selection (creation/remote), now a real native option.
+    combo.addOption({ value: "plum", label: "Plum" }, { selected: true });
+    const before = {
+      values: Array.from(select.selectedOptions, (o) => o.value),
+      count: select.options.length,
+    };
+
+    // The new catalogue legitimately contains the same value again. There is no
+    // value-based dedupe: the preserved selected option and the fresh payload
+    // occurrence are two distinct native options, one selected.
+    combo.setOptions([{ value: "plum", label: "Plum (catalogue)" }]);
+
+    return {
+      before,
+      values: Array.from(select.options, (o) => o.value),
+      labels: Array.from(select.options, (o) => o.textContent.trim()),
+      selectedValues: Array.from(select.selectedOptions, (o) => o.value),
+      selectedLabels: Array.from(select.selectedOptions, (o) => o.textContent.trim()),
+    };
+  });
+
+  expect(state.before).toEqual({ values: ["plum"], count: 1 });
+  expect(state.values).toEqual(["plum", "plum"]);
+  expect(state.labels).toEqual(["Plum", "Plum (catalogue)"]);
+  expect(state.selectedValues).toEqual(["plum"]);
+  expect(state.selectedLabels).toEqual(["Plum"]);
+});
+
 test("single-select picking the second duplicate keeps its label and selectedIndex", async ({ page }) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {

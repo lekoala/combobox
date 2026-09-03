@@ -6,22 +6,34 @@
  * `setDefaultMessages` on import.
  */
 export type Messages = {
+    /**
+     * Fallback Add-control label
+     */
+    add?: string;
     noResults?: string;
     loading?: string;
     loadError?: string;
     create?: (query: string, context?: import("./combobox.js").ComboboxContext) => string;
+    /**
+     * Remove-button accessible label for a chip.
+     */
+    remove?: (label: string, context?: import("./combobox.js").ComboboxContext) => string;
     position?: (label: string, position: number, total: number, context?: import("./combobox.js").ComboboxContext) => string;
 };
 /**
  * Screen-reader / UI status messages. Defaults are merged so the label
- * producers (`create`, `position`) are always functions; the plain status
- * strings (`noResults`, `loading`, `loadError`) are literal text rendered by
- * `setContent` (rich DOM rows use the `render.*` hooks instead).
+ * producers (`create`, `position`, `remove`) are always functions; the plain
+ * status strings (`add`, `noResults`, `loading`, `loadError`) are literal
+ * text rendered by `setContent` (rich DOM rows use the `render.*` hooks
+ * instead).
  * @typedef {Object} Messages
+ * @property {string} [add] Fallback Add-control label
  * @property {string} [noResults]
  * @property {string} [loading]
  * @property {string} [loadError]
  * @property {(query: string, context?: import("./combobox.js").ComboboxContext) => string} [create]
+ * @property {(label: string, context?: import("./combobox.js").ComboboxContext) => string} [remove]
+ *   Remove-button accessible label for a chip.
  * @property {(label: string, position: number, total: number, context?: import("./combobox.js").ComboboxContext) => string} [position]
  */
 /** @type {Messages} */
@@ -38,8 +50,8 @@ export declare function getDefaultMessages(): Messages;
  * created *after* this call see the new text: instances resolve their
  * messages as a snapshot at construction time. Per-instance `messages`
  * options always take precedence over these defaults. Missing keys keep
- * their current translation, and producer keys (`create`, `position`) stay
- * functions.
+ * their current translation, and producer keys (`create`, `position`,
+ * `remove`) stay functions.
  * @param {Partial<Messages>} messages
  * @returns {void}
  */

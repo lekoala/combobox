@@ -71,7 +71,7 @@ You can enhance a native control directly:
 import Combobox from "@lekoala/combobox";
 
 const combo = new Combobox(document.querySelector("select"), {
-  search: "fuzzy",
+  match: "fuzzy",
   minChars: 1,
 });
 ```
@@ -329,7 +329,7 @@ For multiple selects, source order and selection order do not have to mean the s
 When explicit selection order is enabled, values can be reordered with:
 
 ```js
-combo.move(fromIndex, toIndex);
+combo.move("value", 0);
 ```
 
 Drag-and-drop is intentionally not built into the core. An application can add whatever UI it wants and call `move()`.
@@ -429,9 +429,9 @@ http://127.0.0.1:4173/
 
 The demo uses the generated distribution build, not a special development-only version.
 
-## What is in 0.1
+## API Coverage
 
-The main 0.1 API covers:
+The main API covers:
 
 * input + datalist;
 * single and multiple selects;
@@ -538,7 +538,7 @@ The package ships:
 * generated TypeScript declarations;
 * `custom-elements.json`.
 
-There are no runtime source maps in 0.1. Declaration maps are kept for TypeScript editor navigation.
+There are no runtime source maps. Declaration maps are kept for TypeScript editor navigation.
 
 ## Documentation
 
