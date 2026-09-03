@@ -1,6 +1,6 @@
 {
   "name": "@lekoala/combobox",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Native-first <combo-box> combobox/filterable-select",
   "type": "module",
   "sideEffects": [
