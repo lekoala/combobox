@@ -24,7 +24,7 @@ async function reopenNoMatch(page, selectId) {
 
 test("locale import applies to new instances only; per-instance messages win", async ({ page }) => {
   await setup(page, pageUrl);
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const EMPTY = ".cb-popover:visible .cb-empty";
 
   await openNoMatch(page, "sel-a");

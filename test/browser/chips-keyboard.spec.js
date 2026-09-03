@@ -23,7 +23,7 @@ const focusChip = async (page, value) =>
 
 test.beforeEach(async ({ page }) => {
   await setup(page, FEATURES);
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("overlimit"));
   });

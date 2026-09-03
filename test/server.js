@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +13,9 @@ const types = new Map([
   [".css", "text/css; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
 ]);
+
+const IMPORT_MAP =
+  '<script type="importmap">{"imports":{"@lekoala/floating":"/node_modules/@lekoala/floating/src/floating.js"}}</script>';
 
 createServer(async (request, response) => {
   const url = new URL(request.url, `http://${request.headers.host}`);
@@ -28,7 +31,12 @@ createServer(async (request, response) => {
     const info = await stat(file);
     if (!info.isFile()) throw new Error("Not a file");
     response.writeHead(200, { "Content-Type": types.get(path.extname(file)) || "application/octet-stream" });
-    createReadStream(file).pipe(response);
+    if (path.extname(file) === ".html") {
+      const html = await readFile(file, "utf8");
+      response.end(html.replace(/<head>/i, `<head>${IMPORT_MAP}`));
+    } else {
+      createReadStream(file).pipe(response);
+    }
   } catch {
     response.writeHead(404).end("Not found");
   }

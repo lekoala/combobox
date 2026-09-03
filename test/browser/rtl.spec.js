@@ -5,7 +5,7 @@ const RTL = "/test/fixtures/rtl.html";
 
 test.beforeEach(async ({ page }) => {
   await setup(page, RTL);
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 });
 
 test("chips flow right-to-left and the control does not overflow", async ({ page }) => {

@@ -29,7 +29,7 @@ test("fallback keeps native controls and cheap create input", async ({ page }) =
 
 test("enhanced input detaches native datalist and popover stays open", async ({ page }) => {
   await page.goto(DEMO_HTML);
-  test.skip(!(await demoEnhanced(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await demoEnhanced(page)), "Modern Popover + floating placement support is required");
 
   await expect(page.locator("#cities")).toHaveCount(0);
   await expect(page.locator("#city")).not.toHaveAttribute("list");
@@ -42,7 +42,7 @@ test("enhanced input detaches native datalist and popover stays open", async ({ 
 
 test("single select uses separate unnamed filter and preserves native value", async ({ page }) => {
   await page.goto(DEMO_HTML);
-  test.skip(!(await demoEnhanced(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await demoEnhanced(page)), "Modern Popover + floating placement support is required");
 
   const filter = page.locator("#doctor-filter");
   await expect(filter).toBeVisible();
@@ -65,7 +65,7 @@ test("programmatic select materializes externally-created option", async ({ page
 
 test("remote results remain transient until selected", async ({ page }) => {
   await page.goto(DEMO_HTML);
-  test.skip(!(await demoEnhanced(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await demoEnhanced(page)), "Modern Popover + floating placement support is required");
 
   await expect(page.locator("#country option")).toHaveCount(1);
   const filter = page.locator("#country + .cb-control .cb-input");
@@ -85,7 +85,7 @@ test("remote results remain transient until selected", async ({ page }) => {
 
 test("selection order changes without moving catalogue options", async ({ page }) => {
   await page.goto(DEMO_HTML);
-  test.skip(!(await demoEnhanced(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await demoEnhanced(page)), "Modern Popover + floating placement support is required");
 
   const before = await page
     .locator("#priorities option")

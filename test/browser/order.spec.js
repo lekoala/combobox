@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("default source order keeps chips, move() and FormData in native selected order", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("sourceordered"));
   });
@@ -46,7 +46,7 @@ test("default source order keeps chips, move() and FormData in native selected o
 test("ordered mode records the click sequence; catalogue and result order stay distinct", async ({
   page,
 }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("ordered"), {
       selectionOrder: "selected",
@@ -81,7 +81,7 @@ test("ordered mode records the click sequence; catalogue and result order stay d
 test("move() reorders chips and fires beforereorder/reorder; a canceled beforedefreorder pins the order", async ({
   page,
 }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("ordered");
     const reorders = [];
@@ -121,7 +121,7 @@ test("move() reorders chips and fires beforereorder/reorder; a canceled beforede
 });
 
 test("move() no-ops return false and emit nothing", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("ordered");
     const reorders = [];
@@ -147,7 +147,7 @@ test("move() no-ops return false and emit nothing", async ({ page }) => {
 test("Alt+Arrow and Alt+Home/End reorder a focused chip, keep focus and announce position", async ({
   page,
 }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("ordered");
     const reorders = [];
@@ -209,7 +209,7 @@ test("Alt+Arrow and Alt+Home/End reorder a focused chip, keep focus and announce
 });
 
 test("reorder gesture consumes only real moves and leaves source mode native", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const ordered = document.getElementById("ordered");
     const reorders = [];
@@ -253,7 +253,7 @@ test("reorder gesture consumes only real moves and leaves source mode native", a
 });
 
 test("ordered FormData repeats values in explicit selection order", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("ordered");
     const combo = Combobox.getOrCreateInstance(select, { selectionOrder: "selected" });
@@ -270,7 +270,7 @@ test("ordered FormData repeats values in explicit selection order", async ({ pag
 });
 
 test("remove then re-add appends at the end of the selection sequence", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("ordered");
     const combo = Combobox.getOrCreateInstance(select, { selectionOrder: "selected" });

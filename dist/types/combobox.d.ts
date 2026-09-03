@@ -307,7 +307,6 @@ export declare class Combobox {
     query: string;
     id: number;
     mode: string;
-    anchorName: string;
     suppressReopen: boolean;
     composing: boolean;
     /** @type {MutationObserver | null} */
@@ -338,8 +337,8 @@ export declare class Combobox {
     control: HTMLElement | null;
     /** @type {HTMLElement | null} */
     anchor: HTMLElement | null;
-    /** @type {AttributeSnapshot | null} */
-    anchorSnapshot: AttributeSnapshot | null;
+    /** @type {(() => void) | null} */
+    stopAutoUpdate: (() => void) | null;
     /** @type {HTMLInputElement | null} */
     input: HTMLInputElement | null;
     /** @type {HTMLElement | null} */

@@ -20,7 +20,7 @@ Required for:
 - Popover state/top layer;
 - keyboard interactions;
 - native form validation/reset/FormData;
-- CSS Anchor behavior/layout;
+- floating placement and layout;
 - pointer/outside click;
 - IME/composition;
 - DOM MutationObserver (opt-in `observeSource`);
@@ -342,16 +342,16 @@ Prior-art security corpora cover original values, group labels, option labels/va
 - [x] picker anchors to whole control, not residual inline input width after chips (`layout.spec.js`).
 - [x] picker flips when viewport lacks block-end space (`layout.spec.js` bottom-anchored control).
 - [x] input group/floating label/table/modal/overflow containers do not clip picker (`layout.spec.js` + `popover-dialog.spec.js` for modal/overflow).
-- [x] no global scroll/resize positioning listeners (`layout.spec.js`: the open picker stays attached to its anchor after a page scroll).
+- [x] open pickers follow scroll/resize updates through `@lekoala/floating` (`layout.spec.js`: the picker stays attached to its reference after a page scroll).
 - [x] long no-results/loading state has no horizontal scrollbar (`layout.spec.js` long-message cases).
 - [x] multiple chips wrap/grow without changing picker anchor width incorrectly (`layout.spec.js` wrapped-chips case).
 - [x] RTL logical placement/text (`rtl.spec.js` + RTL chip/remove layout in `css-polish.spec.js`).
 - [x] RTL: chips flow right-to-left, picker flips and has no horizontal overflow, physical keyboard navigation is stable.
 - [x] reduced motion: no transition/animation runs in the picker (CSS has none; asserted under `prefers-reduced-motion: reduce` in `visual.spec.js`).
 - [x] forced-colors/high contrast: picker rows and chips stay distinguishable and visible (`visual.spec.js`; engines without the `forced-colors` media query are skipped).
-- [x] zoom: at 200% zoom the picker stays anchored, internally contained and within the document (`visual.spec.js`).
+- CSS `zoom` is outside the supported geometry contract of `@lekoala/floating`; narrow-viewport containment remains covered above.
 
-These scenarios ensure top-layer + Anchor Positioning handles difficult layout contexts without container-specific positioning code.
+These scenarios ensure top-layer + floating placement handles difficult layout contexts without container-specific positioning code.
 
 ## U. Performance sanity
 

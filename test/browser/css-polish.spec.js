@@ -17,7 +17,7 @@ async function capture(page, name) {
 test("no horizontal overflow in controls, picker or document at 320px", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const initial = await page.evaluate(() => ({
     docOverflow: document.documentElement.scrollWidth - window.innerWidth,
@@ -66,7 +66,7 @@ test("no horizontal overflow in controls, picker or document at 320px", async ({
 
 test("picker adopts the control typography instead of the page font", async ({ page }) => {
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   await page.locator("#city").click();
   await expect(page.locator(".cb-popover:visible")).toHaveCount(1);
@@ -90,7 +90,7 @@ test("picker adopts the control typography instead of the page font", async ({ p
 
 test("input combobox and single-select control share geometry", async ({ page }) => {
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const geometry = await page.evaluate(() => {
     const input = document.querySelector("#city");
@@ -114,7 +114,7 @@ test("input combobox and single-select control share geometry", async ({ page })
 
 test("chips stay compact and remove is a real hit target", async ({ page }) => {
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const geometry = await page.evaluate(() => {
     const control = document.querySelector("#specialties + .cb-control");
@@ -150,7 +150,7 @@ test("chips stay compact and remove is a real hit target", async ({ page }) => {
 
 test("chip metrics scale together through --cb-chip-font-size", async ({ page }) => {
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const geometry = await page.evaluate(() => {
     const host = document.getElementById("specialties").closest("combo-box");
@@ -181,7 +181,7 @@ test("chip metrics scale together through --cb-chip-font-size", async ({ page })
 
 test("chip appearance variables support solid and outline themes", async ({ page }) => {
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const style = await page.evaluate(() => {
     const host = document.getElementById("specialties").closest("combo-box");
@@ -206,7 +206,7 @@ test("chip appearance variables support solid and outline themes", async ({ page
 
 test("invalid border and focus ring use --cb-error-color", async ({ page }) => {
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const style = await page.evaluate(() => {
     const source = document.getElementById("specialties");
@@ -226,7 +226,7 @@ test("invalid border and focus ring use --cb-error-color", async ({ page }) => {
 
 test("long chip labels truncate instead of widening the control", async ({ page }) => {
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const overflow = await page.evaluate(async () => {
     const wrap = document.createElement("combo-box");
@@ -255,7 +255,7 @@ test("long chip labels truncate instead of widening the control", async ({ page 
 
 test("long option labels truncate without horizontal picker scroll", async ({ page }) => {
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const overflow = await page.evaluate(async () => {
     const wrap = document.createElement("combo-box");
@@ -288,7 +288,7 @@ test("long option labels truncate without horizontal picker scroll", async ({ pa
 
 test("rtl mirrors chips and keeps remove at the inline start", async ({ page }) => {
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const rtl = await page.evaluate(() => {
     const control = document.querySelector("#rtl-tags + .cb-control") || document.querySelector("#rtl-tags");
@@ -314,7 +314,7 @@ test("rtl mirrors chips and keeps remove at the inline start", async ({ page }) 
 
 test("selected rows draw a mask checkmark tinted with the row color", async ({ page }) => {
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   await page.locator("#tags + .cb-control .cb-input").click();
   await expect(page.locator(".cb-popover:visible")).toHaveCount(1);
@@ -343,7 +343,7 @@ test("selected rows draw a mask checkmark tinted with the row color", async ({ p
 test("screenshot catalog for manual review", async ({ page }) => {
   test.skip(!process.env.CSS_SHOTS, "Set CSS_SHOTS=1 to write screenshots");
   await setup(page, "/");
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   await capture(page, "01-page-light.png");
 

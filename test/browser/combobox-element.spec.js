@@ -99,7 +99,7 @@ test("existing markup upgrades and attributes map to engine options", async ({ p
 
 test("custom element name + configure() wires JS-only options", async ({ page }) => {
   await setup(page, ELEMENTS_HTML);
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const config = await page.evaluate(() => {
     const combo = document.querySelector("#languages-widget").combobox;
@@ -141,7 +141,7 @@ test("combobox:ready fires and whenReady() resolves after dynamic insertion", as
 
 test("dispose on removal restores the detached datalist source", async ({ page }) => {
   await setup(page, ELEMENTS_HTML);
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const state = await page.evaluate(async () => {
     const wrap = document.createElement("combo-box");

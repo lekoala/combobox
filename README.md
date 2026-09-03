@@ -21,11 +21,11 @@ The library uses the browser where it can:
 
 * native form controls keep owning the value;
 * Popover handles the picker top layer;
-* CSS Anchor Positioning handles placement;
+* `@lekoala/floating` handles placement and viewport updates;
 * ARIA combobox/listbox semantics handle keyboard interaction;
 * native `input`, `change`, validation and form reset keep working.
 
-There is no JavaScript positioning engine, no Bootstrap dependency and no global `window.*` API.
+There is no CSS Anchor Positioning, no Bootstrap dependency and no global `window.*` API.
 
 ## Install
 
@@ -336,7 +336,7 @@ Drag-and-drop is intentionally not built into the core. An application can add w
 
 ## Progressive fallback
 
-If the browser does not support the Popover and CSS Anchor features needed by the enhanced picker, the original controls remain usable.
+If the browser does not support the Popover API needed by the enhanced picker, the original controls remain usable.
 
 * `input + datalist` stays a native datalist;
 * `select` stays a native select;
@@ -464,7 +464,7 @@ Things that are deliberately **not** part of the library:
 * Bootstrap JavaScript;
 * automatic DOM observation by default;
 * a built-in clear button;
-* a JavaScript positioning fallback.
+* a second positioning implementation.
 
 The goal is not to become another all-purpose Select2 clone. The library should stay small enough that native controls and browser APIs remain visible underneath it.
 

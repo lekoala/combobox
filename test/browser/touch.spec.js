@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
 const FEATURES = "/test/fixtures/features.html";
-const MODERN = "Modern Popover + Anchor support is required";
+const MODERN = "Modern Popover + floating placement support is required";
 
 // Touch is exercised with Chromium's touch emulation only; Firefox/WebKit have
 // no hasTouch context (the matrix runs them without touch interactions).

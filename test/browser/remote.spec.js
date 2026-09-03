@@ -7,7 +7,7 @@ function control(id) {
   return `#${id} + .cb-control .cb-input`;
 }
 
-const MODERN = "Modern Popover + Anchor support is required";
+const MODERN = "Modern Popover + floating placement support is required";
 
 test.beforeEach(async ({ page }) => {
   await setup(page, REMOTE);
@@ -350,7 +350,7 @@ test("setQuery and clearQuery keep visible text and search state synchronized", 
   expect(state.cleared).toEqual({ input: "", query: "", open: false });
 });
 
-test("a consumer anchor is the positioning and internal-interaction region", async ({ page }) => {
+test("a consumer anchor is the floating reference and internal-interaction region", async ({ page }) => {
   test.skip(!(await modernSupported(page)), MODERN);
   const state = await page.evaluate(async () => {
     const input = document.getElementById("remote-input");
@@ -368,15 +368,16 @@ test("a consumer anchor is the positioning and internal-interaction region", asy
     await new Promise((resolve) => setTimeout(resolve, 0));
     const whileEnhanced = {
       open: combo.isOpen(),
-      anchorName: shell.style.getPropertyValue("anchor-name"),
-      positionAnchor: combo.popover.style.getPropertyValue("position-anchor"),
+      left: combo.popover.style.left,
+      top: combo.popover.style.top,
     };
     combo.dispose();
     return { whileEnhanced, restoredStyle: shell.getAttribute("style") };
   });
 
   expect(state.whileEnhanced.open).toBe(true);
-  expect(state.whileEnhanced.anchorName).toBe(state.whileEnhanced.positionAnchor);
+  expect(state.whileEnhanced.left).not.toBe("");
+  expect(state.whileEnhanced.top).not.toBe("");
   expect(state.restoredStyle).toBe("color: red");
 });
 

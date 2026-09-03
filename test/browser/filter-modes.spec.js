@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { modernSupported, rowsFor, setup } from "./helpers.js";
 
 const FUZZY = "/test/fixtures/fuzzy.html";
-const MODERN = "Modern Popover + Anchor support is required";
+const MODERN = "Modern Popover + floating placement support is required";
 
 test.describe("match modes", () => {
   test.beforeEach(async ({ page }) => {

@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("guards.add: refusal blocks creation, allowance creates", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), {
       create: true,
@@ -41,7 +41,7 @@ test("guards.add: refusal blocks creation, allowance creates", async ({ page }) 
 });
 
 test("guards.remove: refusal keeps the chip selected", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), {
       guards: { remove: () => false },
@@ -56,7 +56,7 @@ test("guards.remove: refusal keeps the chip selected", async ({ page }) => {
 });
 
 test("guards.remove rejection emits guarderror and leaves state unchanged", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     const select = document.getElementById("tags");
     window.__guardErrors = [];
@@ -82,7 +82,7 @@ test("guards.remove rejection emits guarderror and leaves state unchanged", asyn
 });
 
 test("guards.clear: cancelled confirmation resolves false and clears nothing", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const canceled = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     const combo = Combobox.getOrCreateInstance(select, {
@@ -96,7 +96,7 @@ test("guards.clear: cancelled confirmation resolves false and clears nothing", a
 });
 
 test("separator input consumes tokens and keeps the incomplete token", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), {
       create: true,
@@ -119,7 +119,7 @@ test("separator input consumes tokens and keeps the incomplete token", async ({ 
 });
 
 test("separator paste is sequential and respects maxItems between tokens", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("overlimit"), {
       create: true,
@@ -144,7 +144,7 @@ test("separator paste is sequential and respects maxItems between tokens", async
 });
 
 test("separator paste preserves explicit selection order", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), {
       create: true,
@@ -164,7 +164,7 @@ test("separator paste preserves explicit selection order", async ({ page }) => {
 });
 
 test("maxOptions caps rendered options and keyboard navigation", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("capped"), {
       maxOptions: 2,
@@ -217,7 +217,7 @@ test("maxItems never mutilates pre-existing native selection at init", async ({ 
 });
 
 test("disabled at runtime: toggling an option shows/hides the chip remove button", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"));
   });
@@ -240,7 +240,7 @@ test("disabled at runtime: toggling an option shows/hides the chip remove button
 });
 
 test("duplicate values are distinct option identities in chips and selection", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("dupes"));
   });
@@ -267,7 +267,7 @@ test("duplicate values are distinct option identities in chips and selection", a
 });
 
 test("form reset restores native selection and chips", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"));
     Combobox.getOrCreateInstance(document.getElementById("overlimit"));
@@ -291,7 +291,7 @@ test("form reset restores native selection and chips", async ({ page }) => {
 });
 
 test("created selected options never rewrite the form reset baseline", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), { create: true });
   });
@@ -321,7 +321,7 @@ test("created selected options never rewrite the form reset baseline", async ({ 
 });
 
 test("created options survive sync() and form.reset() with native reset semantics", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(async () => {
     const combo = Combobox.getOrCreateInstance(document.getElementById("tags"), { create: true });
     const input = combo.input;
@@ -351,7 +351,7 @@ test("created options survive sync() and form.reset() with native reset semantic
 });
 
 test("closeOnSelect closes a multiple picker after selection", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), { closeOnSelect: true });
   });
@@ -366,7 +366,7 @@ test("closeOnSelect closes a multiple picker after selection", async ({ page }) 
 });
 
 test("createOnBlur creates on real leave but never on chip removal", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), {
       create: true,
@@ -408,7 +408,7 @@ test("createOnBlur creates on real leave but never on chip removal", async ({ pa
 });
 
 test("createOnBlur is blocked during IME composition", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), {
       create: true,
@@ -441,7 +441,7 @@ test("createOnBlur is blocked during IME composition", async ({ page }) => {
 });
 
 test("labelField/valueField map data results and select materializes the native option", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     const select = document.getElementById("capped");
     const combo = Combobox.getOrCreateInstance(select, {
@@ -466,7 +466,7 @@ test("labelField/valueField map data results and select materializes the native 
 });
 
 test("separator tokenize custom seam is honored", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), {
       create: true,
@@ -487,7 +487,7 @@ test("separator tokenize custom seam is honored", async ({ page }) => {
 });
 
 test("custom tokenize keeps the declared rest in the input", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), {
       create: true,
@@ -513,7 +513,7 @@ test("custom tokenize keeps the declared rest in the input", async ({ page }) =>
 });
 
 test("createFilter returning false hides the create row and blocks Enter", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("tags"), {
       create: true,
@@ -544,7 +544,7 @@ test("createFilter returning false hides the create row and blocks Enter", async
 });
 
 test("async create shows a loading row and selects the resolved item", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     const events = [];
@@ -591,7 +591,7 @@ test("async create shows a loading row and selects the resolved item", async ({ 
 });
 
 test("create rejection emits createerror and AbortError stays silent", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     const errors = [];
@@ -653,7 +653,7 @@ test("create rejection emits createerror and AbortError stays silent", async ({ 
 });
 
 test("beforecreate preventDefault blocks creation and keeps the query", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     select.addEventListener("combobox:beforecreate", (event) => event.preventDefault());
@@ -674,7 +674,7 @@ test("beforecreate preventDefault blocks creation and keeps the query", async ({
 });
 
 test("guards.add rejection surfaces guarderror with zero unhandled rejections", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     const guardErrors = [];
@@ -709,7 +709,7 @@ test("guards.add rejection surfaces guarderror with zero unhandled rejections", 
 });
 
 test("guards.clear rejection surfaces guarderror and keeps the selection", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     const guardErrors = [];
@@ -738,7 +738,7 @@ test("guards.clear rejection surfaces guarderror and keeps the selection", async
 });
 
 test("blank and whitespace never create an option", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     const combo = Combobox.getOrCreateInstance(select, { create: true });
@@ -760,7 +760,7 @@ test("blank and whitespace never create an option", async ({ page }) => {
 });
 
 test("case-insensitive existing label is selected, never duplicated", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     select.querySelector('option[value="2"]').selected = false;
@@ -783,7 +783,7 @@ test("case-insensitive existing label is selected, never duplicated", async ({ p
 });
 
 test("same label with different values stays two selectable identities", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("twinlabels");
     const combo = Combobox.getOrCreateInstance(select);
@@ -802,7 +802,7 @@ test("same label with different values stays two selectable identities", async (
 });
 
 test("separator paste keeps the remaining term when a middle token is refused", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     const combo = Combobox.getOrCreateInstance(select, {
@@ -831,7 +831,7 @@ test("separator paste keeps the remaining term when a middle token is refused", 
 });
 
 test("a duplicate token is created or selected exactly once", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     const combo = Combobox.getOrCreateInstance(select, { create: true, separators: [","] });
@@ -850,7 +850,7 @@ test("a duplicate token is created or selected exactly once", async ({ page }) =
 });
 
 test("separated text is not tokenized mid-IME-composition", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const during = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     const combo = Combobox.getOrCreateInstance(select, { create: true, separators: [","] });
@@ -885,7 +885,7 @@ test("separated text is not tokenized mid-IME-composition", async ({ page }) => 
 });
 
 test("combobox:beforeremove cancel keeps the chip and skips combobox:remove", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     const events = [];
@@ -911,7 +911,7 @@ test("combobox:beforeremove cancel keeps the chip and skips combobox:remove", as
 });
 
 test("combobox:beforeclear cancel keeps the selection and skips combobox:clear", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tags");
     const events = [];
@@ -933,7 +933,7 @@ test("combobox:beforeclear cancel keeps the selection and skips combobox:clear",
 });
 
 test("clear() keeps disabled selections and removes the rest", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("mixedclear");
     const combo = Combobox.getOrCreateInstance(select);
@@ -952,7 +952,7 @@ test("clear() keeps disabled selections and removes the rest", async ({ page }) 
 });
 
 test("an external clear button clears through the public API, not DOM hacks", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
     const combo = Combobox.getOrCreateInstance(document.getElementById("tags"));
     // The button is harness-owned; the app wires it without touching DOM below

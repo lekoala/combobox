@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("a disabled+hidden empty placeholder never becomes a chip", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("tagplace");
     const combo = Combobox.getOrCreateInstance(select);
@@ -42,7 +42,7 @@ test("a disabled+hidden empty placeholder never becomes a chip", async ({ page }
 });
 
 test("the same placeholder on a single select reflects an empty label, never as a chip", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("singleplace");
     const combo = Combobox.getOrCreateInstance(select);
@@ -64,7 +64,7 @@ test("the same placeholder on a single select reflects an empty label, never as 
 test("allowEmptyOption keeps the disabled+hidden placeholder out but honours real empty options", async ({
   page,
 }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("emptyok");
     const combo = Combobox.getOrCreateInstance(select, { allowEmptyOption: true });

@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
 const LAYOUT = "/test/fixtures/layout.html";
-const MODERN = "Modern Popover + Anchor support is required";
+const MODERN = "Modern Popover + floating placement support is required";
 
 test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 720 });
@@ -101,8 +101,8 @@ test("pickers inside an input group, a floating label and a table cell stay on-s
   }
 });
 
-test("scrolling the page never detaches the open picker from its anchor", async ({ page }) => {
-  const state = await page.evaluate(() => {
+test("scrolling the page never detaches the open picker from its floating reference", async ({ page }) => {
+  const state = await page.evaluate(async () => {
     const select = document.getElementById("mid");
     const combo = Combobox.getOrCreateInstance(select);
     combo.show();
@@ -112,6 +112,7 @@ test("scrolling the page never detaches the open picker from its anchor", async 
     const before = { open: combo.isOpen(), dx: dx() };
     window.scrollTo(0, 120);
     window.dispatchEvent(new Event("scroll"));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const rect = combo.popover.getBoundingClientRect();
     const after = {
       open: combo.isOpen(),

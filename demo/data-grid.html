@@ -285,7 +285,7 @@ grid.addEventListener("headerRendered", () => enhanceSelectFilters(grid));</div>
       await grid.clearFilters();
       syncComboboxes(grid);
       document.getElementById("action-status").textContent =
-        "cleared → " + JSON.stringify(grid.query.filters);
+        `cleared → ${JSON.stringify(grid.query.filters)}`;
     });
 
     document.getElementById("btn-toggle").addEventListener("click", () => {

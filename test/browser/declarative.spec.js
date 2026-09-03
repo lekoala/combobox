@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 test("data-* attributes on the source are application metadata, never configuration (no third way)", async ({
   page,
 }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const combo = Combobox.getOrCreateInstance(document.getElementById("sourcedata"));
     return {
@@ -31,7 +31,7 @@ test("data-* attributes on the source are application metadata, never configurat
 });
 
 test("boolean wrapper attributes honor =false and presence means true", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const wrap = document.getElementById("boolwrap");
     return wrap.combobox.options;
@@ -43,13 +43,13 @@ test("boolean wrapper attributes honor =false and presence means true", async ({
 });
 
 test("search-fields attribute parses to a trimmed array", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => document.getElementById("sfwrap").combobox.options.searchFields);
   expect(state).toEqual(["label", "email"]);
 });
 
 test("JS options win over wrapper attributes", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const wrap = document.getElementById("prio");
     const fromAttr = wrap.combobox.options.maxItems;
@@ -63,7 +63,7 @@ test("JS options win over wrapper attributes", async ({ page }) => {
 });
 
 test("invalid numeric attributes fall back to DEFAULTS instead of spreading NaN", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => document.getElementById("invnum").combobox.options);
   expect(state.minChars).toBe(2);
   expect(state.maxItems).toBe(0);
@@ -73,7 +73,7 @@ test("invalid numeric attributes fall back to DEFAULTS instead of spreading NaN"
 });
 
 test("changing an observed attribute rebuilds with the re-parsed option", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const wrap = document.getElementById("prio");
     const before = wrap.combobox.options.maxItems;

@@ -5,7 +5,7 @@
 - Open UI Combobox explainer: https://open-ui.org/components/combobox.explainer/
 - Open UI Filterable Select explainer: https://open-ui.org/components/filterable-select.explainer/
 - Popover API: https://developer.mozilla.org/en-US/docs/Web/API/Popover_API
-- CSS Anchor Positioning: https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_anchor_positioning
+- Floating positioning engine: https://github.com/lekoala/floating
 - ARIA combobox pattern: https://www.w3.org/WAI/ARIA/apg/patterns/combobox/
 - Custom Elements: https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements
 - DOM `handleEvent` / EventListener pattern: https://webreflection.medium.com/dom-handleevent-a-cross-platform-standard-since-year-2000-5bf17287fd38

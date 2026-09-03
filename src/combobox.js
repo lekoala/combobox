@@ -1,3 +1,4 @@
+import { autoUpdate, reposition } from "@lekoala/floating";
 import {
   hasOwn,
   matchesField,
@@ -145,10 +146,7 @@ const DEFAULTS = {
 function supportsModernCombobox() {
   return (
     typeof HTMLElement.prototype.showPopover === "function" &&
-    typeof HTMLElement.prototype.hidePopover === "function" &&
-    CSS.supports("position-area: bottom") &&
-    CSS.supports("inline-size: anchor-size(width)") &&
-    CSS.supports("position-try: flip-block")
+    typeof HTMLElement.prototype.hidePopover === "function"
   );
 }
 
@@ -569,7 +567,6 @@ export class Combobox {
       !Combobox.supported
         ? "fallback"
         : "enhanced";
-    this.anchorName = `--combobox-${this.id}`;
     this.suppressReopen = false;
     this.composing = false;
     /** @type {MutationObserver | null} */
@@ -614,8 +611,8 @@ export class Combobox {
     this.control = null;
     /** @type {HTMLElement | null} */
     this.anchor = null;
-    /** @type {AttributeSnapshot | null} */
-    this.anchorSnapshot = null;
+    /** @type {(() => void) | null} */
+    this.stopAutoUpdate = null;
     /** @type {HTMLInputElement | null} */
     this.input = null;
     /** @type {HTMLElement | null} */
@@ -650,10 +647,6 @@ export class Combobox {
 
         const requestedAnchor = this.options.anchor;
         this.anchor = requestedAnchor instanceof HTMLElement ? requestedAnchor : view.control || view.input;
-        if (this.anchor !== view.control && this.anchor !== view.input) {
-          this.anchorSnapshot = captureAttributes(this.anchor, ["style"]);
-        }
-        this.anchor.style.setProperty("anchor-name", this.anchorName);
 
         const picker = this.#createPicker();
         this.popover = picker.popover;
@@ -1285,7 +1278,6 @@ export class Combobox {
     const popover = document.createElement("div");
     popover.className = "cb-popover";
     popover.popover = "manual";
-    popover.style.setProperty("position-anchor", this.anchorName);
 
     const listbox = document.createElement("div");
     listbox.className = "cb-listbox";
@@ -1316,6 +1308,33 @@ export class Combobox {
     this.#inputEl().setAttribute("aria-controls", listbox.id);
 
     return { popover, listbox, status };
+  }
+
+  /**
+   * Position the open picker from the whole visual control. The floating
+   * engine writes viewport coordinates; Popover supplies the top layer.
+   * @returns {boolean}
+   */
+  #positionPicker() {
+    const anchor = this.anchor || this.control || this.#inputEl();
+    const popover = this.#popoverEl();
+    const width = anchor.getBoundingClientRect().width;
+    popover.style.inlineSize = `${width}px`;
+    return reposition(anchor, popover, {
+      placement: "bottom-start",
+      distance: 4,
+      flip: true,
+      shift: true,
+    });
+  }
+
+  /** Start tracking geometry while the top-layer picker is open. */
+  #startAutoUpdate() {
+    this.stopAutoUpdate?.();
+    const anchor = this.anchor || this.control || this.#inputEl();
+    this.stopAutoUpdate = autoUpdate(anchor, this.#popoverEl(), () => {
+      this.#positionPicker();
+    });
   }
 
   #bind() {
@@ -1360,8 +1379,13 @@ export class Combobox {
         this.#inputEl().setAttribute("aria-expanded", String(open));
         emit(this.source, open ? "combobox:open" : "combobox:close", { combobox: this });
         if (!open) {
+          this.stopAutoUpdate?.();
+          this.stopAutoUpdate = null;
           this.#setActive(-1);
           if (this.isSelect && !this.isMultiple) this.#syncSingleLabel();
+        } else {
+          this.#positionPicker();
+          this.#startAutoUpdate();
         }
       },
       { signal },
@@ -2884,6 +2908,8 @@ export class Combobox {
     } catch {
       this.#popoverEl().showPopover();
     }
+    this.#positionPicker();
+    this.#startAutoUpdate();
     openCombobox = this;
     return true;
   }
@@ -2918,8 +2944,9 @@ export class Combobox {
     }
 
     if (openCombobox === this) openCombobox = null;
+    this.stopAutoUpdate?.();
+    this.stopAutoUpdate = null;
     this.#popoverEl()?.remove();
-    this.anchorSnapshot?.restore();
 
     // Cleanup only touches real source options. An init that failed before the
     // datalist resolved (input without a valid `list`) never produced mirror

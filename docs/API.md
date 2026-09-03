@@ -248,11 +248,10 @@ Combobox.setDefaultMessages({ noResults: "Custom" }); // merge; missing keys kee
 No `fixed`, `dropdownParent`, `width`, `server`, `queryParam`, `serverDataKey`, `allowHtml`, Bootstrap modal options, or plugin registry.
 
 `anchor` is the narrow composition seam for a consumer-authored control shell.
-The picker still uses CSS Anchor Positioning, but takes its geometry and its
-internal-interaction boundary from that element. This lets an input-backed
-combobox sit beside application buttons/tokens without teaching the core what
-those adornments mean. The authored `style` attribute is restored exactly by
-`dispose()`.
+The picker uses that element as the `@lekoala/floating` reference for geometry
+and as its internal-interaction boundary. This lets an input-backed combobox sit
+beside application buttons/tokens without teaching the core what those adornments
+mean. The anchor is not mutated by the engine.
 
 ## Item shape
 

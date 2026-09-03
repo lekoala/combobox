@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
 const FEATURES = "/test/fixtures/features.html";
-const MODERN = "Modern Popover + Anchor support is required";
+const MODERN = "Modern Popover + floating placement support is required";
 
 test.beforeEach(async ({ page }) => {
   await setup(page, FEATURES);

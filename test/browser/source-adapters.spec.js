@@ -32,7 +32,7 @@ test.describe("lifecycle / dispose hardening", () => {
   });
 
   test("dispose restores the select, the explicit filter input and source attributes", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "explicit");
 
@@ -78,7 +78,7 @@ test.describe("lifecycle / dispose hardening", () => {
   });
 
   test("dispose is idempotent and safe on a detached subtree", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const state = await page.evaluate(async () => {
       const source = document.getElementById("wrapped");
@@ -112,7 +112,7 @@ test.describe("lifecycle / dispose hardening", () => {
   });
 
   test("a generated filter input is removed with the wrapper on dispose", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "wrapped");
     expect(await page.locator("#wrapped + .cb-control .cb-input").count()).toBe(1);
@@ -124,7 +124,7 @@ test.describe("lifecycle / dispose hardening", () => {
 
 test.describe("select single/multiple source mapping", () => {
   test("single select filter shows the selected label and owns the native value", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "wrapped");
     const input = page.locator(control("wrapped"));
@@ -137,7 +137,7 @@ test.describe("select single/multiple source mapping", () => {
   });
 
   test("explicit filter input is reused, unnamed and restored hidden on dispose", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "explicit");
     expect(await page.locator("#explicit + .cb-control .cb-input#explicit-filter").count()).toBe(1);
@@ -147,7 +147,7 @@ test.describe("select single/multiple source mapping", () => {
   });
 
   test("input[data-filter-for=id] discovery works", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "disc");
     await expect(page.locator("#disc + .cb-control .cb-input#disc-filter")).toHaveCount(1);
@@ -156,7 +156,7 @@ test.describe("select single/multiple source mapping", () => {
 
 test.describe("optgroup / disabled propagation", () => {
   test("disabled option and disabled optgroup children cannot be selected by mouse", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "grouped");
     await page.locator(control("grouped")).click();
@@ -176,7 +176,7 @@ test.describe("optgroup / disabled propagation", () => {
   });
 
   test("keyboard navigation skips disabled options and disabled optgroup children", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "grouped");
     await page.locator(control("grouped")).click();
@@ -212,7 +212,7 @@ test.describe("optgroup / disabled propagation", () => {
   });
 
   test("group headers render only for groups with visible results", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "grouped");
     const input = page.locator(control("grouped"));
@@ -229,7 +229,7 @@ test.describe("optgroup / disabled propagation", () => {
 
 test.describe("required / invalid / reset", () => {
   test("required validity follows the native single select", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "req");
     const formValid = (page) => page.evaluate(() => document.querySelector("#source-form").checkValidity());
@@ -249,7 +249,7 @@ test.describe("required / invalid / reset", () => {
   test("invalid event focuses the enhanced filter and clears aria-invalid after selection", async ({
     page,
   }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "req");
     await page.evaluate(() => document.querySelector("#source-form").requestSubmit());
@@ -269,7 +269,7 @@ test.describe("required / invalid / reset", () => {
   });
 
   test("form reset restores single label, datalist value and multiple chips", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "req");
     await init(page, "city2");
@@ -298,7 +298,7 @@ test.describe("required / invalid / reset", () => {
   });
 
   test("disabled and readonly source state is reflected on the filter input", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "dis");
     await init(page, "ro");
@@ -316,7 +316,7 @@ test.describe("required / invalid / reset", () => {
 
 test.describe("label/description accessibility transfer", () => {
   test("accessible name comes from a for-label; invented ids are stripped on dispose", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "explicit");
 
@@ -338,7 +338,7 @@ test.describe("label/description accessibility transfer", () => {
   });
 
   test("wrapped label (no for) names the combobox without an id", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "wrapped");
     const state = await page.evaluate(() => {
@@ -353,14 +353,14 @@ test.describe("label/description accessibility transfer", () => {
   });
 
   test("aria-label is used as fallback when there is no label association", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "arialabel");
     expect(await page.locator(control("arialabel")).getAttribute("aria-label")).toBe("Accessible label test");
   });
 
   test("source aria-labelledby wins as the accessible name", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     // DataGrid names its filter selects after the column header: <th id> +
     // aria-labelledby, with no <label> in sight. The enhanced input must reuse
@@ -380,7 +380,7 @@ test.describe("label/description accessibility transfer", () => {
   });
 
   test("aria-labelledby is restored on dispose for an authored filter input", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "labelledby-author");
     expect(await page.locator("#labelled-filter").getAttribute("aria-labelledby")).toBe("col-heading");
@@ -390,14 +390,14 @@ test.describe("label/description accessibility transfer", () => {
   });
 
   test("aria-describedby propagates to the filter input", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "described");
     expect(await page.locator(control("described")).getAttribute("aria-describedby")).toBe("desc-text");
   });
 
   test("label click focuses the enhanced filter input", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "explicit");
     await page.locator('label[for="explicit"]').click();
@@ -410,7 +410,7 @@ test.describe("label/description accessibility transfer", () => {
 
 test.describe("external sync()", () => {
   test("sync() reflects externally added and removed options", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "syncs");
 
@@ -443,7 +443,7 @@ test.describe("external sync()", () => {
   });
 
   test("removing an unselected option leaves the selection model untouched", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const state = await page.evaluate(() => {
       const select = document.getElementById("syncs");
@@ -472,7 +472,7 @@ test.describe("external sync()", () => {
   });
 
   test("sync() drops transient results back to the source catalogue", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const state = await page.evaluate(() => {
       const combo = Combobox.getOrCreateInstance(document.getElementById("syncs"));
@@ -488,7 +488,7 @@ test.describe("external sync()", () => {
   });
 
   test("selectionOrder=selected reconciles externally selected options in native order", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await page.evaluate(() => {
       const select = document.getElementById("syncs");
@@ -503,7 +503,7 @@ test.describe("external sync()", () => {
   });
 
   test("sync() reflects disabled/required/readonly toggled after init", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const state = await page.evaluate(() => {
       const dis = document.getElementById("dis");
@@ -526,7 +526,7 @@ test.describe("external sync()", () => {
 
 test.describe("free-form pattern / FormData envelope", () => {
   test("source input pattern stays the validation authority for free-form mode", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const state = await page.evaluate(() => {
       const source = document.getElementById("pat");
@@ -566,7 +566,7 @@ test.describe("free-form pattern / FormData envelope", () => {
   });
 
   test("generated filter inputs never leak into FormData", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const state = await page.evaluate(() => {
       Combobox.getOrCreateInstance(document.getElementById("syncs"));
@@ -593,7 +593,7 @@ test.describe("free-form pattern / FormData envelope", () => {
 
 test.describe("input+datalist blur with open picker", () => {
   test("blurring an open input combobox closes cleanly without a select-backed call", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const pageErrors = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -627,7 +627,7 @@ test.describe("observeSource", () => {
   });
 
   test("external mutations are batched into a single refresh", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "syncs", { observeSource: true });
     const result = await page.evaluate(async () => {
@@ -647,7 +647,7 @@ test.describe("observeSource", () => {
   test("observeSource covers attributes and structure; programmatic selection still needs sync()", async ({
     page,
   }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const state = await page.evaluate(async () => {
       const select = document.getElementById("syncs");
@@ -706,7 +706,7 @@ test.describe("observeSource", () => {
   });
 
   test("engine mutations are suppressed from a duplicated refresh", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const counts = await page.evaluate(async () => {
       const select = document.getElementById("syncs");
@@ -749,7 +749,7 @@ test.describe("observeSource", () => {
   });
 
   test("syncing while search is focused preserves focus and query", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     await init(page, "syncs", { observeSource: true });
     const input = page.locator(control("syncs"));
@@ -775,7 +775,7 @@ test.describe("observeSource", () => {
   });
 
   test("input+datalist observes the detached datalist and restores on dispose", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const state = await page.evaluate(async () => {
       const source = document.getElementById("city2");
@@ -807,7 +807,7 @@ test.describe("observeSource", () => {
   });
 
   test("multiple attribute changes are ignored while required is observed", async ({ page }) => {
-    test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const counts = await page.evaluate(async () => {
       const select = document.getElementById("syncs");

@@ -3,7 +3,7 @@ import { modernSupported, setup } from "./helpers.js";
 
 const FEATURES = "/test/fixtures/features.html";
 const IDENTITY = "/test/fixtures/identity.html";
-const MODERN = "Modern Popover + Anchor support is required";
+const MODERN = "Modern Popover + floating placement support is required";
 
 test("single reselect of the exact current option emits no native events", async ({ page }) => {
   await setup(page, FEATURES);

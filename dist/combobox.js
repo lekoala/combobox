@@ -1,5 +1,311 @@
 /*** @lekoala/combobox v0.1.0 - https://github.com/lekoala/combobox ***/
 (() => {
+  // node_modules/@lekoala/floating/src/floating.js
+  function crossAxisFor(side) {
+    return side === "top" || side === "bottom" ? "x" : "y";
+  }
+  function parsePlacement(placement) {
+    const [side, align = null] = placement.split("-");
+    return { side, align, crossAxis: crossAxisFor(side) };
+  }
+  function flipSide(side) {
+    return { top: "bottom", bottom: "top", left: "right", right: "left" }[side] || side;
+  }
+  function computeCoords(reference, floating, side, align, rtl, distance) {
+    const crossAxis = crossAxisFor(side);
+    const commonX = reference.x + reference.width / 2 - floating.width / 2;
+    const commonY = reference.y + reference.height / 2 - floating.height / 2;
+    const commonAlign = reference[crossAxis === "x" ? "width" : "height"] / 2 - floating[crossAxis === "x" ? "width" : "height"] / 2;
+    let coords;
+    switch (side) {
+      case "top":
+        coords = { x: commonX, y: reference.y - floating.height - distance };
+        break;
+      case "bottom":
+        coords = { x: commonX, y: reference.y + reference.height + distance };
+        break;
+      case "right":
+        coords = { x: reference.x + reference.width + distance, y: commonY };
+        break;
+      case "left":
+        coords = { x: reference.x - floating.width - distance, y: commonY };
+        break;
+      default:
+        coords = { x: reference.x, y: reference.y };
+    }
+    if (align === "start" || align === "end") {
+      const direction = (rtl && crossAxis === "x" ? -1 : 1) * (align === "end" ? 1 : -1);
+      coords[crossAxis] += commonAlign * direction;
+    }
+    return coords;
+  }
+  function getInlineOverflow(coords, floating, minX, maxX) {
+    return Math.max(minX - coords.x, 0) + Math.max(coords.x + floating.width - maxX, 0);
+  }
+  function isRTL(element) {
+    const direction = "dir" in element ? element.dir : "";
+    if (direction === "rtl")
+      return true;
+    if (direction === "ltr")
+      return false;
+    const win = element.ownerDocument?.defaultView;
+    if (win?.CSS?.supports?.("selector(:dir(rtl))") && typeof element.matches === "function") {
+      return element.matches(":dir(rtl)");
+    }
+    return Boolean(win?.Element && element instanceof win.Element && win.getComputedStyle(element).direction === "rtl");
+  }
+  var STABLE_SCROLLBAR_MAX_WIDTH = 25;
+  var NARROW_INLINE_FLIP_FALLBACK = 128;
+  function getViewportBoundary(doc) {
+    const win = doc.defaultView;
+    if (!win)
+      return null;
+    const docEl = doc.documentElement;
+    const visualViewport = win.visualViewport;
+    const x = visualViewport?.offsetLeft || 0;
+    const y = visualViewport?.offsetTop || 0;
+    let width = visualViewport?.width || docEl.clientWidth || win.innerWidth;
+    const height = visualViewport?.height || docEl.clientHeight || win.innerHeight;
+    const reserved = doc.compatMode === "BackCompat" ? width - docEl.clientWidth : docEl.clientWidth - docEl.getBoundingClientRect().width;
+    if (reserved > 0 && reserved <= STABLE_SCROLLBAR_MAX_WIDTH) {
+      const gutter = win.getComputedStyle?.(docEl).scrollbarGutter;
+      if (gutter && gutter !== "auto")
+        width -= reserved;
+    }
+    return { x, y, width, height, right: x + width, bottom: y + height };
+  }
+  function getBoundary(reference, options) {
+    return options.scope ? options.scope.getBoundingClientRect() : getViewportBoundary(reference.ownerDocument);
+  }
+  function clampToBoundary(position, size, start, end, padding) {
+    const paddedMin = start + padding;
+    const paddedMax = end - size - padding;
+    const fitsPadded = paddedMax >= paddedMin;
+    const min = fitsPadded ? paddedMin : start;
+    const max = fitsPadded ? paddedMax : end - size;
+    return Math.max(min, Math.min(position, max));
+  }
+  function arrowPercent(referenceCenter, boxStart, size) {
+    if (!size)
+      return 50;
+    const percent = (referenceCenter - boxStart) / size * 100;
+    return Math.round(Math.min(100, Math.max(0, percent)) * 1000) / 1000;
+  }
+  function isOutsideBoundary(rect, boundary) {
+    return rect.right < boundary.x || rect.left > boundary.right || rect.bottom < boundary.y || rect.top > boundary.bottom;
+  }
+  function getAvailableHeight(referenceRect, side, boundary, distance, padding) {
+    if (side === "top") {
+      return Math.max(0, referenceRect.top - boundary.y - distance - padding);
+    }
+    if (side === "bottom") {
+      return Math.max(0, boundary.bottom - referenceRect.bottom - distance - padding);
+    }
+    return Math.max(0, boundary.height - padding * 2);
+  }
+  function isVisible(element) {
+    if (element.hidden)
+      return false;
+    if (typeof element.checkVisibility === "function")
+      return element.checkVisibility();
+    return element.getClientRects().length > 0;
+  }
+  function getFloatingSize(floating) {
+    const width = floating.offsetWidth;
+    const height = floating.offsetHeight;
+    if (width && height)
+      return { width, height };
+    const rect = floating.getBoundingClientRect();
+    return { width: width || rect.width, height: height || rect.height };
+  }
+  var trackers = new WeakMap;
+  function createTracker(doc) {
+    const win = doc.defaultView;
+    if (!win)
+      throw new TypeError("floating must belong to a document with a browsing context");
+    const subscriptions = new Set;
+    const pending = new Map;
+    const ResizeObserverCtor = win.ResizeObserver;
+    let tick = false;
+    let listening = false;
+    const visualViewport = win.visualViewport;
+    function queue(subscription, type) {
+      let types = pending.get(subscription);
+      if (!types) {
+        types = new Set;
+        pending.set(subscription, types);
+      }
+      types.add(type);
+    }
+    function scheduleFlush() {
+      if (tick)
+        return;
+      tick = true;
+      win.requestAnimationFrame(() => {
+        const notifications = [...pending];
+        pending.clear();
+        tick = false;
+        for (const [subscription, types] of notifications) {
+          if (!subscriptions.has(subscription) || !subscription.floating.isConnected)
+            continue;
+          for (const type of types)
+            subscription.callback({ type });
+        }
+      });
+    }
+    function notifyAll(type) {
+      for (const subscription of subscriptions)
+        queue(subscription, type);
+      scheduleFlush();
+    }
+    function observeSizes(subscription) {
+      if (!ResizeObserverCtor)
+        return null;
+      const primed = new Set;
+      const observer = new ResizeObserverCtor((entries) => {
+        let changed = false;
+        for (const entry of entries) {
+          if (primed.has(entry.target))
+            changed = true;
+          else
+            primed.add(entry.target);
+        }
+        if (!changed)
+          return;
+        queue(subscription, "element-resize");
+        scheduleFlush();
+      });
+      const { reference, floating } = subscription;
+      if (reference)
+        observer.observe(reference);
+      if (floating !== reference)
+        observer.observe(floating);
+      return observer;
+    }
+    const onScroll = () => notifyAll("scroll");
+    const onResize = () => notifyAll("resize");
+    function startListening() {
+      if (listening)
+        return;
+      doc.addEventListener("scroll", onScroll, { passive: true, capture: true });
+      win.addEventListener("resize", onResize, { passive: true });
+      visualViewport?.addEventListener("scroll", onScroll, { passive: true });
+      visualViewport?.addEventListener("resize", onResize, { passive: true });
+      listening = true;
+    }
+    function stopListening() {
+      if (!listening)
+        return;
+      doc.removeEventListener("scroll", onScroll, { capture: true });
+      win.removeEventListener("resize", onResize);
+      visualViewport?.removeEventListener("scroll", onScroll);
+      visualViewport?.removeEventListener("resize", onResize);
+      listening = false;
+    }
+    return {
+      add(reference, floating, callback) {
+        const subscription = { reference, floating, callback };
+        subscriptions.add(subscription);
+        startListening();
+        const observer = observeSizes(subscription);
+        let stopped = false;
+        return () => {
+          if (stopped)
+            return;
+          stopped = true;
+          subscriptions.delete(subscription);
+          pending.delete(subscription);
+          observer?.disconnect();
+          if (subscriptions.size === 0)
+            stopListening();
+        };
+      }
+    };
+  }
+  function trackerFor(element) {
+    const doc = element.ownerDocument;
+    let tracker = trackers.get(doc);
+    if (!tracker) {
+      tracker = createTracker(doc);
+      trackers.set(doc, tracker);
+    }
+    return tracker;
+  }
+  function autoUpdate(reference, floating, callback) {
+    if (!floating?.ownerDocument) {
+      throw new TypeError("autoUpdate() expects a floating HTMLElement");
+    }
+    if (reference && reference.ownerDocument !== floating.ownerDocument) {
+      throw new TypeError("reference and floating must belong to the same document");
+    }
+    if (typeof callback !== "function")
+      throw new TypeError("callback must be a function");
+    return trackerFor(floating).add(reference, floating, callback);
+  }
+  function reposition(reference, floating, options = {}) {
+    if (!isVisible(floating))
+      return false;
+    const placement = options.placement || "bottom-start";
+    const distance = options.distance || 0;
+    const flip = options.flip !== false;
+    const shift = options.shift !== false;
+    const shiftPadding = options.shiftPadding ?? 4;
+    let { side, align, crossAxis } = parsePlacement(placement);
+    const rtl = align ? isRTL(reference) : false;
+    const rects = reference.getClientRects();
+    const referenceRect = side === "bottom" ? rects[rects.length - 1] : rects[0];
+    if (!referenceRect)
+      return false;
+    const boundary = getBoundary(reference, options);
+    if (!boundary || isOutsideBoundary(referenceRect, boundary))
+      return false;
+    const floatingRect = getFloatingSize(floating);
+    let coords = computeCoords(referenceRect, floatingRect, side, align, rtl, distance);
+    if (flip) {
+      const x = Math.ceil(coords.x);
+      const y = Math.ceil(coords.y);
+      if (crossAxis === "x" && (y < boundary.y || y + floatingRect.height >= boundary.bottom) || crossAxis === "y" && (x < boundary.x || x + floatingRect.width >= boundary.right)) {
+        side = flipSide(side);
+        coords = computeCoords(referenceRect, floatingRect, side, align, rtl, distance);
+      }
+      if (crossAxis === "y" && (coords.x < boundary.x || coords.x + floatingRect.width > boundary.right) && boundary.width - floatingRect.width < NARROW_INLINE_FLIP_FALLBACK) {
+        side = "top";
+        crossAxis = "x";
+        coords = computeCoords(referenceRect, floatingRect, side, align, rtl, distance);
+      }
+    }
+    if (crossAxis === "x" && shift && align) {
+      const minX = boundary.x + shiftPadding;
+      const maxX = boundary.right - shiftPadding;
+      const currentOverflow = getInlineOverflow(coords, floatingRect, minX, maxX);
+      if (currentOverflow > 0) {
+        const nextAlign = align === "end" ? "start" : "end";
+        const candidate = computeCoords(referenceRect, floatingRect, side, nextAlign, rtl, distance);
+        if (getInlineOverflow(candidate, floatingRect, minX, maxX) < currentOverflow) {
+          align = nextAlign;
+          coords = candidate;
+        }
+      }
+    }
+    if (shift) {
+      coords.x = clampToBoundary(coords.x, floatingRect.width, boundary.x, boundary.right, shiftPadding);
+      if (crossAxis === "y") {
+        coords.y = clampToBoundary(coords.y, floatingRect.height, boundary.y, boundary.bottom, shiftPadding);
+      }
+    }
+    const arrowX = arrowPercent(referenceRect.x + referenceRect.width / 2, coords.x, floatingRect.width);
+    const arrowY = arrowPercent(referenceRect.y + referenceRect.height / 2, coords.y, floatingRect.height);
+    const availableHeight = getAvailableHeight(referenceRect, side, boundary, distance, shiftPadding);
+    const { style } = floating;
+    style.left = `${coords.x}px`;
+    style.top = `${coords.y}px`;
+    style.setProperty("--arrow-x", `${arrowX}%`);
+    style.setProperty("--arrow-y", `${arrowY}%`);
+    style.setProperty("--available-height", `${availableHeight}px`);
+    floating.dataset.placement = align ? `${side}-${align}` : side;
+    return true;
+  }
+
   // src/helpers.js
   function hasOwn(object, key) {
     return Object.hasOwn(object, key);
@@ -202,7 +508,7 @@
     anchor: null
   };
   function supportsModernCombobox() {
-    return typeof HTMLElement.prototype.showPopover === "function" && typeof HTMLElement.prototype.hidePopover === "function" && CSS.supports("position-area: bottom") && CSS.supports("inline-size: anchor-size(width)") && CSS.supports("position-try: flip-block");
+    return typeof HTMLElement.prototype.showPopover === "function" && typeof HTMLElement.prototype.hidePopover === "function";
   }
   function emit(target, type, detail = {}, { cancelable = false } = {}) {
     const event = new CustomEvent(type, {
@@ -347,7 +653,6 @@
       this.query = "";
       this.id = ++uid;
       this.mode = options.mode === "fallback" || !Combobox.supported ? "fallback" : "enhanced";
-      this.anchorName = `--combobox-${this.id}`;
       this.suppressReopen = false;
       this.composing = false;
       this._sourceObserver = null;
@@ -375,7 +680,7 @@
       this.fallbackControl = null;
       this.control = null;
       this.anchor = null;
-      this.anchorSnapshot = null;
+      this.stopAutoUpdate = null;
       this.input = null;
       this.chips = null;
       this.datalist = null;
@@ -397,10 +702,6 @@
           this.sourceSnapshot = view.sourceSnapshot;
           const requestedAnchor = this.options.anchor;
           this.anchor = requestedAnchor instanceof HTMLElement ? requestedAnchor : view.control || view.input;
-          if (this.anchor !== view.control && this.anchor !== view.input) {
-            this.anchorSnapshot = captureAttributes(this.anchor, ["style"]);
-          }
-          this.anchor.style.setProperty("anchor-name", this.anchorName);
           const picker = this.#createPicker();
           this.popover = picker.popover;
           this.listbox = picker.listbox;
@@ -802,7 +1103,6 @@
       const popover = document.createElement("div");
       popover.className = "cb-popover";
       popover.popover = "manual";
-      popover.style.setProperty("position-anchor", this.anchorName);
       const listbox = document.createElement("div");
       listbox.className = "cb-listbox";
       listbox.role = "listbox";
@@ -822,6 +1122,25 @@
       this.#inputEl().setAttribute("aria-expanded", "false");
       this.#inputEl().setAttribute("aria-controls", listbox.id);
       return { popover, listbox, status };
+    }
+    #positionPicker() {
+      const anchor = this.anchor || this.control || this.#inputEl();
+      const popover = this.#popoverEl();
+      const width = anchor.getBoundingClientRect().width;
+      popover.style.inlineSize = `${width}px`;
+      return reposition(anchor, popover, {
+        placement: "bottom-start",
+        distance: 4,
+        flip: true,
+        shift: true
+      });
+    }
+    #startAutoUpdate() {
+      this.stopAutoUpdate?.();
+      const anchor = this.anchor || this.control || this.#inputEl();
+      this.stopAutoUpdate = autoUpdate(anchor, this.#popoverEl(), () => {
+        this.#positionPicker();
+      });
     }
     #bind() {
       const signal = this.abortController.signal;
@@ -853,9 +1172,14 @@
         this.#inputEl().setAttribute("aria-expanded", String(open));
         emit(this.source, open ? "combobox:open" : "combobox:close", { combobox: this });
         if (!open) {
+          this.stopAutoUpdate?.();
+          this.stopAutoUpdate = null;
           this.#setActive(-1);
           if (this.isSelect && !this.isMultiple)
             this.#syncSingleLabel();
+        } else {
+          this.#positionPicker();
+          this.#startAutoUpdate();
         }
       }, { signal });
       if (this.isSelect) {
@@ -1970,6 +2294,8 @@
       } catch {
         this.#popoverEl().showPopover();
       }
+      this.#positionPicker();
+      this.#startAutoUpdate();
       openCombobox = this;
       return true;
     }
@@ -2003,8 +2329,9 @@
       }
       if (openCombobox === this)
         openCombobox = null;
+      this.stopAutoUpdate?.();
+      this.stopAutoUpdate = null;
       this.#popoverEl()?.remove();
-      this.anchorSnapshot?.restore();
       if (this.isSelect || this.datalist instanceof HTMLDataListElement) {
         for (const item of this.#sourceItems()) {
           item.option?.removeAttribute("data-filtered");

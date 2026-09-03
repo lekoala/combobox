@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 test("hostile option labels, values and optgroup labels render literally and never execute", async ({
   page,
 }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
 
@@ -53,7 +53,7 @@ test("hostile option labels, values and optgroup labels render literally and nev
 test("hostile remote labels, values and data stay literal in rows and materialized options", async ({
   page,
 }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
 
@@ -111,7 +111,7 @@ test("hostile remote labels, values and data stay literal in rows and materializ
 });
 
 test("hostile create and state-message text renders literally", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
 

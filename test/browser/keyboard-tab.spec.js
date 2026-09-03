@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("default tabSelect (false): Tab moves focus out without selecting", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("capped"));
@@ -35,7 +35,7 @@ test("default tabSelect (false): Tab moves focus out without selecting", async (
 test("tabSelect true: Tab commits the active option, keeps focus, hides, and fires native events once", async ({
   page,
 }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   await page.evaluate(() => {
     const select = document.getElementById("capped");
@@ -70,7 +70,7 @@ test("tabSelect true: Tab commits the active option, keeps focus, hides, and fir
 });
 
 test("tabSelect true: Tab with nothing to commit keeps native traversal", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   await page.evaluate(() => {
     Combobox.getOrCreateInstance(document.getElementById("capped"), { tabSelect: true });
@@ -92,7 +92,7 @@ test("tabSelect true: Tab with nothing to commit keeps native traversal", async 
 });
 
 test("tabSelect true: preventDefault only when a commit is possible", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const state = await page.evaluate(async () => {
     const select = document.getElementById("capped");
@@ -126,7 +126,7 @@ test("tabSelect true: preventDefault only when a commit is possible", async ({ p
 });
 
 test("tabSelect true: IME composition never blocks or commits Tab", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const state = await page.evaluate(async () => {
     const select = document.getElementById("capped");

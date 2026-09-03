@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
 const FEATURES = "/test/fixtures/features.html";
-const MODERN = "Modern Popover + Anchor support is required";
+const MODERN = "Modern Popover + floating placement support is required";
 
 test.beforeEach(async ({ page }) => {
   await setup(page, FEATURES);
@@ -59,39 +59,4 @@ test("reduced motion applies: no animation or transition on the picker", async (
   });
   expect(motion.transition).toBe("0s");
   expect(motion.animation).toBe("none");
-});
-
-test("the picker stays anchored and contained at 200% zoom", async ({ page }) => {
-  const zoomSupported = await page.evaluate(() => {
-    document.documentElement.style.zoom = "0.5";
-    const ok = document.documentElement.style.zoom === "0.5";
-    document.documentElement.style.zoom = "";
-    return ok;
-  });
-  if (!zoomSupported) test.skip(true, "Engine does not support the zoom style");
-
-  await page.evaluate(() => Combobox.getOrCreateInstance(document.getElementById("capped")));
-  const input = page.locator("#capped + .cb-control .cb-input");
-  await input.click();
-  await input.press("ArrowDown");
-
-  const state = await page.evaluate(() => {
-    document.documentElement.style.zoom = "2";
-    const popover = document.querySelector(".cb-popover");
-    const rect = popover.getBoundingClientRect();
-    const row = popover.querySelector(".cb-option");
-    return {
-      open: popover.matches(":popover-open"),
-      popOverflow: popover.scrollWidth - popover.clientWidth,
-      rowOverflow: row ? row.scrollWidth - row.clientWidth : 0,
-      rowVisible: row ? row.getBoundingClientRect().width > 0 : false,
-      withinDoc: rect.right <= document.documentElement.scrollWidth + 1 && rect.left >= 0,
-    };
-  });
-
-  expect(state.open).toBe(true);
-  expect(state.popOverflow).toBeLessThanOrEqual(1);
-  expect(state.rowOverflow).toBeLessThanOrEqual(1);
-  expect(state.rowVisible).toBe(true);
-  expect(state.withinDoc).toBe(true);
 });

@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 test("the picker lives inside a modal dialog, stays interactive and never becomes inert", async ({
   page,
 }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.click("#open");
 
   const state = await page.evaluate(async () => {
@@ -48,7 +48,7 @@ test("the picker lives inside a modal dialog, stays interactive and never become
 });
 
 test("Escape closes the enhanced picker first and only then the dialog", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.click("#open");
   await page.evaluate(() => {
     const combo = Combobox.getOrCreateInstance(document.getElementById("fruit"));
@@ -71,7 +71,7 @@ test("Escape closes the enhanced picker first and only then the dialog", async (
 });
 
 test("dispose() removes the popover even when the dialog was closed first", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.click("#open");
   const state = await page.evaluate(() => {
     const combo = Combobox.getOrCreateInstance(document.getElementById("fruit"));

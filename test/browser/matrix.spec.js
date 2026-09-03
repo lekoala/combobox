@@ -3,7 +3,7 @@ import { setup } from "./helpers.js";
 
 const FEATURES = "/test/fixtures/features.html";
 
-test("auto mode selects enhanced when Popover+Anchor are supported and native fallback otherwise", async ({
+test("auto mode selects enhanced when Popover is supported and native fallback otherwise", async ({
   page,
 }) => {
   await setup(page, FEATURES);

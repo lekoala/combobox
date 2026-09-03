@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 test("three preselected duplicate values are three chips, three selectedOptions, three values and three FormData entries", async ({
   page,
 }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("triple");
     const combo = Combobox.getOrCreateInstance(select);
@@ -32,7 +32,7 @@ test("three preselected duplicate values are three chips, three selectedOptions,
 });
 
 test("successive select('2') picks each distinct option, then false when exhausted", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("sequenced");
     const combo = Combobox.getOrCreateInstance(select);
@@ -55,7 +55,7 @@ test("successive select('2') picks each distinct option, then false when exhaust
 });
 
 test("two options sharing value AND label stay independent identities", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("sametwins");
     const combo = Combobox.getOrCreateInstance(select);
@@ -74,7 +74,7 @@ test("two options sharing value AND label stay independent identities", async ({
 });
 
 test("removing the middle duplicate deselects only that exact option", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("triple");
     const combo = Combobox.getOrCreateInstance(select);
@@ -102,7 +102,7 @@ test("removing the middle duplicate deselects only that exact option", async ({ 
 test("selectionOrder:'selected' keeps the three occurrences and moves the middle identity", async ({
   page,
 }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("ordered");
     const combo = Combobox.getOrCreateInstance(select, { selectionOrder: "selected" });
@@ -120,7 +120,7 @@ test("selectionOrder:'selected' keeps the three occurrences and moves the middle
 });
 
 test("getSelectedItems() reports distinct labels despite identical values", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("sequenced");
     const combo = Combobox.getOrCreateInstance(select);
@@ -134,7 +134,7 @@ test("getSelectedItems() reports distinct labels despite identical values", asyn
 });
 
 test("form reset restores each defaultSelected occurrence", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(async () => {
     const select = document.getElementById("triple");
     const combo = Combobox.getOrCreateInstance(select);
@@ -153,7 +153,7 @@ test("form reset restores each defaultSelected occurrence", async ({ page }) => 
 });
 
 test("maxItems counts selected options, not unique values", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("maxed");
     const combo = Combobox.getOrCreateInstance(select, { maxItems: 2 });
@@ -174,7 +174,7 @@ test("maxItems counts selected options, not unique values", async ({ page }) => 
 });
 
 test("setOptions() conserves [2,2,2] instead of deduping by value", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("rebuilt");
     const combo = Combobox.getOrCreateInstance(select);
@@ -194,7 +194,7 @@ test("setOptions() conserves [2,2,2] instead of deduping by value", async ({ pag
 });
 
 test("single-select picking the second duplicate keeps its label and selectedIndex", async ({ page }) => {
-  test.skip(!(await modernSupported(page)), "Modern Popover + Anchor support is required");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   const state = await page.evaluate(() => {
     const select = document.getElementById("single");
     const combo = Combobox.getOrCreateInstance(select);

@@ -175,13 +175,16 @@ Why manual instead of auto:
 - deterministic outside-click + Escape handling is small;
 - top-layer behavior remains native.
 
-CSS Anchor Positioning owns geometry:
+`@lekoala/floating` owns geometry:
 
 - anchor = whole visual control (important for multi/chips);
 - focus/ARIA owner = search input;
 - picker width derives from anchor width;
 - block-axis fallback can flip above;
-- no JS geometry calculations.
+- `autoUpdate()` follows scrolling, viewport changes and element resizes while open.
+
+The Popover remains a native top-layer/lifecycle primitive. The floating engine
+writes fixed viewport coordinates and does not open, close or dismiss the picker.
 
 ## 5. Filtering model
 
@@ -334,8 +337,8 @@ Allowed fallback work:
 
 Not allowed:
 
-- fixed-position menu engine;
-- scroll/resize re-positioning;
+- a second fixed-position menu engine;
+- component-owned scroll/resize re-positioning;
 - modal parent hacks;
 - partial recreation of advanced enhanced behavior.
 

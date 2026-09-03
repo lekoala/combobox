@@ -67,8 +67,8 @@ The wrapper owns only lifecycle (upgrade/dispose); the native source never chang
 | `autoselectFirst` | Divergence (documented) | default `false` (select-first requires ArrowDown); legacy default was `true` |
 | `updateOnSelect` | Mostly drop | select filter and form value are intentionally separate |
 | `highlightTyped` | Renderer/helper | not core state |
-| `fullWidth` | Drop | CSS Anchor sizing |
-| `fixed` | Drop | Popover + Anchor |
+| `fullWidth` | Drop | floating reference width |
+| `fixed` | Drop | Popover + floating placement |
 | `fuzzy` | Keep, native | `match: "fuzzy"` — lightweight subsequence matching, no ranking; `score`/`sort` remain for custom ranking |
 | `startsWith` | Keep | `match: "startswith"` |
 | `singleBadge` | Drop | renderer/skin |
@@ -157,7 +157,7 @@ illustrations, the coverage matrix in `TESTING.md` is the proof.
 | RTL | covered | logical CSS + physical keyboard tests |
 | custom element integration | covered | `<combo-box>` wrapper |
 | clear API / external control | covered | `clear()` |
-| `fullWidth`/`fixed`/`dropdownParent` | intentionally dropped | Popover top layer + CSS Anchor Positioning |
+| `fullWidth`/`fixed`/`dropdownParent` | intentionally dropped | Popover top layer + `@lekoala/floating` |
 | fuzzy | covered | native `match: "fuzzy"` subsequence matching |
 | Bootstrap modal / positioning hacks | intentionally dropped | we anchor inside the modal via the `<dialog>` parent instead |
 
@@ -177,7 +177,7 @@ New: `shouldLoad(query)` or cancellable `beforeload`.
 
 ### `dropdownParent`, modal tabindex and width fixes
 
-Drop. Top layer + CSS Anchor Positioning own popup geometry/stacking.
+Drop. The Popover owns the top layer and `@lekoala/floating` owns popup geometry.
 
 ### Manual `new Option(...).trigger("change")` after modal creation
 
