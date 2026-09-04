@@ -50,7 +50,7 @@ Do not use happy-dom/jsdom as a substitute for browser interaction tests.
 - [x] `getInstance/getOrCreateInstance` return stable instance.
 - [x] explicit sibling filter input is reused, unhidden, unnamed, and restored on dispose.
 - [x] generated filter input is removed on dispose.
-- [x] datalist is detached in enhanced mode and exactly restored on dispose.
+- [x] datalist stays discoverable in enhanced mode while its native `list` liaison is removed and exactly restored on dispose.
 - [x] source tabindex/aria/classes restored on dispose.
 - [x] repeated init/dispose does not duplicate listeners/DOM.
 - [x] dynamic fragment initialization works with final scoped-init API (`init(root, selector)`, `init(root | [element, …])`, idempotence without reconfiguration).
@@ -94,7 +94,7 @@ Prior-art coverage confirms close-after-select variants, Escape, reopen-after-cl
 - [x] Arrow Down/Up walks enabled results and skips disabled options/groups.
 - [x] `aria-activedescendant` follows active result.
 - [x] active descendant is removed on close/no active item.
-- [x] Enter selects active result.
+- [x] Enter selects an active result and preserves native form submission when there is nothing to commit.
 - [x] Enter create behavior only runs when eligible.
 - [x] Escape closes without corrupting source value.
 - [x] Home/End stay native text-editing in the editable input (caret per ARIA APG); picker navigation uses ArrowDown/Up and PageUp/PageDown (`picker-keyboard.spec.js`).
@@ -270,7 +270,7 @@ A prior-art regression physically reorders selected `<option>`s; our tests delib
 - [x] headers appear only when group has visible results.
 - [x] disabled optgroup makes descendants unselectable.
 - [x] filtering removes empty headers.
-- [x] remote group values render without requiring native optgroups until selected (`group-transient.spec.js`: transient `group` renders a `.cb-group` header; selecting materializes the native optgroup).
+- [x] remote group values render in labelled ARIA group containers without requiring native optgroups until selected (`group-transient.spec.js`: transient `group` owns its option rows and selecting materializes the native optgroup).
 - [x] group renderer is safe (`group-transient.spec.js`: a Node return is used, a string return stays text — hostile strings covered by `xss.spec.js`).
 
 ## P. DOM sync / dynamic updates
@@ -292,7 +292,7 @@ These mirror the concrete DOM-change regression scenarios captured in REFERENCES
 - [x] clearing makes it invalid again.
 - [x] form `checkValidity()` tracks source, not generated input fiction.
 - [x] invalid directs focus to interaction input.
-- [x] form reset restores initial selections/input value/chips.
+- [x] form reset restores initial selections, input/query/filter state and chips.
 - [x] source input `pattern` remains authoritative for free-form mode (`source-adapters.spec.js` `#pat` case).
 - [x] FormData contains source `name` once/multiple as expected (source-order assertion in `order.spec.js`).
 - [x] generated search inputs never appear in FormData (`source-adapters.spec.js`: literal `FormData` enumeration matches the form's named controls, and every `.cb-input` is nameless).

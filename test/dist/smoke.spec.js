@@ -27,11 +27,11 @@ test("fallback keeps native controls and cheap create input", async ({ page }) =
   );
 });
 
-test("enhanced input detaches native datalist and popover stays open", async ({ page }) => {
+test("enhanced input keeps its datalist discoverable and popover stays open", async ({ page }) => {
   await page.goto(DEMO_HTML);
   test.skip(!(await demoEnhanced(page)), "Modern Popover + floating placement support is required");
 
-  await expect(page.locator("#cities")).toHaveCount(0);
+  await expect(page.locator("#cities")).toHaveCount(1);
   await expect(page.locator("#city")).not.toHaveAttribute("list");
 
   await page.locator("#city").click();

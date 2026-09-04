@@ -139,7 +139,7 @@ test("combobox:ready fires and whenReady() resolves after dynamic insertion", as
   expect(state).toEqual([true, true]);
 });
 
-test("dispose on removal restores the detached datalist source", async ({ page }) => {
+test("dispose on removal restores the datalist liaison inside a detached wrapper", async ({ page }) => {
   await setup(page, ELEMENTS_HTML);
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
@@ -151,13 +151,13 @@ test("dispose on removal restores the detached datalist source", async ({ page }
     document.body.append(wrap);
     await wrap.whenReady();
     const enhanced = {
-      datalistDetached: wrap.querySelector("#dispose-cities") === null,
+      datalistPresent: wrap.querySelector("#dispose-cities") !== null,
       listRemoved: !wrap.querySelector("#dispose-city").hasAttribute("list"),
     };
     wrap.remove();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    // The wrapper subtree is detached, but dispose() must have restored the
-    // datalist linkage inside it before dropping the engine instance.
+    // The wrapper subtree is detached, but dispose() must still restore the
+    // input-to-datalist liaison before dropping the engine instance.
     return {
       enhanced,
       datalistRestored: wrap.querySelector("#dispose-cities") !== null,
@@ -166,7 +166,7 @@ test("dispose on removal restores the detached datalist source", async ({ page }
     };
   });
 
-  expect(state.enhanced.datalistDetached).toBe(true);
+  expect(state.enhanced.datalistPresent).toBe(true);
   expect(state.enhanced.listRemoved).toBe(true);
   expect(state.datalistRestored).toBe(true);
   expect(state.listRestored).toBe(true);

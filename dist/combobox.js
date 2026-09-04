@@ -856,7 +856,6 @@
       };
       this.original = {
         filterInputPlaceholder: null,
-        datalistPlaceholder: null,
         inventedLabels: []
       };
       this.boundLabels = [];
@@ -983,10 +982,6 @@
         source.placeholder = this.options.placeholder ?? "";
       source.removeAttribute("list");
       source.autocomplete = "off";
-      const datalistPlaceholder = document.createComment(`combobox-datalist-${this.id}`);
-      this.original.datalistPlaceholder = datalistPlaceholder;
-      datalist.before(datalistPlaceholder);
-      datalist.remove();
       source.classList.add("cb-text-control");
       return {
         control: null,
@@ -1270,7 +1265,6 @@
             this.#inputEl().focus();
           }, { signal });
         }
-        this.source.form?.addEventListener("reset", () => queueMicrotask(() => this.refresh()), { signal });
         if (this.isMultiple && this.options.selectionOrder === "selected" && this.source.name && this.source.form) {
           this.source.form.addEventListener("formdata", (event) => {
             event.formData.delete(this.source.name);
@@ -1284,6 +1278,19 @@
           this.#inputEl().focus();
         }, { signal });
       }
+      this.source.form?.addEventListener("reset", () => queueMicrotask(() => {
+        if (instances.get(this.source) !== this)
+          return;
+        this.searchGeneration++;
+        this.loadController?.abort();
+        this.loading = false;
+        this.nextCursor = null;
+        this.clearResults();
+        if (this.isSelect)
+          this.#inputEl().value = "";
+        this.query = this.isSelect ? "" : this.source.value;
+        this.refresh();
+      }), { signal });
     }
     handleEvent(event) {
       if (event.currentTarget === this.#inputEl())
@@ -1441,26 +1448,35 @@
       if (event.key === "Enter" && this.isOpen()) {
         if (event.isComposing || this.composing)
           return;
-        event.preventDefault();
         if (this.isMultiple && this.#separatorsActive()) {
-          this.#commitEnterTokens();
-          return;
+          const tokenCommit = this.#resolveTokenCommit();
+          if (tokenCommit) {
+            event.preventDefault();
+            this.#commitEnterTokens(tokenCommit);
+            return;
+          }
         }
         const active = this.visibleItems[this.activeIndex];
-        if (active)
+        if (active) {
+          event.preventDefault();
           this.#selectItem(active);
-        else if (this.#canCreate(this.#inputEl().value, this.#inputEl()))
+        } else if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
+          event.preventDefault();
           this.#createItem(this.#inputEl().value.trim());
+        }
         return;
       }
       if (event.key === "Tab" && this.isOpen()) {
         if (this.options.tabSelect) {
           if (event.isComposing || this.composing)
             return;
-          if (this.isMultiple && this.#separatorsActive() && this.#inputEl().value.trim()) {
-            event.preventDefault();
-            this.#commitEnterTokens();
-            return;
+          if (this.isMultiple && this.#separatorsActive()) {
+            const tokenCommit = this.#resolveTokenCommit();
+            if (tokenCommit) {
+              event.preventDefault();
+              this.#commitEnterTokens(tokenCommit);
+              return;
+            }
           }
           const active = this.visibleItems[this.activeIndex];
           if (active) {
@@ -1655,15 +1671,27 @@
         this.#renderError();
         return;
       }
-      let previousGroup = null;
+      let currentGroup = null;
+      let currentGroupName = null;
       for (const [index, item] of this.visibleItems.entries()) {
-        if (item.group && item.group !== previousGroup) {
-          const group = document.createElement("div");
-          group.className = "cb-group";
-          group.setAttribute("role", "presentation");
-          setContent(group, this.options.render.group?.(item.group, { combobox: this }) ?? item.group);
-          this.#listEl().append(group);
-          previousGroup = item.group;
+        if (item.group) {
+          if (!currentGroup || item.group !== currentGroupName) {
+            currentGroup = document.createElement("div");
+            currentGroup.className = "cb-option-group";
+            currentGroup.role = "group";
+            const group = document.createElement("div");
+            group.className = "cb-group";
+            group.id = `combobox-group-${this.id}-${index}`;
+            group.setAttribute("role", "presentation");
+            setContent(group, this.options.render.group?.(item.group, { combobox: this }) ?? item.group);
+            currentGroup.setAttribute("aria-labelledby", group.id);
+            currentGroup.append(group);
+            this.#listEl().append(currentGroup);
+            currentGroupName = item.group;
+          }
+        } else {
+          currentGroup = null;
+          currentGroupName = null;
         }
         const option = document.createElement("div");
         option.className = "cb-option";
@@ -1686,7 +1714,7 @@
         label.className = "cb-option-label";
         setContent(label, rendered ?? item.label);
         option.append(label);
-        this.#listEl().append(option);
+        (currentGroup || this.#listEl()).append(option);
       }
       if (!this.filteredItems.length) {
         if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
@@ -2083,10 +2111,23 @@
       const entries = final && rest.trim() ? [...done, { text: rest.trim(), sep: "" }] : done;
       return { entries, rest: final ? "" : rest };
     }
-    async#processTokens(value, { final = false } = {}) {
+    #resolveTokenCommit() {
+      if (this.options.maxItems > 0 && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
+        return null;
+      }
+      const resolved = this.#resolveTokens(this.#inputEl().value, true);
+      const { entries } = resolved;
+      const term = entries.map((entry) => entry.text.trim()).find(Boolean);
+      if (!term)
+        return null;
+      const existing = this.#findCreateMatch(term);
+      const canCommit = existing !== null && !existing.disabled || this.#canCreate(term, this.#inputEl());
+      return canCommit ? resolved : null;
+    }
+    async#processTokens(value, { final = false, resolved = undefined } = {}) {
       if (!this.#separatorsActive())
         return null;
-      const { entries, rest } = this.#resolveTokens(value, final);
+      const { entries, rest } = resolved ?? this.#resolveTokens(value, final);
       if (!entries.length)
         return { consumed: false, rest };
       let consumedLength = 0;
@@ -2122,8 +2163,8 @@
         this.#inputEl().value = result.rest;
       this.search(this.#inputEl().value, { show: true, reason: "input" });
     }
-    async#commitEnterTokens() {
-      const result = await this.#processTokens(this.#inputEl().value, { final: true });
+    async#commitEnterTokens(resolved) {
+      const result = await this.#processTokens(this.#inputEl().value, { final: true, resolved });
       if (result?.consumed) {
         this.#inputEl().value = result.rest;
         this.search("", { show: true, reason: "create" });
@@ -2400,10 +2441,6 @@
         this.inputSnapshot?.restore();
       } else {
         this.source.classList.remove("cb-text-control");
-        const datalist = this.datalist;
-        if (datalist && this.original.datalistPlaceholder?.parentNode) {
-          this.original.datalistPlaceholder.replaceWith(datalist);
-        }
         this.inputSnapshot?.restore();
       }
     }

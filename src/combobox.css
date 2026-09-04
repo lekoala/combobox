@@ -272,6 +272,12 @@
   gap: 0.125rem;
 }
 
+.cb-option-group {
+  display: grid;
+  min-inline-size: 0;
+  gap: 0.125rem;
+}
+
 /* ------------------------------------------------------------------------- */
 /* Options — stable geometry, active vs selected distinctly                  */
 /* ------------------------------------------------------------------------- */

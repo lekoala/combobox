@@ -20,6 +20,10 @@ test("a transient result group renders a header and materializes a native optgro
 
     const during = {
       headers: Array.from(combo.listbox.querySelectorAll(".cb-group"), (node) => node.textContent.trim()),
+      groups: Array.from(combo.listbox.querySelectorAll('[role="group"]'), (group) => ({
+        label: document.getElementById(group.getAttribute("aria-labelledby"))?.textContent.trim(),
+        options: group.querySelectorAll('[role="option"]').length,
+      })),
       nativeOptgroups: Array.from(select.querySelectorAll("optgroup"), (group) => group.label),
       rowVisible: !!Array.from(combo.listbox.querySelectorAll(".cb-option")).find((node) =>
         node.textContent.includes("Grape"),
@@ -46,6 +50,7 @@ test("a transient result group renders a header and materializes a native optgro
 
   expect(state.during.rowVisible).toBe(true);
   expect(state.during.headers).toEqual(["Gruppe"]);
+  expect(state.during.groups).toEqual([{ label: "Gruppe", options: 1 }]);
   expect(state.during.nativeOptgroups).toEqual([]);
   expect(state.after.selected).toEqual(["mlocal", "g1"]);
   expect(state.after.nativeOptgroups).toEqual(["Gruppe"]);

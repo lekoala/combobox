@@ -31,7 +31,7 @@ For a select this is the declared `<option>` / `<optgroup>` catalogue. For an in
 
 It represents durable source data, including labels, disabled state, optgroups and initial selections.
 
-External mutants are reconciled at an explicit `sync()` — the fastest, most predictable contract. The opt-in `observeSource` option (default `false`) adds an automatic, debounced MutationObserver that calls `sync()` once per batch: the select's `<option>`/`<optgroup>` structure plus `selected`/`disabled`/`required`/`readonly` attributes, and the detached `<datalist>`'s `<option>` set for inputs. Engine-driven mutations are suppressed by dropping the observer around the engine's own writes (the engine re-reads the source on its own refresh). `sync()` remains the explicit escape hatch for arbitrary mutations — in particular, programmatic `option.selected = …` is a live-property change MutationObserver cannot see, and `multiple` is fixed at init time.
+External mutants are reconciled at an explicit `sync()` — the fastest, most predictable contract. The opt-in `observeSource` option (default `false`) adds an automatic, debounced MutationObserver that calls `sync()` once per batch: the select's `<option>`/`<optgroup>` structure plus `selected`/`disabled`/`required`/`readonly` attributes, and the `<datalist>`'s `<option>` set for inputs. Engine-driven mutations are suppressed by dropping the observer around the engine's own writes (the engine re-reads the source on its own refresh). `sync()` remains the explicit escape hatch for arbitrary mutations — in particular, programmatic `option.selected = …` is a live-property change MutationObserver cannot see, and `multiple` is fixed at init time.
 
 ### Result store
 
@@ -75,7 +75,7 @@ Enhanced:
 
 - the original input remains visible and named;
 - `list` is temporarily removed;
-- the datalist is temporarily detached so the browser picker cannot flash;
+- the input's `list` liaison is temporarily removed so the browser picker cannot flash, while the datalist remains discoverable in the DOM;
 - the original input becomes the combobox focus/input element;
 - `dispose()` restores list/autocomplete/datalist placement.
 
@@ -309,7 +309,7 @@ Picker:
 - focus remains in search input;
 - Arrow Down/Up changes active option and opens the picker when closed; disabled results are skipped, navigation wraps within the rendered window;
 - Home/End stay on the native caret inside the editable filter input (ARIA APG editable-combobox guidance); PageDown/PageUp move by a page (listbox viewport height ÷ row height) and clamp at the selectable edges;
-- Enter selects active option or creates when eligible;
+- Enter selects an active option or creates/commits when eligible; otherwise native form submission remains available;
 - Escape closes and clears `aria-activedescendant`;
 - Tab: native focus traversal by default (an open picker closes first so an open top layer never traps the Tab in engines like Firefox, without ever `preventDefault()`ing); the opt-in `tabSelect` option makes Tab commit the active option or an eligible create like Enter, but only ever blocks default focus traversal when such a commit is actually possible. Picker never blocks Tab during IME composition.
 - Arrow and page keys are physical in RTL layouts (DOM-index semantics); direction-aware layout is handled by logical CSS alone.

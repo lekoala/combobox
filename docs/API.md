@@ -381,7 +381,7 @@ Refresh from externally-mutated native DOM. `sync()` also drops transient `setRe
 `observeSource: true` (default `false`) adds an opt-in, debounced MutationObserver that calls `sync()` once per batch. It watches:
 
 - the select's `<option>`/`<optgroup>` structure and its `selected`/`disabled`/`required`/`readonly` attributes;
-- the (detached) `<datalist>`'s `<option>` set for input-backed comboboxes.
+- the `<datalist>`'s `<option>` set for input-backed comboboxes (the catalogue stays discoverable by id while the input's native `list` liaison is temporarily removed).
 
 Engine-driven mutations are not observed (the engine drops/reconnects the observer around its own writes and refreshes from source anyway), and the search input keeps focus and its query during an external sync. Two platform boundaries apply:
 
@@ -493,6 +493,11 @@ combo.configure({ labelField: "name", valueField: "id", searchFields: ["id", "na
 
 Real `<option>` elements are already canonical `{ value, label }` and are never reinterpreted; an object that already carries `value`/`label` is likewise left untouched.
 
+Grouped results render as named `role="group"` containers inside the listbox;
+each container owns its option rows and is labelled by the visible `.cb-group`
+header. This preserves native `<optgroup>` structure in the accessible picker
+projection, including for transient remote groups.
+
 ## Result rendering cap
 
 `maxOptions` caps *displayed/navigable* options only. `results` may hold 500 items with `maxOptions: 20` — at most 20 render, and keyboard navigation stays inside that window. `0` means no cap. Remote `loadMore()` may enrich the result store but never bypasses the cap; a pagination affordance is a separate concept.
@@ -508,7 +513,7 @@ Focus stays in the search input; the picker is driven entirely through it (`role
 | `ArrowDown` / `ArrowUp` | open the picker when closed; move the active option, wrapping within the rendered window and skipping `disabled` rows |
 | `Home` / `End` | stay on the native caret inside the editable filter input (per the ARIA APG editable-combobox guidance) |
 | `PageDown` / `PageUp` | move the active option by a page (listbox viewport height ÷ row height), clamped to the first/last selectable option |
-| `Enter` | select the active option, or create an eligible entry when no option is active |
+| `Enter` | select the active option, or create/commit an eligible entry when no option is active; without a possible commit, preserve native behavior such as form submission |
 | `Escape` | close the picker and clear `aria-activedescendant` |
 | `Tab` | native focus traversal by default (an open picker closes first without blocking traversal, per the ARIA APG combobox pattern); with `tabSelect: true` commits the active option / eligible create like Enter, and only `preventDefault()`s when a commit is actually possible |
 

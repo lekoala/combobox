@@ -596,9 +596,6 @@ export class Combobox {
       // explicit filter input
       /** @type {Comment | null} */
       filterInputPlaceholder: null,
-      // detached datalist position marker
-      /** @type {Comment | null} */
-      datalistPlaceholder: null,
       // <label> elements whose id the engine invented for aria-labelledby
       /** @type {Array<{ label: HTMLLabelElement, id: string }>} */
       inventedLabels: [],
@@ -829,14 +826,11 @@ export class Combobox {
     // above restores the source exactly on dispose().
     if (!source.placeholder) source.placeholder = this.options.placeholder ?? "";
 
-    // In enhanced mode the datalist is a data source only. Detach it so the UA
-    // picker can never flash/race our popover. dispose() restores it exactly.
+    // In enhanced mode the datalist is a data source only. Removing the input's
+    // liaison disables the UA picker while keeping the catalogue discoverable
+    // by id for application code. dispose() restores the liaison exactly.
     source.removeAttribute("list");
     source.autocomplete = "off";
-    const datalistPlaceholder = document.createComment(`combobox-datalist-${this.id}`);
-    this.original.datalistPlaceholder = datalistPlaceholder;
-    datalist.before(datalistPlaceholder);
-    datalist.remove();
 
     source.classList.add("cb-text-control");
     return {
@@ -1115,7 +1109,7 @@ export class Combobox {
   /**
    * Opt-in automatic source sync. `observeSource` watches the native catalogue
    * (select's <option>/<optgroup> structure and selected/disabled/required/
-   * readonly state; the detached datalist's <option> set for inputs) and calls
+   * readonly state; the datalist's <option> set for inputs) and calls
    * `sync()` once per debounced batch. `multiple` is deliberately not observed:
    * the value model is fixed at init time.
    */
@@ -1136,8 +1130,6 @@ export class Combobox {
         };
 
     this._sourceObserver = new MutationObserver(() => this.#scheduleSourceSync());
-    // For input+datalist the datalist is detached in enhanced mode; a
-    // MutationObserver can observe a detached node just fine.
     const target = this.isSelect ? this.source : this.datalist;
     if (target) this._sourceObserver.observe(target, config);
   }
@@ -1291,7 +1283,6 @@ export class Combobox {
           { signal },
         );
       }
-      this.source.form?.addEventListener("reset", () => queueMicrotask(() => this.refresh()), { signal });
       if (
         this.isMultiple &&
         this.options.selectionOrder === "selected" &&
@@ -1317,6 +1308,23 @@ export class Combobox {
         { signal },
       );
     }
+
+    this.source.form?.addEventListener(
+      "reset",
+      () =>
+        queueMicrotask(() => {
+          if (instances.get(this.source) !== this) return;
+          this.searchGeneration++;
+          this.loadController?.abort();
+          this.loading = false;
+          this.nextCursor = null;
+          this.clearResults();
+          if (this.isSelect) this.#inputEl().value = "";
+          this.query = this.isSelect ? "" : this.source.value;
+          this.refresh();
+        }),
+      { signal },
+    );
   }
 
   /** Single entry point for all listeners bound with `this` as the handler. */
@@ -1498,15 +1506,22 @@ export class Combobox {
       // IME composition owns the key: returning first never steals Enter from a
       // composing input, and never preventDefault()s it.
       if (event.isComposing || this.composing) return;
-      event.preventDefault();
       if (this.isMultiple && this.#separatorsActive()) {
-        void this.#commitEnterTokens();
-        return;
+        const tokenCommit = this.#resolveTokenCommit();
+        if (tokenCommit) {
+          event.preventDefault();
+          void this.#commitEnterTokens(tokenCommit);
+          return;
+        }
       }
       const active = this.visibleItems[this.activeIndex];
-      if (active) this.#selectItem(active);
-      else if (this.#canCreate(this.#inputEl().value, this.#inputEl()))
+      if (active) {
+        event.preventDefault();
+        this.#selectItem(active);
+      } else if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
+        event.preventDefault();
         void this.#createItem(this.#inputEl().value.trim());
+      }
       return;
     }
 
@@ -1521,10 +1536,13 @@ export class Combobox {
     if (event.key === "Tab" && this.isOpen()) {
       if (this.options.tabSelect) {
         if (event.isComposing || this.composing) return;
-        if (this.isMultiple && this.#separatorsActive() && this.#inputEl().value.trim()) {
-          event.preventDefault();
-          void this.#commitEnterTokens();
-          return;
+        if (this.isMultiple && this.#separatorsActive()) {
+          const tokenCommit = this.#resolveTokenCommit();
+          if (tokenCommit) {
+            event.preventDefault();
+            void this.#commitEnterTokens(tokenCommit);
+            return;
+          }
         }
         const active = this.visibleItems[this.activeIndex];
         if (active) {
@@ -1820,15 +1838,28 @@ export class Combobox {
       return;
     }
 
-    let previousGroup = null;
+    let currentGroup = null;
+    let currentGroupName = null;
     for (const [index, item] of this.visibleItems.entries()) {
-      if (item.group && item.group !== previousGroup) {
-        const group = document.createElement("div");
-        group.className = "cb-group";
-        group.setAttribute("role", "presentation");
-        setContent(group, this.options.render.group?.(item.group, { combobox: this }) ?? item.group);
-        this.#listEl().append(group);
-        previousGroup = item.group;
+      if (item.group) {
+        if (!currentGroup || item.group !== currentGroupName) {
+          currentGroup = document.createElement("div");
+          currentGroup.className = "cb-option-group";
+          currentGroup.role = "group";
+
+          const group = document.createElement("div");
+          group.className = "cb-group";
+          group.id = `combobox-group-${this.id}-${index}`;
+          group.setAttribute("role", "presentation");
+          setContent(group, this.options.render.group?.(item.group, { combobox: this }) ?? item.group);
+          currentGroup.setAttribute("aria-labelledby", group.id);
+          currentGroup.append(group);
+          this.#listEl().append(currentGroup);
+          currentGroupName = item.group;
+        }
+      } else {
+        currentGroup = null;
+        currentGroupName = null;
       }
 
       const option = document.createElement("div");
@@ -1853,7 +1884,7 @@ export class Combobox {
       label.className = "cb-option-label";
       setContent(label, rendered ?? item.label);
       option.append(label);
-      this.#listEl().append(option);
+      (currentGroup || this.#listEl()).append(option);
     }
 
     if (!this.filteredItems.length) {
@@ -2425,19 +2456,33 @@ export class Combobox {
     return { entries, rest: final ? "" : rest };
   }
 
+  /** Resolve a token batch only when Enter/Tab can synchronously claim it. */
+  #resolveTokenCommit() {
+    if (this.options.maxItems > 0 && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
+      return null;
+    }
+    const resolved = this.#resolveTokens(this.#inputEl().value, true);
+    const { entries } = resolved;
+    const term = entries.map((entry) => entry.text.trim()).find(Boolean);
+    if (!term) return null;
+    const existing = this.#findCreateMatch(term);
+    const canCommit = (existing !== null && !existing.disabled) || this.#canCreate(term, this.#inputEl());
+    return canCommit ? resolved : null;
+  }
+
   /**
    * Consume completed tokens sequentially. Never Promise.all a batch: each
    * token runs existing -> guard -> create -> select in order, re-evaluating
    * maxItems between tokens. On refusal/error/maxItems the unprocessed
    * remainder stays in the input; a trailing incomplete token stays too.
    * @param {string} value
-   * @param {{ final?: boolean }} [options]
+   * @param {{ final?: boolean, resolved?: { entries: Array<{ text: string, sep: string }>, rest: string } }} [options]
    * @returns {Promise<{ consumed: boolean, rest: string } | null>}
    */
-  async #processTokens(value, { final = false } = {}) {
+  async #processTokens(value, { final = false, resolved = undefined } = {}) {
     if (!this.#separatorsActive()) return null;
 
-    const { entries, rest } = this.#resolveTokens(value, final);
+    const { entries, rest } = resolved ?? this.#resolveTokens(value, final);
     if (!entries.length) return { consumed: false, rest };
 
     let consumedLength = 0;
@@ -2485,8 +2530,9 @@ export class Combobox {
     this.search(this.#inputEl().value, { show: true, reason: "input" });
   }
 
-  async #commitEnterTokens() {
-    const result = await this.#processTokens(this.#inputEl().value, { final: true });
+  /** @param {{ entries: Array<{ text: string, sep: string }>, rest: string }} resolved */
+  async #commitEnterTokens(resolved) {
+    const result = await this.#processTokens(this.#inputEl().value, { final: true, resolved });
     if (result?.consumed) {
       this.#inputEl().value = result.rest;
       this.search("", { show: true, reason: "create" });
@@ -2818,12 +2864,6 @@ export class Combobox {
       this.inputSnapshot?.restore();
     } else {
       this.source.classList.remove("cb-text-control");
-      // A placeholder that was consumed by a previous dispose() has no parent.
-      // Restoring must also work when the whole wrapper subtree is detached.
-      const datalist = this.datalist;
-      if (datalist && this.original.datalistPlaceholder?.parentNode) {
-        this.original.datalistPlaceholder.replaceWith(datalist);
-      }
       this.inputSnapshot?.restore();
     }
   }

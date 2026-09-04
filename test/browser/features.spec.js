@@ -512,9 +512,45 @@ test("custom tokenize keeps the declared rest in the input", async ({ page }) =>
   expect(state.inputValue).toBe("beta");
 });
 
-test("createFilter returning false hides the create row and blocks Enter", async ({ page }) => {
+test("Enter resolves a custom tokenizer exactly once before committing", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+  const state = await page.evaluate(async () => {
+    let calls = 0;
+    const select = document.getElementById("tags");
+    const combo = Combobox.getOrCreateInstance(select, {
+      create: true,
+      separators: [","],
+      tokenize: (value) => {
+        calls++;
+        return { tokens: [value], rest: "" };
+      },
+    });
+    combo.input.value = "alpha";
+    await combo.search("alpha", { show: true });
+    combo.input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    return {
+      calls,
+      selected: Array.from(select.selectedOptions, (option) => option.value),
+    };
+  });
+
+  expect(state.calls).toBe(1);
+  expect(state.selected).toContain("alpha");
+});
+
+test("createFilter refusal hides create and leaves Enter to the form", async ({ page }) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {
+    const form = document.getElementById("form");
+    form.dataset.submissions = "0";
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      form.dataset.submissions = String(Number(form.dataset.submissions) + 1);
+    });
     Combobox.getOrCreateInstance(document.getElementById("tags"), {
       create: true,
       createFilter: (value) => value.trim().length > 2,
@@ -530,8 +566,10 @@ test("createFilter returning false hides the create row and blocks Enter", async
   await page.waitForTimeout(40);
   let state = await page.evaluate(() => ({
     selected: Array.from(document.getElementById("tags").selectedOptions, (o) => o.value),
+    submissions: document.getElementById("form").dataset.submissions,
   }));
   expect(state.selected).toEqual(["1"]);
+  expect(state.submissions).toBe("1");
 
   await input.fill("xyz");
   await expect(row("xyz")).toHaveCount(1);

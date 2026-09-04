@@ -345,6 +345,35 @@ test("Enter selects the active option on a single select", async ({ page }) => {
   expect(state.open).toBe(false);
 });
 
+test("Enter keeps native form submission when the open picker has nothing to commit", async ({ page }) => {
+  await setup(page, SOURCES);
+
+  const state = await page.evaluate(async () => {
+    const form = document.createElement("form");
+    form.innerHTML =
+      `<input id="submit-city" name="city" list="submit-cities">` +
+      `<datalist id="submit-cities"><option value="Brussels"></option></datalist>` +
+      `<button type="submit">Submit</button>`;
+    document.body.append(form);
+    const source = form.querySelector("input");
+    const combo = Combobox.getOrCreateInstance(source);
+    form.dataset.submissions = "0";
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      form.dataset.submissions = String(Number(form.dataset.submissions) + 1);
+    });
+    combo.input.focus();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return { open: combo.isOpen(), active: combo.activeIndex };
+  });
+
+  expect(state.open).toBe(true);
+  expect(state.active).toBe(-1);
+
+  await page.locator("#submit-city").press("Enter");
+  await expect(page.locator("form:has(#submit-city)")).toHaveAttribute("data-submissions", "1");
+});
+
 test("Escape never corrupts the source value", async ({ page }) => {
   await setup(page, FEATURES);
   await page.evaluate(() => {

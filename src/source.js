@@ -28,7 +28,7 @@ export function selectSourceOf(combobox) {
 
 /**
  * Read the native catalogue as canonical items: the select's
- * `<option>`/`<optgroup>` set, or the (possibly detached) `<datalist>` for an
+ * `<option>`/`<optgroup>` set, or the `<datalist>` for an
  * input-backed combobox. Empty values are dropped unless `allowEmptyOption`
  * admits them.
  * @param {import("./combobox.js").Combobox} combobox
@@ -130,7 +130,7 @@ export function fieldsFor(combobox) {
  * when `preserveSelected` (defaults to select-backed) and re-appending a
  * single-select empty placeholder. No value-based dedupe: catalogue identity is
  * the `<option>` element, so repeated payload values map to their own options.
- * For an input combobox the detached `<datalist>` is rebuilt from the payload.
+ * For an input combobox the `<datalist>` is rebuilt from the payload.
  * @param {import("./combobox.js").Combobox} combobox
  * @param {import("./helpers.js").ComboboxItem[]} normalized
  * @param {{ preserveSelected?: boolean }} [options]

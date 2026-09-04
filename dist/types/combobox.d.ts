@@ -320,8 +320,6 @@ export declare class Combobox {
     original: {
         /** @type {Comment | null} */
         filterInputPlaceholder: Comment | null;
-        /** @type {Comment | null} */
-        datalistPlaceholder: Comment | null;
         /** @type {Array<{ label: HTMLLabelElement, id: string }>} */
         inventedLabels: Array<{
             label: HTMLLabelElement;

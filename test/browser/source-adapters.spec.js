@@ -309,22 +309,35 @@ test.describe("required / invalid / reset", () => {
     await page.locator(control("req")).fill("Alph");
     await page.locator(".cb-popover:visible .cb-option", { hasText: "Alpha" }).click();
     await page.locator("#city2").fill("Ghent");
+    await page.locator(control("syncs")).fill("Two");
     await page.waitForTimeout(40);
 
     await page.evaluate(() => document.querySelector("#source-form").reset());
     await page.waitForTimeout(40);
 
-    const state = await page.evaluate(() => ({
-      reqValue: document.getElementById("req").value,
-      reqLabel: document.querySelector("#req + .cb-control .cb-input").value,
-      city2: document.getElementById("city2").value,
-      chips: Array.from(document.querySelectorAll("#syncs + .cb-control .cb-chip")).map((chip) =>
-        chip.getAttribute("data-value"),
-      ),
-    }));
+    const state = await page.evaluate(() => {
+      const cityCombo = Combobox.getInstance(document.getElementById("city2"));
+      const multiCombo = Combobox.getInstance(document.getElementById("syncs"));
+      return {
+        reqValue: document.getElementById("req").value,
+        reqLabel: document.querySelector("#req + .cb-control .cb-input").value,
+        city2: document.getElementById("city2").value,
+        cityQuery: cityCombo.query,
+        cityResults: cityCombo.filteredItems.map((item) => item.value),
+        multiQuery: multiCombo.query,
+        multiInput: multiCombo.input.value,
+        chips: Array.from(document.querySelectorAll("#syncs + .cb-control .cb-chip")).map((chip) =>
+          chip.getAttribute("data-value"),
+        ),
+      };
+    });
     expect(state.reqValue).toBe("");
     expect(state.reqLabel).toBe("");
     expect(state.city2).toBe("");
+    expect(state.cityQuery).toBe("");
+    expect(state.cityResults).toEqual(["Brussels", "Ghent"]);
+    expect(state.multiQuery).toBe("");
+    expect(state.multiInput).toBe("");
     expect(state.chips).toEqual(["1"]);
   });
 
@@ -805,7 +818,7 @@ test.describe("observeSource", () => {
     expect(state.matches).toBeGreaterThan(0);
   });
 
-  test("input+datalist observes the detached datalist and restores on dispose", async ({ page }) => {
+  test("input+datalist stays discoverable, is observed and relinks on dispose", async ({ page }) => {
     test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
     const state = await page.evaluate(async () => {
@@ -814,7 +827,7 @@ test.describe("observeSource", () => {
       const datalist = combo.datalist;
       const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-      // The datalist is detached in enhanced mode; the observer watches it anyway.
+      const discoverableWhileEnhanced = document.getElementById("city2-list") === datalist;
       datalist.append(
         (() => {
           const option = document.createElement("option");
@@ -823,15 +836,16 @@ test.describe("observeSource", () => {
         })(),
       );
       await wait(250);
-      const observesDetached = combo.filteredItems.some((item) => item.value === "Namur");
+      const observesCatalogue = combo.filteredItems.some((item) => item.value === "Namur");
 
       combo.dispose();
       const restoredInDocument = document.getElementById("city2-list") !== null;
       const listLinked = source.getAttribute("list") === "city2-list";
       const instanceGone = Combobox.getInstance(source) === null;
-      return { observesDetached, restoredInDocument, listLinked, instanceGone };
+      return { discoverableWhileEnhanced, observesCatalogue, restoredInDocument, listLinked, instanceGone };
     });
-    expect(state.observesDetached).toBe(true);
+    expect(state.discoverableWhileEnhanced).toBe(true);
+    expect(state.observesCatalogue).toBe(true);
     expect(state.restoredInDocument).toBe(true);
     expect(state.listLinked).toBe(true);
     expect(state.instanceGone).toBe(true);

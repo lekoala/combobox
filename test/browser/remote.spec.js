@@ -45,6 +45,47 @@ test("minChars and shouldLoad gate the load call", async ({ page }) => {
   expect(state.rows).toEqual(["Remote xy"]);
 });
 
+test("form reset aborts input loading and restores local query/results state", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+
+  const state = await page.evaluate(async () => {
+    const form = document.getElementById("remote-form");
+    const source = document.getElementById("remote-input");
+    form.append(source, document.getElementById("remote-input-list"));
+    const combo = Combobox.getOrCreateInstance(source, {
+      debounce: 0,
+      load: (_query, { signal }) =>
+        new Promise((resolve) => {
+          signal.addEventListener("abort", () => resolve([{ value: "stale", label: "Stale" }]));
+        }),
+    });
+    source.focus();
+    source.value = "remote";
+    source.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const wasLoading = combo.loading;
+    form.reset();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return {
+      wasLoading,
+      loading: combo.loading,
+      query: combo.query,
+      value: source.value,
+      results: combo.results,
+      rows: combo.filteredItems.map((item) => item.value),
+    };
+  });
+
+  expect(state).toEqual({
+    wasLoading: true,
+    loading: false,
+    query: "",
+    value: "",
+    results: null,
+    rows: ["Local Alpha"],
+  });
+});
+
 test("debounce coalesces rapid input into a single load", async ({ page }) => {
   test.skip(!(await modernSupported(page)), MODERN);
   const state = await page.evaluate(async () => {
