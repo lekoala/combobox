@@ -386,6 +386,30 @@ You can force this mode in the demo with:
 ?native=1
 ```
 
+### Browser baseline
+
+The enhanced mode floor is determined by the `showPopover()`/`hidePopover()` API:
+
+```text
+Safari 17+
+Firefox 125+
+Chromium 114+
+```
+
+Below this floor the component automatically switches to `mode = "fallback"` and the native control remains fully functional.
+
+The `showPopover({ source })` parameter is a *supplementary* enhancement — it establishes the invoker→popover relationship for focus navigation and implicit CSS anchoring. It is optional and does not affect the floor, since Combobox uses `@lekoala/floating` and `autoUpdate()` for placement rather than CSS anchor positioning.
+
+This means the enhanced mode shares the same core Popover manual baseline as [Actual 0.8](https://github.com/lekoala/actual):
+
+```text
+Actual full runtime   ┐
+                      ├─ core Popover manual baseline
+Combobox enhanced     ┘
+```
+
+The difference is that Combobox can fall back to native controls below the floor, while Actual ships a complete runtime above it.
+
 ## Styling
 
 The component ships with a small default stylesheet and is designed to be easy to theme with CSS custom properties.
