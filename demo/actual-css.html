@@ -119,6 +119,8 @@
           <body>, so its tokens are declared on .cb-popover directly. */
     .cb-popover {
       --cb-picker-bg: var(--surface-raised);
+      --cb-option-active-bg: var(--hover-overlay);
+      --cb-option-active-color: var(--text);
       --cb-muted-color: var(--text-muted);
       --cb-error-color: var(--danger);
       border-color: var(--border);
@@ -129,12 +131,6 @@
 
     .cb-option {
       border-radius: var(--radius-sm);
-    }
-
-    /* Active row uses the subtle overlay, not a full primary fill */
-    .cb-option:is(:hover, [data-active]) {
-      background: var(--hover-overlay);
-      color: var(--text);
     }
 
     .cb-option[aria-selected="true"] {

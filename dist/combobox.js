@@ -979,6 +979,8 @@
         throw new TypeError(`No datalist found for #${listId}`);
       }
       const inputSnapshot = captureAttributes(source, INPUT_ATTRS);
+      if (!source.placeholder)
+        source.placeholder = this.options.placeholder ?? "";
       source.removeAttribute("list");
       source.autocomplete = "off";
       const datalistPlaceholder = document.createComment(`combobox-datalist-${this.id}`);

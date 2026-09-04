@@ -204,6 +204,25 @@ test("chip appearance variables support solid and outline themes", async ({ page
   expect(style.borderWidth).toBe("1px");
 });
 
+test("active option ink is themeable through --cb-option-active-color", async ({ page }) => {
+  await setup(page, "/");
+  await page.addStyleTag({ path: "src/combobox.css" });
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+  await page.locator("#city").click();
+  await expect(page.locator(".cb-popover:visible")).toHaveCount(1);
+
+  const color = await page.evaluate(() => {
+    const popover = document.querySelector(".cb-popover:popover-open");
+    const row = popover.querySelector(".cb-option");
+    popover.style.setProperty("--cb-option-active-color", "rgb(31, 41, 55)");
+    row.setAttribute("data-active", "");
+    return getComputedStyle(row).color;
+  });
+
+  expect(color).toBe("rgb(31, 41, 55)");
+});
+
 test("invalid border and focus ring use --cb-error-color", async ({ page }) => {
   await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");

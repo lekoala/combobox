@@ -16,6 +16,7 @@
   --cb-chip-border-radius: 0.4286em;
   --cb-picker-bg: Canvas;
   --cb-option-active-bg: #0d6efd;
+  --cb-option-active-color: #fff;
   --cb-option-selected-bg: #e9ecef;
   --cb-muted-color: #6c757d;
   --cb-error-color: #dc3545;
@@ -315,7 +316,7 @@
 
 .cb-option:is(:hover, [data-active]) {
   background: var(--cb-option-active-bg);
-  color: #fff;
+  color: var(--cb-option-active-color);
 }
 
 .cb-option[aria-selected="true"] {
@@ -339,7 +340,7 @@
 
 .cb-option[aria-selected="true"]:is(:hover, [data-active]) {
   background: var(--cb-option-active-bg);
-  color: #fff;
+  color: var(--cb-option-active-color);
 }
 
 .cb-option[aria-disabled="true"],

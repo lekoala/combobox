@@ -824,6 +824,11 @@ export class Combobox {
 
     const inputSnapshot = captureAttributes(source, INPUT_ATTRS);
 
+    // Match select-backed filter inputs: authored native placeholder text wins,
+    // otherwise the shared option supplies the interaction hint. The snapshot
+    // above restores the source exactly on dispose().
+    if (!source.placeholder) source.placeholder = this.options.placeholder ?? "";
+
     // In enhanced mode the datalist is a data source only. Detach it so the UA
     // picker can never flash/race our popover. dispose() restores it exactly.
     source.removeAttribute("list");

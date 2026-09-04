@@ -120,6 +120,37 @@ test.describe("lifecycle / dispose hardening", () => {
     await page.evaluate(() => Combobox.getInstance(document.getElementById("wrapped")).dispose());
     await expect(page.locator("#wrapped + .cb-control .cb-input")).toHaveCount(0);
   });
+
+  test("input+datalist receives the configured placeholder and dispose restores the native input", async ({
+    page,
+  }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+    const state = await page.evaluate(() => {
+      const source = document.getElementById("city2");
+      const combo = Combobox.getOrCreateInstance(source, { placeholder: "Find a city…" });
+      const enhanced = source.placeholder;
+      combo.dispose();
+      return { enhanced, restored: source.getAttribute("placeholder") };
+    });
+
+    expect(state).toEqual({ enhanced: "Find a city…", restored: null });
+  });
+
+  test("an authored input+datalist placeholder takes precedence over configuration", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+    const state = await page.evaluate(() => {
+      const source = document.getElementById("city2");
+      source.placeholder = "Authored hint";
+      const combo = Combobox.getOrCreateInstance(source, { placeholder: "Configured hint" });
+      const enhanced = source.placeholder;
+      combo.dispose();
+      return { enhanced, restored: source.placeholder };
+    });
+
+    expect(state).toEqual({ enhanced: "Authored hint", restored: "Authored hint" });
+  });
 });
 
 test.describe("select single/multiple source mapping", () => {

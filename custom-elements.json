@@ -204,6 +204,9 @@
               "name": "--cb-option-active-bg"
             },
             {
+              "name": "--cb-option-active-color"
+            },
+            {
               "name": "--cb-option-selected-bg"
             },
             {

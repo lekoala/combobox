@@ -208,7 +208,7 @@ new Combobox(select, {
 })
 ```
 
-`placeholder` deliberately stays top-level: it maps to the `<combo-box placeholder="…">` attribute and is structural input state, not generated text. `render` stays separate from `messages` — messages are the accessible/bypassable text fallback, renderers return DOM.
+`placeholder` deliberately stays top-level: it maps to the `<combo-box placeholder="…">` attribute and is structural input state, not generated text. It supplies the generated select filter or an input+datalist source only when that interaction input has no authored native `placeholder`; `dispose()` restores authored input state exactly. `render` stays separate from `messages` — messages are the accessible/bypassable text fallback, renderers return DOM.
 
 #### Localization
 
