@@ -107,8 +107,15 @@ For multiple select, chips are projections of selected native options.
 - It is an autonomous custom element that simply contains the native source.
 - The source — first direct child `<select>`, else first direct child `<input list>` — stays the only value/validation owner.
 - The element is **not** form-associated and adds no hidden serialized state; no Shadow DOM, so labels, forms and reset keep working through the normal tree.
-- Registration is explicit and centralized: engine modules never touch `customElements` on load — `src/define.js` (`defineCombobox()`), an app-level subclass of the exported `ComboBoxElement`, or the generated classic build are the only ways it happens.
+- Registration is explicit and centralized: engine modules never touch `customElements` on load — `src/define.js` (`defineCombobox()`), an app-level subclass of the exported `ComboBoxElement`, or a generated classic distribution entry are the only ways it happens.
 - It runs the exact same `Combobox` engine via `getOrCreateInstance` — it is not a second implementation.
+
+The all-in-one `dist/combobox.standalone.min.js` is a build-only wrapper outside
+`src/`: it inlines `combobox.css`, injects one identified `<style>` (copying the
+current script nonce when present), then calls the exported `defineCombobox()`
+operation. The explicit call is required because Bun 1.4 eliminates a nested bare
+`src/define.js` import; it does not add a second engine or leak a build helper into the
+ESM or type surfaces.
 
 ```html
 <combo-box create placeholder="Search or create…">

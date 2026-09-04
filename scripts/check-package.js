@@ -34,6 +34,7 @@ const errors = [];
 const mustInclude = [
   "dist/combobox.js",
   "dist/combobox.min.js",
+  "dist/combobox.standalone.min.js",
   "dist/combobox.css",
   "dist/combobox.min.css",
   "dist/types/index.d.ts",

@@ -6,6 +6,7 @@
   "sideEffects": [
     "./dist/combobox.js",
     "./dist/combobox.min.js",
+    "./dist/combobox.standalone.min.js",
     "./dist/combobox.css",
     "./dist/combobox.min.css",
     "./src/combobox.css",
@@ -46,12 +47,14 @@
       "import": "./src/define.js"
     },
     "./combobox.css": "./src/combobox.css",
+    "./standalone": "./dist/combobox.standalone.min.js",
     "./locales/*": {
       "types": "./dist/types/locales/*.d.ts",
       "import": "./src/locales/*"
     },
     "./dist/combobox.js": "./dist/combobox.js",
     "./dist/combobox.min.js": "./dist/combobox.min.js",
+    "./dist/combobox.standalone.min.js": "./dist/combobox.standalone.min.js",
     "./dist/combobox.css": "./dist/combobox.css",
     "./dist/combobox.min.css": "./dist/combobox.min.css"
   },

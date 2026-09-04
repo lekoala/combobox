@@ -736,4 +736,4 @@ Resolved during design; kept as an audit trail:
 - `tabSelect`: JS option, default `false`; when enabled Tab commits like Enter and only `preventDefault()`s when a commit is possible; IME composition falls through to native Tab.
 - ordered-mode keyboard reorder: `Alt+ArrowLeft/Right` and `Alt+Home/End` on a focused chip, status-region position announcement;
 - automatic DOM sync: opt-in `observeSource` (default `false`), debounced `sync()`, internal mutations suppressed (programmatic `.selected` changes and `multiple` toggles are intentionally out of the observer — see `sync()`);
-- ESM export shape: `src/index.js` barrel + `src/define.js` side-effect entry + generated classic `dist/combobox.js` — see README's integration section;
+- distribution shape: `src/index.js` barrel + `src/define.js` side-effect entry + generated classic `dist/combobox.js` + all-in-one `dist/combobox.standalone.min.js` (`@lekoala/combobox/standalone`) — see README's integration section;

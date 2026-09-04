@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Standalone combobox distribution</title>
+</head>
+<body>
+  <main>
+    <h1>Standalone distribution</h1>
+    <p>This page loads one classic script: component registration and structural CSS are bundled together.</p>
+
+    <label for="standalone-framework">Framework</label>
+    <combo-box placeholder="Choose a framework…">
+      <select id="standalone-framework" name="framework">
+        <option value="">Choose…</option>
+        <option value="react">React</option>
+        <option value="vue">Vue</option>
+        <option value="svelte">Svelte</option>
+      </select>
+    </combo-box>
+  </main>
+
+  <script nonce="standalone-demo" src="../dist/combobox.standalone.min.js"></script>
+</body>
+</html>

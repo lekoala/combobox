@@ -9,9 +9,9 @@ implementation architecture or test code.
 ### Browser tests — primary
 
 Use Playwright against real browsers. The behavioral suite in `test/browser` targets the
-**ESM source** (`src/…`) directly; the generated bundle only gets dedicted smoke tests in
-`test/dist` (self-contained iife, no globals, self-registering `<combo-box>`, a `file://`
-page). Tests reach the engine in the page via the harness bridge in
+**ESM source** (`src/…`) directly; generated bundles only get dedicated smoke tests in
+`test/dist` (self-contained IIFE, no globals, self-registering `<combo-box>`, a `file://`
+page, and standalone CSS injection/nonce/idempotence). Tests reach the engine in the page via the harness bridge in
 `test/browser/helpers.js` (`exposeEsm`), never via a library global.
 
 Required for:

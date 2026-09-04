@@ -5,17 +5,20 @@
  * - dist/combobox.min.js  classic iife bundle, minified
  * - dist/combobox.css     component stylesheet, unminified
  * - dist/combobox.min.css component stylesheet, minified
+ * - dist/combobox.standalone.min.js classic iife with inlined CSS, minified
  *
- * The classic build is produced from the single side-effect entry
- * src/define.js, so dist never touches customElements beyond registration.
+ * Classic JS is produced from the single side-effect entry src/define.js. The
+ * build-only standalone entry adds CSS injection and calls the same exported
+ * defineCombobox() operation explicitly (Bun removes nested bare imports).
  */
 import { copyFileSync, mkdirSync } from "node:fs";
 
-const BANNER = "/*** @lekoala/combobox v0.1.0 - https://github.com/lekoala/combobox ***/";
+const { version } = await Bun.file("package.json").json();
+const BANNER = `/*** @lekoala/combobox v${version} - https://github.com/lekoala/combobox ***/`;
 
 mkdirSync("dist", { recursive: true });
 
-async function bundle(entry, outfile, minify) {
+async function bundle(entry, outfile, minify, options = {}) {
   const result = await Bun.build({
     entrypoints: [entry],
     outdir: "dist",
@@ -23,6 +26,7 @@ async function bundle(entry, outfile, minify) {
     target: "browser",
     format: "iife",
     minify,
+    ...options,
   });
   if (!result.success) {
     for (const log of result.logs) console.error(log);
@@ -36,6 +40,9 @@ async function bundle(entry, outfile, minify) {
 
 await bundle("src/define.js", "combobox.js", false);
 await bundle("src/define.js", "combobox.min.js", true);
+await bundle("scripts/standalone.js", "combobox.standalone.min.js", true, {
+  loader: { ".css": "text" },
+});
 
 copyFileSync("src/combobox.css", "dist/combobox.css");
 
@@ -50,4 +57,6 @@ if (!cssResult.success) {
   process.exit(1);
 }
 
-console.log("built dist/combobox.js, dist/combobox.min.js, dist/combobox.css, dist/combobox.min.css");
+console.log(
+  "built dist/combobox.js, dist/combobox.min.js, dist/combobox.standalone.min.js, dist/combobox.css, dist/combobox.min.css",
+);

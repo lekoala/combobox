@@ -39,7 +39,7 @@ or:
 bun add @lekoala/combobox
 ```
 
-## Three ways to use it
+## Four ways to use it
 
 ### `<combo-box>`
 
@@ -76,11 +76,12 @@ const combo = new Combobox(document.querySelector("select"), {
 });
 ```
 
-### Classic script / `file://`
+### Classic script + separate CSS / `file://`
 
-A standalone build is also available:
+The classic build works without an ESM loader:
 
 ```html
+<link rel="stylesheet" href="dist/combobox.css">
 <script src="dist/combobox.js"></script>
 
 <combo-box>
@@ -90,7 +91,41 @@ A standalone build is also available:
 </combo-box>
 ```
 
-The classic build registers `<combo-box>`, but still does not expose a global `Combobox` object.
+It registers `<combo-box>`, but does not expose a global `Combobox` object. Styles stay
+in a separate file, which is useful when your Content Security Policy forbids injected
+inline styles.
+
+### All-in-one standalone
+
+For a single minified browser asset, use the standalone build:
+
+```html
+<script src="dist/combobox.standalone.min.js"></script>
+
+<combo-box>
+  <select>
+    ...
+  </select>
+</combo-box>
+```
+
+The npm package exposes the same file as `@lekoala/combobox/standalone`. It registers
+`<combo-box>` and injects the component CSS once as
+`<style id="lekoala-combobox-style">`. Loading the script again does not duplicate
+that style, and no library global is created.
+
+#### Content Security Policy
+
+The standalone script copies its own script nonce to the generated `<style>` element:
+
+```html
+<script nonce="your-request-nonce" src="dist/combobox.standalone.min.js"></script>
+```
+
+Your policy must accept that nonce for both `script-src` and `style-src`. If inline
+style injection is not allowed, use the classic script plus `combobox.css`, or the ESM
+entry plus separately imported CSS. Avoid loading `combobox.css` alongside the
+standalone build unless duplicate CSS rules are intentional.
 
 ## Native controls stay native
 
@@ -427,7 +462,9 @@ Then open:
 http://127.0.0.1:4173/
 ```
 
-The demo uses the generated distribution build, not a special development-only version.
+The main demo uses the generated distribution build, not a special development-only
+version. `demo/dist-standalone.html` is the equivalent smoke page for the all-in-one
+artifact.
 
 ## API Coverage
 
