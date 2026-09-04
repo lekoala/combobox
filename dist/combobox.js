@@ -800,15 +800,15 @@
         targets.push(...Array.from(rootOrSelector ?? []));
         options = picks(selectorOrOptions);
       }
-      const instances2 = [];
+      const instances = [];
       for (const element of targets) {
         if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement))
           continue;
         const instance = Combobox.getOrCreateInstance(element, options);
-        if (instance && !instances2.includes(instance))
-          instances2.push(instance);
+        if (instance && !instances.includes(instance))
+          instances.push(instance);
       }
-      return instances2;
+      return instances;
     }
     static getInstance(element) {
       return instances.get(element) ?? null;
@@ -2104,8 +2104,8 @@
       if (typeof custom === "function") {
         const result = custom(value, { combobox: this, source: this.source, input: this.#inputEl() });
         const tokens = result && Array.isArray(result.tokens) ? result.tokens : [];
-        const entries2 = tokens.map((text) => ({ text: String(text), sep: "" }));
-        return { entries: entries2, rest: final ? "" : String(result?.rest ?? "") };
+        const entries = tokens.map((text) => ({ text: String(text), sep: "" }));
+        return { entries, rest: final ? "" : String(result?.rest ?? "") };
       }
       const { done, rest } = splitTokens(value, this.options.separators);
       const entries = final && rest.trim() ? [...done, { text: rest.trim(), sep: "" }] : done;
@@ -2266,11 +2266,11 @@
       if (!this.isSelect) {
         if (!this.source.value)
           return false;
-        const guard2 = await this.#runGuard("clear", {});
-        if (!guard2.ok)
+        const guard = await this.#runGuard("clear", {});
+        if (!guard.ok)
           return false;
-        const before2 = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
-        if (before2.defaultPrevented)
+        const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
+        if (before.defaultPrevented)
           return false;
         this.source.value = "";
         this.#dispatchNativeValueEvents();
