@@ -19,7 +19,7 @@
   },
   "homepage": "https://github.com/lekoala/combobox",
   "bugs": "https://github.com/lekoala/combobox/issues",
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.1",
   "customElements": "custom-elements.json",
   "keywords": [
     "combobox",

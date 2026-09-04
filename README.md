@@ -490,6 +490,12 @@ The main demo uses the generated distribution build, not a special development-o
 version. `demo/dist-standalone.html` is the equivalent smoke page for the all-in-one
 artifact.
 
+The demos load the committed `dist/` build (`dist/combobox.js` + `dist/combobox.css`)
+rather than `node_modules`, so the same files also publish as a static site. The
+published demos live at <https://lekoala.github.io/combobox/>; after a source change,
+regenerate the build with `bun run sync` and commit, or the drift gate in `verify`/CI
+fails.
+
 ## API Coverage
 
 The main API covers:
