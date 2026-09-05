@@ -35,7 +35,7 @@ configured (native semantics remain, unenhanced), and the new shape takes over:
 | `data-allow-new="true"` | `<combo-box create>` |
 | `data-add-on-blur="true"` | `<combo-box create-on-blur>` |
 | `data-filter-input="input-id"` | `<input data-filter-for="select-id" hidden>` |
-| JS options (`load`, `create`, renderers) | `element.configure({ … })` |
+| JS options (`load`, `create`, renderers) | `box.configure({ … })` on the `<combo-box>` element |
 | imperative init | `Combobox.init("select.mine")` / `Combobox.getOrCreateInstance(source)` |
 | explicit filter input sibling | `<combo-box><input data-filter-for="select-id" hidden><select id="select-id">…</select></combo-box>` |
 

@@ -73,6 +73,22 @@ Child lookup is **direct children only**: a source nested inside another element
 - element removed → teardown is deferred until a microtask confirms the element is truly gone, so a simple DOM move does not destroy state;
 - attribute changes on observed attributes rebuild the instance.
 
+**A rebuild is a full teardown.** `box.configure(options)` and any change to an
+observed attribute dispose the current engine and construct a new one on a
+microtask (`dispose()` → `upgrade()`). Consequences:
+
+- a `Combobox` reference obtained before the rebuild is **stale** — it is not
+  updated in place, and its state/listeners are gone;
+- listeners attached to the generated interaction input (`combo.input`) must be
+  re-attached after a rebuild; hold the current instance instead of caching one;
+- `box.combobox` always returns the current instance; `box.whenReady()`
+  resolves the current instance only when the element is upgraded, so for a
+  live element prefer `box.combobox`;
+- `box.configure()` merges options **shallowly** (`{ ...current, ...options }`);
+  replacing a nested object (e.g. `render`) replaces the whole object;
+- `combobox:ready` fires with `detail.combobox` on every upgrade, including
+  rebuilds — it is the reliable hook to (re)wire per-instance behavior.
+
 ### Observed attributes
 
 The table below is driven by a single `OPTION_ATTRIBUTES` schema in
@@ -488,7 +504,8 @@ separators: parseSeparators(",|;"),
 `labelField`/`valueField` map **data objects** to canonical items (`setResults`, `setOptions`, `select`, `create` results):
 
 ```js
-combo.configure({ labelField: "name", valueField: "id", searchFields: ["id", "name", "sku"] });
+const box = document.querySelector("combo-box");
+box.configure({ labelField: "name", valueField: "id", searchFields: ["id", "name", "sku"] });
 ```
 
 Real `<option>` elements are already canonical `{ value, label }` and are never reinterpreted; an object that already carries `value`/`label` is likewise left untouched.

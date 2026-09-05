@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>README recipe fixtures</title>
+</head>
+<body>
+  <combo-box class="patients">
+    <select name="patient"></select>
+  </combo-box>
+
+  <combo-box search-fields="label, city, specialty" id="multifield">
+    <select name="crew">
+      <option value="a" data-city="Liège" data-specialty="cardiology">Dr Jane</option>
+      <option value="b" data-city="Paris" data-specialty="neurology">Dr Joel</option>
+    </select>
+  </combo-box>
+
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>

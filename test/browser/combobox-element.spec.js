@@ -122,6 +122,34 @@ test("custom element name + configure() wires JS-only options", async ({ page })
   await expect(page.locator("#languages")).toHaveValue("fr");
 });
 
+test("configure() rebuilds the engine and invalidates prior references", async ({ page }) => {
+  await setup(page, ELEMENTS_HTML);
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+  const state = await page.evaluate(async () => {
+    const wrap = document.querySelector("#languages-widget");
+    const before = wrap.combobox;
+    const readyCombos = [];
+    wrap.addEventListener("combobox:ready", (event) => readyCombos.push(event.detail.combobox));
+    wrap.configure({ minChars: 3 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const after = wrap.combobox;
+    return {
+      rebuilt: before !== after,
+      minChars: after.options.minChars,
+      loadKept: typeof after.options.load === "function",
+      currentInstance: Combobox.getInstance(document.getElementById("languages")) === after,
+      readySawCurrent: readyCombos[readyCombos.length - 1] === after,
+    };
+  });
+
+  expect(state.rebuilt).toBe(true);
+  expect(state.minChars).toBe(3);
+  expect(state.loadKept).toBe(true);
+  expect(state.currentInstance).toBe(true);
+  expect(state.readySawCurrent).toBe(true);
+});
+
 test("combobox:ready fires and whenReady() resolves after dynamic insertion", async ({ page }) => {
   await setup(page, ELEMENTS_HTML);
 

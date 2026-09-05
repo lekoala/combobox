@@ -19,7 +19,7 @@
   },
   "homepage": "https://github.com/lekoala/combobox",
   "bugs": "https://github.com/lekoala/combobox/issues",
-  "packageManager": "bun@1.4.1",
+  "packageManager": "bun@1.4.2",
   "customElements": "custom-elements.json",
   "keywords": [
     "combobox",
@@ -93,6 +93,6 @@
     "typescript": "7.0.2"
   },
   "dependencies": {
-    "@lekoala/floating": "^0.1.0"
+    "@lekoala/floating": "^0.1.1"
   }
 }

@@ -76,15 +76,51 @@ load: async (query, { signal }) => {
 }
 ```
 
+### Reacting to a dependency change
+
+The loader reads `#clinic`, but the combobox cannot know when that field
+changes. Re-run the *existing* query through the normal pipeline when a
+dependency moves:
+
+```js
+const box = document.querySelector("combo-box.patients");
+const combo = await box.whenReady(); // or box.combobox on an upgraded element
+
+document.querySelector("#clinic").addEventListener("change", () => {
+  combo.search(combo.query); // programmatic: no input debounce, same abort/load path
+});
+```
+
+Policy for the existing selection is application-owned: keep it (default),
+`combo.remove(item)` it, or re-validate it once the new results land. A
+dependency change while a request is in flight is safe — the previous call is
+aborted through its `AbortSignal` and the engine guards stale responses by
+search generation, so a late clinic-A response cannot overwrite clinic-B
+results.
+
 Requirements:
 
 - debounce;
 - previous request abort;
 - stale response cannot overwrite newer query;
+- dependency change while a request is in flight never mixes results;
 - loading state does not briefly show no-results;
 - errors do not destroy current selection;
 - result store remains transient;
 - only selected remote result is materialized into native select.
+
+### Fallback
+
+Remote loading is enhanced-mode only: in fallback mode there is no `load()`
+pipeline and no picker. Load static options into the native select instead, or
+leave it empty for the form to handle.
+
+### Tests
+
+`test/browser/remote.spec.js` covers the whole contract, including the recipe
+above (“dependent loader reads a live field and refreshes when the dependency
+changes”), abort/stale ordering, transient results, materialization on select
+and error handling.
 
 ## UC6 — Business query guard
 
@@ -99,10 +135,14 @@ shouldLoad(query) {
 or:
 
 ```js
-input.addEventListener("combobox:beforeload", (event) => {
+const select = document.querySelector("select.patients"); // the native source
+select.addEventListener("combobox:beforeload", (event) => {
   if (isPartialDate(event.detail.query)) event.preventDefault();
 });
 ```
+
+`combobox:*` lifecycle events fire on the native source control, not on the
+generated interaction input (only `beforefilter`/`filter` live there).
 
 No transport override should be necessary.
 
@@ -119,13 +159,29 @@ open application modal
 → combo.select({value:id, label:name})
 ```
 
-Requirements:
+### Recette
 
-- create native option if missing;
-- select it;
-- update chip/single label;
-- fire native value events;
-- no jQuery `.append(new Option).trigger("change")` boilerplate.
+```js
+const box = document.querySelector("combo-box.patients");
+const combo = await box.whenReady(); // or box.combobox on an upgraded element
+
+combo.select({ value: id, label: name }); // materializes a native option when missing
+```
+
+`select()` materializes the missing native `<option>`, updates the chip/single
+label, and emits exactly one native `input` then `change` — no
+`new Option(...).trigger("change")` boilerplate.
+
+### Fallback
+
+Fallback adds no picker, but `addOption`/`select` still mutate the native
+select directly, so the modal-created entity remains a real, submittable option.
+
+### Tests
+
+Exactly-once native events on programmatic mutation live in
+`test/browser/events.spec.js`; materialization of an external/remote result is
+covered in `test/browser/remote.spec.js`.
 
 ## UC8 — Clear / clear all
 
@@ -154,12 +210,46 @@ guards: {
 }
 ```
 
+### Scope: creation is guarded, selecting an existing option is not
+
+`guards.add` runs **only for a brand-new item** — an existing native or
+transient match is selected before any guard runs (`#createItem`). The
+exclusive-pair rule above blocks *creating* `ms.x`, but picking an existing
+`ms.x` from the list still bypasses it.
+
+For a rule that must block **every** addition, use the synchronous
+`combobox:beforeselect` event, which fires on the native source before any
+selection, existing or created:
+
+```js
+const source = document.querySelector("select.recipients");
+source.addEventListener("combobox:beforeselect", (event) => {
+  if (exclusivePair(event.detail.item.label)) event.preventDefault();
+});
+```
+
+A rule that needs an **async confirmation covering selection too** has no
+single turnkey guard today: combine a synchronous `beforeselect` rule with the
+async `guards.*` confirmations, or design an explicit per-selection guard
+contract. A user cancelling a confirmation dialog must resolve `false`, never
+reject.
+
 Requirements:
 
 - `false` refuses and mutates nothing;
 - a rejected promise is an application error surfaced as `combobox:guarderror`, never silently treated as `false`;
 - `before*` events stay synchronous and fire only after the guard passes;
 - tokenized/pasted batches apply guards per token, in order.
+
+### Fallback
+
+The fallback Add input runs the same create pipeline (`guards.add`,
+`combobox:beforecreate`, `createerror`) and the same existing-match resolution.
+
+### Tests
+
+- guard semantics (`add`, `remove`, `clear`, rejections → `combobox:guarderror`): `test/browser/features.spec.js`;
+- fallback create/guard parity: `test/browser/combobox-element.spec.js`.
 
 ## UC9 — Explicit selection order
 
@@ -179,13 +269,39 @@ Requirements:
 
 Existing apps initialize controls repeatedly inside newly-rendered scopes.
 
+### Recette
+
+```js
+// scope discovery inside a freshly-rendered container
+Combobox.init(fragment.querySelector(".cards"), "select.app-control", options);
+
+// a bare list of source elements works too
+Combobox.init(Array.from(fragment.querySelectorAll("select.app-control")), options);
+```
+
+Discovery is always explicit: `init(selector)` on the document, `init(root,
+selector)` scoping the selector to a container, or `init([element, …])` over a
+collection. A **bare element root without a selector is not a scope** — it
+discovers nothing, and an `init()` over an already-instantiated control is an
+idempotent no-op that never reconfigures the existing instance.
+
 Requirements:
 
 - idempotent `getOrCreateInstance`;
-- type-dispatched `init(root, selector?, options?)` — implemented (`init(selector)`, `init(root, selector)`, `init(root | [element, …])`);
 - `dispose()` cleans all listeners/generated DOM and restores native controls;
 - `sync()` handles application-driven option changes;
 - opt-in `observeSource` MutationObserver batches changes to one `sync()` and preserves focus/query while they land.
+
+### Fallback
+
+`init`/`getOrCreateInstance` attach the engine as usual; per-browser `mode`
+degrades to native controls (forced with `?native=1` in tests).
+
+### Tests
+
+`test/browser/init.spec.js` (discovery shapes/overloads) and
+`test/browser/combobox-element.spec.js` (dynamic insertion, rebuild,
+dispose/restore, forced fallback).
 
 ## UC11 — Native validation and reset
 
@@ -223,15 +339,34 @@ Requirements:
 The application owns scope and filter tokens; the combobox owns only
 `query → suggestions → keyboard navigation → chosen action`.
 
-Requirements:
+### Recette
 
-- use an `input+datalist` source so the remaining query stays free-form and is
-  still the native form-value owner;
-- treat field suggestions as actions by cancelling `combobox:beforeselect`;
-- clear or replace visible text through `clearQuery()` / `setQuery()`;
-- keep application tokens distinct from selected-value `.cb-chip` elements;
-- an authored shell may be passed as `anchor` so its buttons and tokens form
-  one interaction/positioning region;
-- cancelling `beforeselect` never materializes a transient native option.
+```js
+const box = document.querySelector("combo-box.scoped");
 
-See `demo/query-builder.html` for a progressively tokenized implementation.
+box.addEventListener("combobox:beforeselect", (event) => {
+  event.preventDefault();              // field suggestions are actions, not values
+  applyScopeToken(event.detail.item);  // application renders its own token UI
+  box.clearQuery();
+});
+```
+
+- an `input+datalist` source keeps the remaining query free-form and native
+  (the input stays the form-value owner);
+- field suggestions are actions handled by cancelling `combobox:beforeselect`;
+- `clearQuery()` / `setQuery()` replace the visible/interaction text; a
+  cancelled `beforeselect` never materializes a transient native option;
+- application tokens are distinct from selected-value `.cb-chip` elements and
+  live inside the authored `anchor` shell, which the engine treats as one
+  placement/interaction region and never mutates.
+
+### Fallback
+
+The token/scope recipe exists only in enhanced mode. In fallback mode an
+`input+datalist` stays a plain native datalist (`?native=1` reproduces it).
+
+### Tests
+
+`demo/query-builder.html` is the working reference. The underlying pieces are
+covered by `beforefilter.spec.js` and `remote.spec.js` (cancelled
+`beforeselect`, `setQuery`/`clearQuery` sync, consumer anchor).

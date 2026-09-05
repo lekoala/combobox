@@ -5,6 +5,8 @@ A small, native-first combobox library for searchable selects, multiple values, 
 It enhances regular `<input>`, `<datalist>` and `<select>` controls instead of replacing them with a custom form model.
 
 ```html
+<link rel="stylesheet" href="@lekoala/combobox/combobox.css">
+
 <script type="module">
   import "@lekoala/combobox/define";
 </script>
@@ -46,6 +48,8 @@ bun add @lekoala/combobox
 This is the simplest option for most applications.
 
 ```html
+<link rel="stylesheet" href="@lekoala/combobox/combobox.css">
+
 <script type="module">
   import "@lekoala/combobox/define";
 </script>
@@ -61,13 +65,17 @@ This is the simplest option for most applications.
 
 Importing `@lekoala/combobox/define` registers `<combo-box>`.
 
-Importing the main package does **not** register anything automatically.
+Importing the main package does **not** register anything automatically. The ESM
+entries never inject styles: load `@lekoala/combobox/combobox.css` yourself (a
+`<link>` as above, or `import "@lekoala/combobox/combobox.css"` in a bundler).
+Only the standalone build carries its CSS inline.
 
 ### JavaScript
 
-You can enhance a native control directly:
+You can enhance a native control directly — load the CSS the same way, then:
 
 ```js
+import "@lekoala/combobox/combobox.css";
 import Combobox from "@lekoala/combobox";
 
 const combo = new Combobox(document.querySelector("select"), {
@@ -224,7 +232,7 @@ Search can cover several fields:
 ```html
 <combo-box
   search="fuzzy"
-  search-fields="label city specialty"
+  search-fields="label, city, specialty"
 >
   ...
 </combo-box>
@@ -249,8 +257,16 @@ More specialized matching can be provided from JavaScript.
 
 Remote search stays deliberately simple:
 
+```html
+<combo-box class="patients">
+  <select name="patient"></select>
+</combo-box>
+```
+
 ```js
-combo.configure({
+const box = document.querySelector("combo-box.patients");
+
+box.configure({
   minChars: 2,
 
   async load(query, { signal }) {
@@ -262,6 +278,12 @@ combo.configure({
   },
 });
 ```
+
+`configure()` lives on the `<combo-box>` element (`box`), not on the engine.
+It merges options and rebuilds the engine instance on a microtask, so a
+reference obtained before the rebuild goes stale — read `box.combobox` again
+after the next tick (`await box.whenReady()` is only for an element that has
+not been upgraded yet).
 
 Remote results are **temporary suggestions**. They do not immediately become native `<option>` elements.
 
@@ -312,7 +334,9 @@ Simple options have HTML attributes where that makes sense:
 Behavior that requires functions stays in JavaScript:
 
 ```js
-element.configure({
+const box = document.querySelector("combo-box");
+
+box.configure({
   async load(query, context) {
     // ...
   },
@@ -562,7 +586,8 @@ customElements.define(
 
 ## Development
 
-The source is pure ESM and has no runtime dependencies.
+The source is pure ESM; `@lekoala/floating` is its only runtime dependency (used
+for picker placement). Nothing else runs at runtime.
 
 ```bash
 bun install
