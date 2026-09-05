@@ -45,6 +45,15 @@
           datalist so the UA picker never competes with the custom picker.
           <code>search="includes"</code> selects an accent-insensitive substring match.
         </p>
+        <p class="demo-note">
+          The browser's own autofill is not the component's to control: this
+          field is a genuine address field (<code>name="city"</code>,
+          <code>autocomplete="address-level2"</code>), so Chrome may still lay
+          its saved addresses over the picker. Avoid enhancing fields a browser
+          knows how to fill — name, address, phone, payment — or declare a token
+          from an unrelated section, such as
+          <code>autocomplete="new-password"</code>, on them.
+        </p>
 
         <label for="city">City</label>
         <combo-box search="includes">

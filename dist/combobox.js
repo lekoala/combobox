@@ -1023,7 +1023,8 @@
       if (!source.placeholder)
         source.placeholder = this.options.placeholder ?? "";
       source.removeAttribute("list");
-      source.autocomplete = "off";
+      if (!source.hasAttribute("autocomplete"))
+        source.autocomplete = "off";
       source.classList.add("cb-text-control");
       return {
         control: null,
@@ -1047,7 +1048,8 @@
       const { input, inputSnapshot } = this.#resolveFilterInput();
       input.classList.add("cb-input");
       input.type = "text";
-      input.autocomplete = "off";
+      if (!input.hasAttribute("autocomplete"))
+        input.autocomplete = "off";
       input.spellcheck = false;
       input.removeAttribute("name");
       if (!input.placeholder)

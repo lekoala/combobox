@@ -830,7 +830,10 @@ export class Combobox {
     // liaison disables the UA picker while keeping the catalogue discoverable
     // by id for application code. dispose() restores the liaison exactly.
     source.removeAttribute("list");
-    source.autocomplete = "off";
+    // Default only: an authored token wins. Chrome ignores "off" on fields its
+    // heuristics classify as address or payment, so a page that must suppress
+    // its autofill needs a token from another section (usually "new-password").
+    if (!source.hasAttribute("autocomplete")) source.autocomplete = "off";
 
     source.classList.add("cb-text-control");
     return {
@@ -864,7 +867,9 @@ export class Combobox {
     const { input, inputSnapshot } = this.#resolveFilterInput();
     input.classList.add("cb-input");
     input.type = "text";
-    input.autocomplete = "off";
+    // Default only, as in #enhanceInput: an authored filter input may carry the
+    // token it needs to keep the browser's autofill away.
+    if (!input.hasAttribute("autocomplete")) input.autocomplete = "off";
     input.spellcheck = false;
     input.removeAttribute("name");
 

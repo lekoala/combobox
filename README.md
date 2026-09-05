@@ -168,6 +168,14 @@ This also means things such as:
 
 continue to behave like normal form controls.
 
+### Browser autofill is not handled
+
+Enhancement defaults the field you type in to `autocomplete="off"` (restored on `dispose()`), and the input added around a `<select>` carries no `name`. That is the whole of it: the browser's own autofill is out of scope.
+
+It is not a guarantee. Chrome deliberately ignores `autocomplete="off"` on fields its heuristics classify as address or payment, and those heuristics read the `name`, the `id`, the associated `<label>`, the `placeholder` and any authored `autocomplete` token. A field named `city`, labelled *City* or declaring `autocomplete="address-level2"` can therefore keep showing the browser's saved address suggestions on top of the picker (demo 1 does all three).
+
+Avoiding that is the page's call, not the component's: keep address-like wording out of the enhanced field's `name`, `id` and label, and do not declare an address token on it. `off` is only a default — an `autocomplete` authored on the field is kept as-is, so a page that really must suppress the browser's suggestions can declare the usual escape token, `autocomplete="new-password"`.
+
 ## Searchable selects
 
 A regular select can be filtered without changing its value model:
