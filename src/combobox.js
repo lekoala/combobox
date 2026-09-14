@@ -1303,6 +1303,21 @@ export class Combobox {
     if (this.chips) {
       this.chips.addEventListener("keydown", this, { signal });
       this.chips.addEventListener("click", this, { signal });
+      // Removing via × must not move focus first: during mousedown the blur
+      // handler would otherwise observe document.body (focus in transit) and
+      // close an open picker before the click even removes anything. Keep
+      // focus in the input; the click still fires and the removal focuses
+      // the input back without reopening (see #focusInputWithoutReopen).
+      // Chip bodies keep their focus behavior for keyboard navigation.
+      this.chips.addEventListener(
+        "pointerdown",
+        (event) => {
+          if (/** @type {HTMLElement} */ (event.target).closest(".cb-chip-remove")) {
+            event.preventDefault();
+          }
+        },
+        { signal },
+      );
     }
 
     this.control?.addEventListener("click", this, { signal });
@@ -1412,6 +1427,12 @@ export class Combobox {
   #onInputEvent(event) {
     switch (event.type) {
       case "focus": {
+        // A removal moves focus only because the removed chip disappears.
+        // That handoff never counts as a search intent: remove() already
+        // refreshed, so run nothing (not even a hidden search that could
+        // fire beforefilter/filter or a remote load).
+        if (this.suppressReopen) return;
+
         if (this.isSelect && !this.isMultiple && this.#selectSource().selectedOptions.length)
           this.#inputEl().select();
         const query = this.isSelect && !this.isMultiple ? "" : this.#inputEl().value;
@@ -1477,6 +1498,20 @@ export class Combobox {
   }
 
   /**
+   * Focus the interaction input after a chip removal without treating the
+   * handoff as a search intent (see the focus handler). Synchronous: focus
+   * dispatches during the call, so the flag never outlives it.
+   */
+  #focusInputWithoutReopen() {
+    this.suppressReopen = true;
+    try {
+      this.#inputEl().focus();
+    } finally {
+      this.suppressReopen = false;
+    }
+  }
+
+  /**
    * @param {Event} event
    */
   #onChipsEvent(event) {
@@ -1490,7 +1525,7 @@ export class Combobox {
       // data-value but never an option). data-value is only a fallback.
       const option = this._chipOptions.get(chip);
       void this.remove(option ?? chip.dataset.value ?? "").then((removed) => {
-        if (removed) this.#inputEl().focus();
+        if (removed) this.#focusInputWithoutReopen();
       });
       return;
     }
@@ -2163,7 +2198,7 @@ export class Combobox {
             Array.from(this.#chipsEl()?.querySelectorAll(".cb-chip") || [])
           );
           remaining[Math.min(index, remaining.length - 1)]?.focus();
-          if (!remaining.length) this.#inputEl().focus();
+          if (!remaining.length) this.#focusInputWithoutReopen();
         });
       });
       return;

@@ -39,6 +39,9 @@ Requirements:
 
 - chips mirror selected native options;
 - remove button and keyboard removal update native selection;
+- removal never changes picker visibility (closed stays closed, open stays
+  open) and never counts as a search intent: no `beforefilter`/`filter`, no
+  remote `load` — focus moves only because the removed chip disappears;
 - search remains focused while options/results refresh;
 - Arrow Left/Right keyboard access to chips;
 - max selections can prevent further additions without making existing chips impossible to remove;

@@ -1310,6 +1310,11 @@
       if (this.chips) {
         this.chips.addEventListener("keydown", this, { signal });
         this.chips.addEventListener("click", this, { signal });
+        this.chips.addEventListener("pointerdown", (event) => {
+          if (event.target.closest(".cb-chip-remove")) {
+            event.preventDefault();
+          }
+        }, { signal });
       }
       this.control?.addEventListener("click", this, { signal });
       document.addEventListener("pointerdown", (event) => {
@@ -1385,6 +1390,8 @@
     #onInputEvent(event) {
       switch (event.type) {
         case "focus": {
+          if (this.suppressReopen)
+            return;
           if (this.isSelect && !this.isMultiple && this.#selectSource().selectedOptions.length)
             this.#inputEl().select();
           const query = this.isSelect && !this.isMultiple ? "" : this.#inputEl().value;
@@ -1442,6 +1449,14 @@
         }
       }
     }
+    #focusInputWithoutReopen() {
+      this.suppressReopen = true;
+      try {
+        this.#inputEl().focus();
+      } finally {
+        this.suppressReopen = false;
+      }
+    }
     #onChipsEvent(event) {
       const target = event.target;
       if (event.type === "click") {
@@ -1454,7 +1469,7 @@
         const option = this._chipOptions.get(chip);
         this.remove(option ?? chip.dataset.value ?? "").then((removed) => {
           if (removed)
-            this.#inputEl().focus();
+            this.#focusInputWithoutReopen();
         });
         return;
       }
@@ -1945,7 +1960,7 @@
             const remaining = Array.from(this.#chipsEl()?.querySelectorAll(".cb-chip") || []);
             remaining[Math.min(index, remaining.length - 1)]?.focus();
             if (!remaining.length)
-              this.#inputEl().focus();
+              this.#focusInputWithoutReopen();
           });
         });
         return;

@@ -557,6 +557,7 @@ Navigation keys always operate on the filtered, rendered window (`maxOptions`), 
 - `ArrowLeft` on an empty search focuses the last chip; `Backspace` on an empty search removes the last selected entry through the normal guarded/`beforeremove` path.
 - On a focused chip: `ArrowLeft`/`ArrowRight` move between chips, `Home`/`End` jump to first/last, and moving past the last returns to the search input.
 - `Delete` / `Backspace` on a focused chip removes it and refocuses the neighbor (or the input when the list empties); `Escape` returns to the search input.
+- Removal never changes picker visibility (closed stays closed, open stays open) and never counts as a search intent: no `beforefilter`/`filter`, no remote `load`. Focus moves only because the removed chip disappears.
 - Arrow/handoff keys are physical: in RTL layouts they keep DOM-index semantics while the layout flows right-to-left via logical CSS.
 
 ## Value operations
