@@ -344,6 +344,10 @@ Prior-art security corpora cover original values, group labels, option labels/va
 - [x] picker flips when viewport lacks block-end space (`layout.spec.js` bottom-anchored control).
 - [x] input group/floating label/table/modal/overflow containers do not clip picker (`layout.spec.js` + `popover-dialog.spec.js` for modal/overflow).
 - [x] open pickers follow scroll/resize updates through `@lekoala/floating` (`layout.spec.js`: the picker stays attached to its reference after a page scroll).
+- [x] coordinate space resolves once per opening (`coordinate-space.spec.js`): normal flow → document + absolute with `rect + scroll` coordinates, sticky/fixed/modal → viewport + fixed, `document`/`viewport` overrides win, garbage normalizes to `auto`.
+- [x] forced-document-in-sticky mismatch is measured, not asserted blind (`demo/position-modes.html` + `demo.spec.js`: sequential protocol, one open picker at a time, immediate gap vs settled gap).
+- [x] chip removal never changes picker visibility and never searches (`chips-remove.spec.js`: closed stays closed on × and last-chip Delete, open stays open, `beforefilter`/`filter`/`load` counters stay at zero).
+- [x] sub-threshold queries name the wait instead of reporting a miss (`demo.spec.js`: `render.noResults` hints on directory/place demos, genuine misses reported above the threshold).
 - [x] long no-results/loading state has no horizontal scrollbar (`layout.spec.js` long-message cases).
 - [x] multiple chips wrap/grow without changing picker anchor width incorrectly (`layout.spec.js` wrapped-chips case).
 - [x] RTL logical placement/text (`rtl.spec.js` + RTL chip/remove layout in `css-polish.spec.js`).

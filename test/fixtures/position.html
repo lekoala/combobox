@@ -37,6 +37,12 @@
     .wrap {
       inline-size: 300px;
     }
+
+    .anchored-shell {
+      inline-size: 420px;
+      padding: 0.5rem 60px;
+      border: 1px dashed #adb5bd;
+    }
   </style>
 </head>
 <body>
@@ -61,6 +67,15 @@
   </div>
 
   <div class="spacer"></div>
+
+  <div class="anchored-shell" id="anchored-shell">
+    <label for="anchored">Anchored control</label>
+    <select id="anchored" name="anchored">
+      <option value="">Choose</option>
+      <option value="1">One</option>
+      <option value="2">Two</option>
+    </select>
+  </div>
 
   <div class="fixed-box">
     <label for="fixedsel">Fixed control</label>

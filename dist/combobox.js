@@ -837,6 +837,7 @@
 
   class Combobox {
     static supported = supportsModernCombobox();
+    #suppressReopen = false;
     static getDefaultMessages() {
       return getDefaultMessages();
     }
@@ -900,7 +901,6 @@
       this.query = "";
       this.id = ++uid;
       this.mode = options.mode === "fallback" || !Combobox.supported ? "fallback" : "enhanced";
-      this.suppressReopen = false;
       this.composing = false;
       this._sourceObserver = null;
       this._sourceSyncTimer = null;
@@ -917,6 +917,9 @@
           ...options.render || {}
         }
       };
+      if (!["auto", "document", "viewport"].includes(this.options.coordinateSpace)) {
+        this.options.coordinateSpace = "auto";
+      }
       this.original = {
         filterInputPlaceholder: null,
         inventedLabels: []
@@ -1263,6 +1266,9 @@
       this.#inputEl().setAttribute("aria-controls", listbox.id);
       return { popover, listbox, status };
     }
+    #anchorEl() {
+      return this.anchor || this.control || this.#inputEl();
+    }
     #resolvePositionMode() {
       if (this.options.coordinateSpace === "document") {
         return { space: "document", position: "absolute" };
@@ -1270,14 +1276,14 @@
       if (this.options.coordinateSpace === "viewport") {
         return { space: "viewport", position: "fixed" };
       }
-      const anchor = this.anchor || this.control || this.#inputEl();
+      const anchor = this.#anchorEl();
       if (anchor.closest("dialog:modal") || anchor.closest(":popover-open") || hasFixedOrStickyAncestor(anchor)) {
         return { space: "viewport", position: "fixed" };
       }
       return { space: "document", position: "absolute" };
     }
     #positionPicker() {
-      const anchor = this.anchor || this.control || this.#inputEl();
+      const anchor = this.#anchorEl();
       const popover = this.#popoverEl();
       const width = anchor.getBoundingClientRect().width;
       popover.style.inlineSize = `${width}px`;
@@ -1291,7 +1297,7 @@
     }
     #startAutoUpdate() {
       this.stopAutoUpdate?.();
-      const anchor = this.anchor || this.control || this.#inputEl();
+      const anchor = this.#anchorEl();
       this.stopAutoUpdate = autoUpdate(anchor, this.#popoverEl(), () => {
         this.#positionPicker();
       });
@@ -1321,8 +1327,7 @@
         if (!this.isOpen())
           return;
         const path = event.composedPath();
-        const control = this.anchor || this.control || this.#inputEl();
-        if (path.includes(control) || path.includes(this.#popoverEl()))
+        if (path.includes(this.#anchorEl()) || path.includes(this.#popoverEl()))
           return;
         this.hide();
       }, { capture: true, signal });
@@ -1390,7 +1395,7 @@
     #onInputEvent(event) {
       switch (event.type) {
         case "focus": {
-          if (this.suppressReopen)
+          if (this.#suppressReopen)
             return;
           if (this.isSelect && !this.isMultiple && this.#selectSource().selectedOptions.length)
             this.#inputEl().select();
@@ -1450,11 +1455,11 @@
       }
     }
     #focusInputWithoutReopen() {
-      this.suppressReopen = true;
+      this.#suppressReopen = true;
       try {
         this.#inputEl().focus();
       } finally {
-        this.suppressReopen = false;
+        this.#suppressReopen = false;
       }
     }
     #onChipsEvent(event) {
@@ -1495,7 +1500,7 @@
         if (this.isOpen() || this.options.createOnBlur) {
           if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing) {
             const value = this.#inputEl().value;
-            this.suppressReopen = true;
+            this.#suppressReopen = true;
             try {
               if (this.#separatorsActive()) {
                 const result = await this.#processTokens(value, { final: true });
@@ -1506,7 +1511,7 @@
                 await this.#createItem(value.trim());
               }
             } finally {
-              this.suppressReopen = false;
+              this.#suppressReopen = false;
             }
             this.refresh();
           }
@@ -2118,7 +2123,7 @@
           if (!keepQuery)
             this.#inputEl().value = "";
           this.#commit();
-          if (this.suppressReopen) {
+          if (this.#suppressReopen) {
             this.refresh();
             if (snapshot)
               this.#restorePosition(snapshot);
@@ -2159,7 +2164,7 @@
         return null;
       this.#inputEl().value = "";
       if (this.isMultiple) {
-        if (this.suppressReopen)
+        if (this.#suppressReopen)
           this.refresh();
         else if (this.#closeOnSelect())
           this.hide();

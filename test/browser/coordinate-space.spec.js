@@ -44,6 +44,32 @@ test("auto resolves document + absolute for a normal-flow anchor", async ({ page
   expect(Math.abs(state.gap - 4)).toBeLessThan(3);
 });
 
+test("an invalid coordinateSpace falls back to auto with an observable effect", async ({ page }) => {
+  await setup(page, POSITION);
+  test.skip(!(await modernSupported(page)), MODERN);
+
+  const state = await page.evaluate(async () => {
+    document.getElementById("flow").scrollIntoView({ block: "center" });
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    const combo = Combobox.getOrCreateInstance(document.getElementById("flow"), {
+      coordinateSpace: "banana",
+    });
+    combo.show();
+    return {
+      option: combo.options.coordinateSpace,
+      space: combo.coordinateSpace,
+      position: combo.popover.style.position,
+    };
+  });
+
+  // Garbage normalizes to auto at construction, and auto resolves document
+  // in normal flow: the fallback is observable, not just stored.
+  expect(state.option).toBe("auto");
+  expect(state.space).toBe("document");
+  expect(state.position).toBe("absolute");
+});
+
 test("a forced viewport keeps fixed coordinates after scrolling", async ({ page }) => {
   await setup(page, POSITION);
   test.skip(!(await modernSupported(page)), MODERN);
@@ -112,6 +138,11 @@ test("auto resolves viewport for sticky and fixed lineages, even unstuck", async
 test("a modal dialog resolves viewport under auto and honors a document override", async ({ page }) => {
   await setup(page, DIALOG);
   test.skip(!(await modernSupported(page)), MODERN);
+  // The fixture pins the dialog to position:fixed; neutralize it so the
+  // modal test proves the :modal branch specifically, not the fixed one.
+  await page.evaluate(() => {
+    document.getElementById("dlg").style.position = "static";
+  });
   await page.click("#open");
 
   const state = await page.evaluate(async () => {
@@ -147,4 +178,65 @@ test("a modal dialog resolves viewport under auto and honors a document override
   expect(state.overridden.open).toBe(true);
   expect(state.overridden.space).toBe("document");
   expect(state.overridden.position).toBe("absolute");
+});
+
+test("a non-modal dialog resolves document under auto: the rule is modal, not dialog", async ({ page }) => {
+  await setup(page, DIALOG);
+  test.skip(!(await modernSupported(page)), MODERN);
+
+  const state = await page.evaluate(async () => {
+    // Same neutralization as the modal test: without the fixture's fixed
+    // positioning, a non-modal dialog is plain document flow.
+    const dialog = document.getElementById("dlg");
+    dialog.style.position = "static";
+    dialog.show();
+    const combo = Combobox.getOrCreateInstance(document.getElementById("fruit"));
+    combo.input.focus();
+    combo.show();
+    const resolved = {
+      modal: document.getElementById("dlg").matches(":modal"),
+      open: combo.isOpen(),
+      space: combo.coordinateSpace,
+      position: combo.popover.style.position,
+    };
+    combo.hide();
+    return resolved;
+  });
+
+  expect(state.modal).toBe(false);
+  expect(state.open).toBe(true);
+  expect(state.space).toBe("document");
+  expect(state.position).toBe("absolute");
+});
+
+test("auto resolves from the custom anchor, not the input", async ({ page }) => {
+  await setup(page, POSITION);
+  test.skip(!(await modernSupported(page)), MODERN);
+
+  const state = await page.evaluate(async () => {
+    document.getElementById("anchored-shell").scrollIntoView({ block: "center" });
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    const combo = Combobox.getOrCreateInstance(document.getElementById("anchored"), {
+      anchor: document.getElementById("anchored-shell"),
+    });
+    combo.show();
+    const shellWidth = document.getElementById("anchored-shell").getBoundingClientRect().width;
+    const controlWidth = document.getElementById("anchored").nextElementSibling.getBoundingClientRect().width;
+    return {
+      open: combo.isOpen(),
+      space: combo.coordinateSpace,
+      position: combo.popover.style.position,
+      popoverWidth: combo.popover.getBoundingClientRect().width,
+      shellWidth,
+      // The padded shell is wider than the control it contains.
+      shellWider: shellWidth - controlWidth > 40,
+    };
+  });
+
+  expect(state.shellWider).toBe(true);
+  expect(state.open).toBe(true);
+  expect(state.space).toBe("document");
+  expect(state.position).toBe("absolute");
+  expect(Math.abs(state.popoverWidth - state.shellWidth)).toBeLessThan(3);
 });

@@ -440,6 +440,11 @@ const INPUT_ATTRS = [
 export class Combobox {
   static supported = supportsModernCombobox();
 
+  // Internalize accidental public state: never documented nor tested as API,
+  // so no consumer may pilot the engine through it. Guards select/create
+  // reopening and removal focus handoffs.
+  #suppressReopen = false;
+
   /**
    * Read the current default UI messages. Returns a shallow copy; mutating
    * the result does not affect the engine.
@@ -596,7 +601,6 @@ export class Combobox {
       !Combobox.supported
         ? "fallback"
         : "enhanced";
-    this.suppressReopen = false;
     this.composing = false;
     /** @type {MutationObserver | null} */
     this._sourceObserver = null;
@@ -618,6 +622,11 @@ export class Combobox {
         ...(options.render || {}),
       },
     });
+    // this.options.coordinateSpace is guaranteed auto | document | viewport
+    // past this line; nothing downstream reinterprets garbage.
+    if (!["auto", "document", "viewport"].includes(this.options.coordinateSpace)) {
+      this.options.coordinateSpace = "auto";
+    }
 
     this.original = {
       // explicit filter input
@@ -1229,6 +1238,15 @@ export class Combobox {
   }
 
   /**
+   * The floating reference: consumer anchor, else whole visual control, else
+   * input. This choice is significant for positioning, not just syntax sugar.
+   * @returns {HTMLElement}
+   */
+  #anchorEl() {
+    return this.anchor || this.control || this.#inputEl();
+  }
+
+  /**
    * Resolve the picker position mode. Forced spaces win unconditionally;
    * "auto" detects once per opening: document flow → document + absolute
    * (the browser scrolls the surface with the page, no touch lag), while a
@@ -1244,7 +1262,7 @@ export class Combobox {
     if (this.options.coordinateSpace === "viewport") {
       return { space: "viewport", position: "fixed" };
     }
-    const anchor = this.anchor || this.control || this.#inputEl();
+    const anchor = this.#anchorEl();
     if (
       anchor.closest("dialog:modal") ||
       anchor.closest(":popover-open") ||
@@ -1262,7 +1280,7 @@ export class Combobox {
    * @returns {boolean}
    */
   #positionPicker() {
-    const anchor = this.anchor || this.control || this.#inputEl();
+    const anchor = this.#anchorEl();
     const popover = this.#popoverEl();
     const width = anchor.getBoundingClientRect().width;
     popover.style.inlineSize = `${width}px`;
@@ -1278,7 +1296,7 @@ export class Combobox {
   /** Start tracking geometry while the top-layer picker is open. */
   #startAutoUpdate() {
     this.stopAutoUpdate?.();
-    const anchor = this.anchor || this.control || this.#inputEl();
+    const anchor = this.#anchorEl();
     this.stopAutoUpdate = autoUpdate(anchor, this.#popoverEl(), () => {
       this.#positionPicker();
     });
@@ -1327,8 +1345,7 @@ export class Combobox {
       (event) => {
         if (!this.isOpen()) return;
         const path = event.composedPath();
-        const control = this.anchor || this.control || this.#inputEl();
-        if (path.includes(control) || path.includes(this.#popoverEl())) return;
+        if (path.includes(this.#anchorEl()) || path.includes(this.#popoverEl())) return;
         this.hide();
       },
       { capture: true, signal },
@@ -1431,7 +1448,7 @@ export class Combobox {
         // That handoff never counts as a search intent: remove() already
         // refreshed, so run nothing (not even a hidden search that could
         // fire beforefilter/filter or a remote load).
-        if (this.suppressReopen) return;
+        if (this.#suppressReopen) return;
 
         if (this.isSelect && !this.isMultiple && this.#selectSource().selectedOptions.length)
           this.#inputEl().select();
@@ -1503,11 +1520,11 @@ export class Combobox {
    * dispatches during the call, so the flag never outlives it.
    */
   #focusInputWithoutReopen() {
-    this.suppressReopen = true;
+    this.#suppressReopen = true;
     try {
       this.#inputEl().focus();
     } finally {
-      this.suppressReopen = false;
+      this.#suppressReopen = false;
     }
   }
 
@@ -1559,7 +1576,7 @@ export class Combobox {
       if (this.isOpen() || this.options.createOnBlur) {
         if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing) {
           const value = this.#inputEl().value;
-          this.suppressReopen = true;
+          this.#suppressReopen = true;
           try {
             if (this.#separatorsActive()) {
               const result = await this.#processTokens(value, { final: true });
@@ -1569,7 +1586,7 @@ export class Combobox {
               await this.#createItem(value.trim());
             }
           } finally {
-            this.suppressReopen = false;
+            this.#suppressReopen = false;
           }
           this.refresh();
         }
@@ -2446,7 +2463,7 @@ export class Combobox {
         this.#rememberSelection(selectOption);
         if (!keepQuery) this.#inputEl().value = "";
         this.#commit();
-        if (this.suppressReopen) {
+        if (this.#suppressReopen) {
           this.refresh();
           if (snapshot) this.#restorePosition(snapshot);
         } else if (this.#closeOnSelect()) this.hide();
@@ -2494,7 +2511,7 @@ export class Combobox {
 
     this.#inputEl().value = "";
     if (this.isMultiple) {
-      if (this.suppressReopen) this.refresh();
+      if (this.#suppressReopen) this.refresh();
       else if (this.#closeOnSelect()) this.hide();
       else this.search("", { show: true, reason: "create" });
     } else {

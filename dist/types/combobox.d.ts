@@ -324,7 +324,6 @@ export declare class Combobox {
     query: string;
     id: number;
     mode: string;
-    suppressReopen: boolean;
     composing: boolean;
     /** @type {MutationObserver | null} */
     _sourceObserver: MutationObserver | null;
