@@ -191,7 +191,27 @@ Why manual instead of auto:
 - `autoUpdate()` follows scrolling, viewport changes and element resizes while open.
 
 The Popover remains a native top-layer/lifecycle primitive. The floating engine
-writes fixed viewport coordinates and does not open, close or dismiss the picker.
+writes coordinates in the resolved space and does not open, close or dismiss
+the picker.
+
+### Coordinate space
+
+The `coordinateSpace` option (`"auto"` default, `"document"`/`"viewport"`
+overrides, JS-only) picks the coordinate model **once per opening**, in
+`show()`, and `style.position` is coupled to it (`absolute`/`fixed`):
+
+```text
+auto
+  normal document-flow anchor → document + absolute
+  fixed/sticky/modal/popover  → viewport + fixed
+```
+
+Document coordinates let the browser scroll the surface with the page (no
+touch-scroll lag); they assume an anchor that moves with the page, which a
+stuck sticky or fixed anchor is not. A sticky ancestor counts whether or not
+it is stuck yet, because it may stick mid-opening and the mode never
+re-resolves. `demo/position-modes.html` is the diagnostic page proving the
+mismatch (and the convergence after correction).
 
 ## 5. Filtering model
 

@@ -238,3 +238,70 @@ test("empty rows distinguish waiting-for-input from genuine misses", async ({ pa
     'No members for "zzz-no-such-member"',
   );
 });
+
+test("position demo measures the sticky mismatch sequentially, one picker at a time", async ({ page }) => {
+  await page.goto("/demo/position-modes.html");
+  await page.setViewportSize({ width: 900, height: 720 });
+
+  const EXPECTED_GAP = 4;
+  const state = await page.evaluate(async () => {
+    const frames = (count) =>
+      new Promise((resolve) => {
+        const tick = (remaining) => {
+          if (remaining <= 1) resolve();
+          else requestAnimationFrame(() => tick(remaining - 1));
+        };
+        requestAnimationFrame(() => tick(count));
+      });
+    const gapOf = (combo) => {
+      const anchor = combo.anchor || combo.control;
+      const anchorRect = anchor.getBoundingClientRect();
+      const popoverRect = combo.popover.getBoundingClientRect();
+      return popoverRect.top - anchorRect.bottom;
+    };
+    const out = {};
+    for (const id of ["bad-widget", "good-widget"]) {
+      const box = document.getElementById(id);
+      const combo = await box.whenReady();
+      window.scrollTo(0, document.getElementById("toolbar").offsetTop);
+      await frames(2);
+      const opened = combo.show();
+      await frames(1);
+      window.scrollBy(0, 300);
+      const immediate = gapOf(combo); // same task: no correction has run yet
+      await frames(2);
+      const settled = gapOf(combo);
+      combo.hide();
+      out[id] = {
+        opened,
+        space: combo.coordinateSpace,
+        position: combo.popover.style.position,
+        immediate,
+        settled,
+      };
+    }
+    return { ...out, stuck: document.getElementById("toolbar").getBoundingClientRect().top <= 1 };
+  });
+
+  expect(state.stuck).toBe(true);
+  expect(state["bad-widget"].opened).toBe(true);
+  expect(state["good-widget"].opened).toBe(true);
+  expect(state["bad-widget"].space).toBe("document");
+  expect(state["bad-widget"].position).toBe("absolute");
+  expect(state["good-widget"].space).toBe("viewport");
+  expect(state["good-widget"].position).toBe("fixed");
+
+  // The forced-document picker trails the stuck toolbar until the next
+  // correction; the auto one never detaches. Both converge afterwards.
+  expect(Math.abs(state["bad-widget"].immediate - EXPECTED_GAP)).toBeGreaterThan(100);
+  expect(Math.abs(state["good-widget"].immediate - EXPECTED_GAP)).toBeLessThan(2);
+  expect(Math.abs(state["bad-widget"].settled - EXPECTED_GAP)).toBeLessThan(2);
+  expect(Math.abs(state["good-widget"].settled - EXPECTED_GAP)).toBeLessThan(2);
+
+  // The demo button runs the same protocol and renders both verdicts,
+  // leaving no picker open behind.
+  await page.locator("#run").click();
+  await expect(page.locator("#bad-result")).toHaveText(/temporarily detached/);
+  await expect(page.locator("#good-result")).toHaveText(/correct coordinate model/);
+  await expect(page.locator(".cb-popover:visible")).toHaveCount(0);
+});

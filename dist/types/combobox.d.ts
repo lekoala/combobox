@@ -96,6 +96,13 @@ export type ComboboxOptions = {
     guards?: GuardMap;
     selectionOrder?: "source" | "selected";
     observeSource?: boolean;
+    /**
+     * Picker
+     * coordinate space: "auto" resolves once per opening (document flow →
+     * document + absolute, fixed/sticky/modal/popover anchor → viewport +
+     * fixed), "document"/"viewport" force one space unconditionally
+     */
+    coordinateSpace?: "auto" | "document" | "viewport";
     render?: RenderMap;
     /**
      * Consumer-authored positioning/control region
@@ -124,6 +131,7 @@ export type ResolvedOptions = ComboboxOptions & {
     guards: GuardMap;
     selectionOrder: "source" | "selected";
     observeSource: boolean;
+    coordinateSpace: "auto" | "document" | "viewport";
     render: RenderMap;
     load: LoadCallback | null;
     create: boolean | CreateCallback;
@@ -218,6 +226,10 @@ export type ViewState = {
  * @property {GuardMap} [guards]
  * @property {"source" | "selected"} [selectionOrder]
  * @property {boolean} [observeSource]
+ * @property {"auto" | "document" | "viewport"} [coordinateSpace] Picker
+ *   coordinate space: "auto" resolves once per opening (document flow →
+ *   document + absolute, fixed/sticky/modal/popover anchor → viewport +
+ *   fixed), "document"/"viewport" force one space unconditionally
  * @property {RenderMap} [render]
  * @property {HTMLElement} [anchor] Consumer-authored positioning/control region
  * @property {(a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number} [sort]
@@ -247,6 +259,7 @@ export type ViewState = {
  *   guards: GuardMap,
  *   selectionOrder: "source" | "selected",
  *   observeSource: boolean,
+ *   coordinateSpace: "auto" | "document" | "viewport",
  *   render: RenderMap,
  *   load: LoadCallback | null,
  *   create: boolean | CreateCallback,
@@ -341,6 +354,13 @@ export declare class Combobox {
     anchor: HTMLElement | null;
     /** @type {(() => void) | null} */
     stopAutoUpdate: (() => void) | null;
+    /**
+     * Coordinate space resolved for the current opening ("viewport" until
+     * the first show()). #positionPicker() stays mechanical: it consumes
+     * this field and never re-resolves mid-opening.
+     * @type {"viewport" | "document"}
+     */
+    coordinateSpace: "viewport" | "document";
     /** @type {HTMLInputElement | null} */
     input: HTMLInputElement | null;
     /** @type {HTMLElement | null} */

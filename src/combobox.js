@@ -139,6 +139,7 @@ const DEFAULTS = {
   guards: {}, // async add/remove/clear guards
   selectionOrder: "source", // source | selected
   observeSource: false, // opt-in MutationObserver -> debounced sync()
+  coordinateSpace: "auto", // auto | document | viewport: picker coordinate space, resolved once per opening
   sort: null,
   score: null,
   filter: null,
@@ -213,6 +214,24 @@ function setContent(element, content) {
     // which keeps the default renderer safe without a global allowHtml mode.
     element.textContent = String(content);
   }
+}
+
+/**
+ * Whether `element` or any ancestor is fixed or sticky positioned. A sticky
+ * ancestor counts whether or not it is currently stuck: it may stick while
+ * the picker is open, and the position mode is frozen per opening, so the
+ * conservative branch must win from the start.
+ * @param {Element | null} element
+ * @returns {boolean}
+ */
+function hasFixedOrStickyAncestor(element) {
+  let node = element;
+  while (node instanceof Element) {
+    const position = node.ownerDocument.defaultView?.getComputedStyle(node).position;
+    if (position === "fixed" || position === "sticky") return true;
+    node = node.parentElement;
+  }
+  return false;
 }
 
 /** Stable, font-independent icon for generated remove buttons. */
@@ -344,6 +363,10 @@ const INPUT_ATTRS = [
  * @property {GuardMap} [guards]
  * @property {"source" | "selected"} [selectionOrder]
  * @property {boolean} [observeSource]
+ * @property {"auto" | "document" | "viewport"} [coordinateSpace] Picker
+ *   coordinate space: "auto" resolves once per opening (document flow →
+ *   document + absolute, fixed/sticky/modal/popover anchor → viewport +
+ *   fixed), "document"/"viewport" force one space unconditionally
  * @property {RenderMap} [render]
  * @property {HTMLElement} [anchor] Consumer-authored positioning/control region
  * @property {(a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number} [sort]
@@ -374,6 +397,7 @@ const INPUT_ATTRS = [
  *   guards: GuardMap,
  *   selectionOrder: "source" | "selected",
  *   observeSource: boolean,
+ *   coordinateSpace: "auto" | "document" | "viewport",
  *   render: RenderMap,
  *   load: LoadCallback | null,
  *   create: boolean | CreateCallback,
@@ -615,6 +639,13 @@ export class Combobox {
     this.anchor = null;
     /** @type {(() => void) | null} */
     this.stopAutoUpdate = null;
+    /**
+     * Coordinate space resolved for the current opening ("viewport" until
+     * the first show()). #positionPicker() stays mechanical: it consumes
+     * this field and never re-resolves mid-opening.
+     * @type {"viewport" | "document"}
+     */
+    this.coordinateSpace = "viewport";
     /** @type {HTMLInputElement | null} */
     this.input = null;
     /** @type {HTMLElement | null} */
@@ -1198,8 +1229,36 @@ export class Combobox {
   }
 
   /**
+   * Resolve the picker position mode. Forced spaces win unconditionally;
+   * "auto" detects once per opening: document flow → document + absolute
+   * (the browser scrolls the surface with the page, no touch lag), while a
+   * modal dialog, an open popover, or a fixed/sticky anchor lineage keeps
+   * viewport + fixed (document coordinates assume an anchor that moves with
+   * the page, which those are not).
+   * @returns {{ space: "viewport" | "document", position: "fixed" | "absolute" }}
+   */
+  #resolvePositionMode() {
+    if (this.options.coordinateSpace === "document") {
+      return { space: "document", position: "absolute" };
+    }
+    if (this.options.coordinateSpace === "viewport") {
+      return { space: "viewport", position: "fixed" };
+    }
+    const anchor = this.anchor || this.control || this.#inputEl();
+    if (
+      anchor.closest("dialog:modal") ||
+      anchor.closest(":popover-open") ||
+      hasFixedOrStickyAncestor(anchor)
+    ) {
+      return { space: "viewport", position: "fixed" };
+    }
+    return { space: "document", position: "absolute" };
+  }
+
+  /**
    * Position the open picker from the whole visual control. The floating
-   * engine writes viewport coordinates; Popover supplies the top layer.
+   * engine writes coordinates in the resolved space; Popover supplies the
+   * top layer.
    * @returns {boolean}
    */
   #positionPicker() {
@@ -1212,6 +1271,7 @@ export class Combobox {
       distance: 4,
       flip: true,
       shift: true,
+      coordinateSpace: this.coordinateSpace,
     });
   }
 
@@ -2885,6 +2945,12 @@ export class Combobox {
     } catch {
       this.#popoverEl().showPopover();
     }
+    // Freeze the coordinate model once per opening: style.position and the
+    // space must agree, and must not drift mid-opening (e.g. a sticky anchor
+    // sticking after the picker opened).
+    const mode = this.#resolvePositionMode();
+    this.coordinateSpace = mode.space;
+    this.#popoverEl().style.position = mode.position;
     this.#positionPicker();
     this.#startAutoUpdate();
     openCombobox = this;

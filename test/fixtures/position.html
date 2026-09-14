@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Coordinate space fixtures</title>
+  <link rel="stylesheet" href="../../src/combobox.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 1rem;
+      font: 16px/1.4 system-ui, sans-serif;
+    }
+
+    .spacer {
+      block-size: 120vh;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      padding: 0.5rem;
+      border: 1px solid #adb5bd;
+      background: #fff;
+      inline-size: 300px;
+    }
+
+    .fixed-box {
+      position: fixed;
+      inset-block-end: 0.5rem;
+      inset-inline-start: 0.5rem;
+      inline-size: 300px;
+      padding: 0.5rem;
+      border: 1px solid #adb5bd;
+      background: #fff;
+    }
+
+    .wrap {
+      inline-size: 300px;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label for="sticky">Sticky control</label>
+    <select id="sticky" name="sticky">
+      <option value="">Choose</option>
+      <option value="1">One</option>
+      <option value="2">Two</option>
+    </select>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="wrap">
+    <label for="flow">Flow control</label>
+    <select id="flow" name="flow">
+      <option value="">Choose</option>
+      <option value="1">One</option>
+      <option value="2">Two</option>
+    </select>
+  </div>
+
+  <div class="spacer"></div>
+
+  <div class="fixed-box">
+    <label for="fixedsel">Fixed control</label>
+    <select id="fixedsel" name="fixedsel">
+      <option value="">Choose</option>
+      <option value="1">One</option>
+      <option value="2">Two</option>
+    </select>
+  </div>
+
+  <script type="module" src="../../src/define.js"></script>
+</body>
+</html>

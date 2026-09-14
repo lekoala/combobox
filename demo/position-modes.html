@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Position modes · @lekoala/combobox</title>
+  <meta name="description" content="Diagnostic page for the coordinateSpace option: auto keeps a sticky-anchored picker attached, while a forced document space visibly detaches it until JavaScript catches up. Measured sequentially, one open picker at a time.">
+  <link rel="stylesheet" href="../dist/combobox.css">
+  <script src="../dist/combobox.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      color: #18202b;
+      background: #f5f7fa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body { margin: 0; }
+
+    main {
+      max-inline-size: 46rem;
+      margin: 0 auto;
+      padding: 4rem 1.25rem 0;
+    }
+
+    a { color: #175cd3; }
+
+    .muted { color: #667085; }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-block-start: 1.5rem;
+      padding: 1rem 1.25rem;
+      border: 1px solid #dfe3e8;
+      border-radius: 0.85rem;
+      background: white;
+      box-shadow: 0 0.5rem 2rem rgb(16 24 40 / 7%);
+    }
+
+    .widget-label {
+      display: grid;
+      gap: 0.35rem;
+      font-size: 0.92rem;
+    }
+
+    .badge {
+      justify-self: start;
+      padding: 0.1rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .badge-good {
+      background: #e6f4ea;
+      color: #137333;
+    }
+
+    .badge-bad {
+      background: #fce8e6;
+      color: #a50e0e;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-block: 1.5rem;
+    }
+
+    .controls button {
+      padding: 0.5rem 1rem;
+      border: 1px solid #98a2b3;
+      border-radius: 0.5rem;
+      background: #175cd3;
+      color: white;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .results {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-block-end: 1rem;
+    }
+
+    .result {
+      margin: 0;
+      padding: 1rem 1.25rem;
+      border: 1px solid #dfe3e8;
+      border-radius: 0.85rem;
+      background: white;
+      font-size: 0.92rem;
+      white-space: pre-wrap;
+    }
+
+    .result h2 {
+      margin: 0 0 0.5rem;
+      font-size: 1rem;
+    }
+
+    .verdict-good { color: #137333; }
+    .verdict-bad { color: #a50e0e; }
+
+    .spacer {
+      block-size: 160vh;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="muted"><a href="./index.html">← Main demo</a></p>
+    <p class="muted">Diagnostic page</p>
+    <h1>Position modes</h1>
+    <p class="muted">
+      The <code>coordinateSpace</code> option picks the picker coordinate model
+      once per opening. <strong>Auto (recommended)</strong>: sticky and fixed
+      anchors use viewport coordinates, so the picker stays attached while the
+      browser scrolls. <strong>Forced document (wrong for sticky)</strong>:
+      document coordinates assume the anchor moves with the page — a stuck
+      sticky anchor does not, so the picker visibly trails until JavaScript
+      repositions it.
+    </p>
+
+    <div class="toolbar" id="toolbar">
+      <div class="widget-label">
+        <span class="badge badge-good">Auto — recommended</span>
+        <label for="good">Sticky pick</label>
+        <combo-box id="good-widget" placeholder="Search…">
+          <select id="good" name="good">
+            <option value="">Choose…</option>
+            <option value="1">One</option>
+            <option value="2">Two</option>
+            <option value="3">Three</option>
+          </select>
+        </combo-box>
+      </div>
+      <div class="widget-label">
+        <span class="badge badge-bad">Forced document — don't</span>
+        <label for="bad">Sticky pick</label>
+        <combo-box id="bad-widget" placeholder="Search…">
+          <select id="bad" name="bad">
+            <option value="">Choose…</option>
+            <option value="1">One</option>
+            <option value="2">Two</option>
+            <option value="3">Three</option>
+          </select>
+        </combo-box>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button type="button" id="run">Run comparison</button>
+      <span class="muted" id="run-hint">Scrolls +300px with each picker open and measures the gap.</span>
+    </div>
+
+    <div class="results">
+      <p class="result" id="good-result" role="status">Auto: not measured yet.</p>
+      <p class="result" id="bad-result" role="status">Document: not measured yet.</p>
+    </div>
+
+    <p class="muted">
+      Only one picker is ever open at a time: the comparison runs sequentially
+      (open → scroll → measure → settle → close, then the other widget at the
+      exact same scroll position), respecting the single-open-picker rule. The
+      immediate reading happens deliberately before the next animation frame to
+      expose the coordinate mismatch; both modes converge afterwards.
+      Mouse-wheel scrolling may make the trailing barely noticeable;
+      asynchronous touch scrolling is where the problem becomes visible.
+    </p>
+    <p class="muted">
+      Fallback: positioning is enhanced-mode only. Without enhancement both
+      widgets degrade to plain native selects.
+    </p>
+
+    <div class="spacer"></div>
+  </main>
+
+  <script type="module">
+    const goodBox = document.getElementById("good-widget");
+    const badBox = document.getElementById("bad-widget");
+    const toolbar = document.getElementById("toolbar");
+    const runButton = document.getElementById("run");
+    const goodResult = document.getElementById("good-result");
+    const badResult = document.getElementById("bad-result");
+
+    const EXPECTED_GAP = 4; // floating `distance` used by the engine
+    const SCROLL_BY = 300;
+
+    // Forced document space: the documented anti-pattern inside sticky/fixed.
+    // Auto (the other widget) resolves viewport here on its own.
+    badBox.configure({ coordinateSpace: "document" });
+
+    const frames = (count) =>
+      new Promise((resolve) => {
+        const tick = (remaining) => {
+          if (remaining <= 1) resolve();
+          else requestAnimationFrame(() => tick(remaining - 1));
+        };
+        requestAnimationFrame(() => tick(count));
+      });
+
+    const gapOf = (combo) => {
+      const anchor = combo.anchor || combo.control;
+      const anchorRect = anchor.getBoundingClientRect();
+      const popoverRect = combo.popover.getBoundingClientRect();
+      return popoverRect.top - anchorRect.bottom;
+    };
+
+    // Sequential by design: a single open picker at a time. Each run starts
+    // from the exact same stuck reference scroll, opens, scrolls, reads the
+    // gap synchronously (before autoUpdate can correct it), then reads again
+    // settled and closes.
+    async function measure(box) {
+      await new Promise(requestAnimationFrame);
+      const combo = box.combobox;
+      window.scrollTo(0, toolbar.offsetTop);
+      await frames(2);
+      if (!combo.show()) return null;
+      await frames(1);
+      window.scrollBy(0, SCROLL_BY);
+      const immediate = gapOf(combo); // same task: no correction has run yet
+      await frames(2);
+      const settled = gapOf(combo);
+      const space = combo.coordinateSpace;
+      const position = combo.popover.style.position;
+      combo.hide();
+      return { immediate, settled, space, position };
+    }
+
+    const format = (value) => `${value >= 0 ? "" : "−"}${Math.abs(Math.round(value))}px`;
+
+    runButton.addEventListener("click", async () => {
+      runButton.disabled = true;
+      try {
+        const bad = await measure(badBox);
+        const good = await measure(goodBox);
+
+        if (bad) {
+          badResult.textContent =
+            `DOCUMENT / sticky\nImmediate gap: ${format(bad.immediate)}\nAfter update:  ${format(bad.settled)}\n` +
+            `(${bad.space} + ${bad.position})\n` +
+            (Math.abs(bad.immediate - EXPECTED_GAP) > 100
+              ? "✗ temporarily detached until JavaScript catches up"
+              : "✓ stayed attached");
+        }
+        if (good) {
+          goodResult.textContent =
+            `AUTO / sticky\nImmediate gap: ${format(good.immediate)}\nAfter update:  ${format(good.settled)}\n` +
+            `(${good.space} + ${good.position})\n` +
+            (Math.abs(good.immediate - EXPECTED_GAP) < 2
+              ? "✓ browser carries the correct coordinate model"
+              : "✗ unexpected detachment");
+        }
+      } finally {
+        runButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

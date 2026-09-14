@@ -317,8 +317,11 @@
     const availableHeight = `${getAvailableHeight(referenceRect, side, boundary, distance, shiftPadding)}px`;
     const { style } = floating;
     const roomChanged = style.getPropertyValue("--available-height") !== availableHeight;
-    style.left = `${coords.x}px`;
-    style.top = `${coords.y}px`;
+    const win = options.coordinateSpace === "document" ? reference.ownerDocument.defaultView : null;
+    const originX = win ? win.scrollX : 0;
+    const originY = win ? win.scrollY : 0;
+    style.left = `${coords.x + originX}px`;
+    style.top = `${coords.y + originY}px`;
     style.setProperty("--arrow-x", `${arrowX}%`);
     style.setProperty("--arrow-y", `${arrowY}%`);
     style.setProperty("--available-height", availableHeight);
@@ -734,6 +737,7 @@
     guards: {},
     selectionOrder: "source",
     observeSource: false,
+    coordinateSpace: "auto",
     sort: null,
     score: null,
     filter: null,
@@ -775,6 +779,16 @@
     } else if (content !== null && content !== undefined) {
       element.textContent = String(content);
     }
+  }
+  function hasFixedOrStickyAncestor(element) {
+    let node = element;
+    while (node instanceof Element) {
+      const position = node.ownerDocument.defaultView?.getComputedStyle(node).position;
+      if (position === "fixed" || position === "sticky")
+        return true;
+      node = node.parentElement;
+    }
+    return false;
   }
   function createRemoveIcon() {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -913,6 +927,7 @@
       this.control = null;
       this.anchor = null;
       this.stopAutoUpdate = null;
+      this.coordinateSpace = "viewport";
       this.input = null;
       this.chips = null;
       this.datalist = null;
@@ -1248,6 +1263,19 @@
       this.#inputEl().setAttribute("aria-controls", listbox.id);
       return { popover, listbox, status };
     }
+    #resolvePositionMode() {
+      if (this.options.coordinateSpace === "document") {
+        return { space: "document", position: "absolute" };
+      }
+      if (this.options.coordinateSpace === "viewport") {
+        return { space: "viewport", position: "fixed" };
+      }
+      const anchor = this.anchor || this.control || this.#inputEl();
+      if (anchor.closest("dialog:modal") || anchor.closest(":popover-open") || hasFixedOrStickyAncestor(anchor)) {
+        return { space: "viewport", position: "fixed" };
+      }
+      return { space: "document", position: "absolute" };
+    }
     #positionPicker() {
       const anchor = this.anchor || this.control || this.#inputEl();
       const popover = this.#popoverEl();
@@ -1257,7 +1285,8 @@
         placement: "bottom-start",
         distance: 4,
         flip: true,
-        shift: true
+        shift: true,
+        coordinateSpace: this.coordinateSpace
       });
     }
     #startAutoUpdate() {
@@ -2482,6 +2511,9 @@
       } catch {
         this.#popoverEl().showPopover();
       }
+      const mode = this.#resolvePositionMode();
+      this.coordinateSpace = mode.space;
+      this.#popoverEl().style.position = mode.position;
       this.#positionPicker();
       this.#startAutoUpdate();
       openCombobox = this;
