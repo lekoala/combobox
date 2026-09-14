@@ -87,6 +87,40 @@ test("query-builder demo turns a suggestion into application state", async ({ pa
   expect(colors.filter).not.toBe(colors.group);
 });
 
+test("service-options demo renders gated options with metadata and native value", async ({ page }) => {
+  await page.goto("/demo/service-options.html");
+
+  // Rich rows: duration pills and inline reasons, text-built by render.option.
+  const input = page.locator("#service-option + .cb-control .cb-input");
+  await input.click();
+  const pills = page.locator(".cb-popover:visible .service-option-duration");
+  await expect(pills).toHaveCount(4);
+  await expect(pills.nth(0)).toHaveText("15 min");
+  await expect(page.locator(".cb-popover:visible .service-option-reason")).toHaveCount(2);
+
+  // Gated rows: native disabled semantics surfaced, title propagated by the
+  // core, data-tooltip markup produced by the application renderer. The Actual
+  // tooltip runtime itself is not under test here.
+  const gated = page.locator(".cb-popover:visible .cb-option[aria-disabled='true']");
+  await expect(gated).toHaveCount(2);
+  await expect(gated.first()).toHaveAttribute("title", /Reserved for members/);
+  const tooltipRow = page.locator(
+    ".cb-popover:visible .cb-option[aria-disabled='true'] .service-option[data-tooltip]",
+  );
+  await expect(tooltipRow).toHaveCount(2);
+
+  // Keyboard skips disabled rows: first ArrowDown lands on Standard session.
+  await input.press("ArrowDown");
+  const activeId = await input.getAttribute("aria-activedescendant");
+  const activeText = await page.locator(`#${activeId}`).innerText();
+  expect(activeText).toContain("Standard session");
+
+  // Selecting commits the native value exactly once.
+  await input.press("Enter");
+  await expect(page.locator("#service-option")).toHaveValue("standard-45");
+  await expect(page.locator("#service-option-status")).toHaveText(/standard-45/);
+});
+
 test("Actual CSS bridge keeps SVG chip removal visible and functional", async ({ page }) => {
   await page.goto("/demo/actual-css.html");
 

@@ -578,6 +578,7 @@
       return Array.from(selectSourceOf(combobox).options).filter((option) => option.value || options.allowEmptyOption).map((option) => ({
         value: option.value,
         label: option.textContent.trim(),
+        title: option.title || undefined,
         disabled: option.disabled || (option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.disabled : false),
         selected: option.selected,
         group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
@@ -628,6 +629,7 @@
       const preserved = preserveSelected ? Array.from(select.selectedOptions).map((option) => ({
         value: option.value,
         label: option.textContent.trim(),
+        title: option.title || undefined,
         selected: true,
         disabled: option.disabled,
         group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : ""
@@ -643,6 +645,8 @@
           continue;
         const option = new Option(item.label, item.value, Boolean(item.selected), Boolean(item.selected));
         option.disabled = Boolean(item.disabled);
+        if (item.title)
+          option.title = item.title;
         if (item.data)
           Object.assign(option.dataset, item.data);
         if (item.group) {
@@ -678,6 +682,8 @@
     const option = item.option instanceof HTMLOptionElement ? item.option : new Option(item.label, item.value, false, selected);
     if (!(item.option instanceof HTMLOptionElement)) {
       option.disabled = Boolean(item.disabled);
+      if (item.title)
+        option.title = item.title;
       if (item.data)
         Object.assign(option.dataset, item.data);
       if (item.group) {

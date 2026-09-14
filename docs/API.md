@@ -281,6 +281,7 @@ Canonical normalized item:
   selected: false,
   group: "Specialists",
   data: { ... },
+  title: "Tooltip text",
   option: HTMLOptionElement | null,
 }
 ```
@@ -612,7 +613,9 @@ instead of producing an empty value (`selectedIndex` is never `-1`; the
 collapse is the browser's native rule, not an engine behavior).
 
 Native `<option title="…">` tooltips propagate onto rendered rows and chips; richer
-tooltips are the job of `render`.
+tooltips are the job of `render`. `title` round-trips: it is read into the
+canonical item, copied onto materialized options (remote select, create) and
+preserved for kept selections across `setOptions()`.
 
 ## Ordering
 

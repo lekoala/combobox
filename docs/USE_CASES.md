@@ -399,3 +399,89 @@ The token/scope recipe exists only in enhanced mode. In fallback mode an
 `demo/query-builder.html` is the working reference. The underlying pieces are
 covered by `beforefilter.spec.js` and `remote.spec.js` (cancelled
 `beforeselect`, `setQuery`/`clearQuery` sync, consumer anchor).
+
+## UC15 — Service option picker
+
+A constrained single select where some options are unavailable, each option
+carries business metadata, and unavailable options explain themselves.
+
+### Recette
+
+```html
+<combo-box placeholder="Choose an option…">
+  <select id="service-option" name="service-option" required>
+    <option value="">Choose an option…</option>
+    <option
+      value="priority-15"
+      disabled
+      data-duration="15 min"
+      data-reason="Login required · Members"
+      title="Reserved for members. Log in to your account to book this option."
+    >Priority session</option>
+    <option value="standard-45" data-duration="45 min">Standard session</option>
+  </select>
+</combo-box>
+```
+
+```js
+box.configure({
+  render: {
+    option(item) {
+      const root = document.createElement("span");
+      root.className = "service-option";
+      if (item.disabled && item.title) {
+        root.dataset.tooltip = item.title; // application-owned enhancement
+      }
+      const label = document.createElement("span");
+      label.textContent = item.label;
+      root.append(label);
+      if (item.data?.duration) {
+        const duration = document.createElement("span");
+        duration.textContent = item.data.duration;
+        root.append(duration);
+      }
+      if (item.data?.reason) {
+        const reason = document.createElement("span");
+        reason.textContent = item.data.reason;
+        root.append(reason);
+      }
+      return root;
+    },
+  },
+});
+```
+
+Separation of concerns, from generic to specific:
+
+```text
+<option disabled>  → availability (native, keyboard skips it, selection refused)
+data-duration      → business metadata (item.data, never combobox config)
+data-reason        → short inline explanation, readable without hover
+title              → native metadata/fallback, round-tripped onto rows, chips
+                     and materialized options
+render.option()    → rich presentation (DOM Nodes, never HTML strings)
+data-tooltip       → optional application-owned polish (here Actual CSS)
+```
+
+Requirements:
+
+- disabled options render `aria-disabled`, refuse selection and are skipped by
+  keyboard navigation;
+- the short reason stays inline: a hover-only tooltip would be invisible to
+  keyboard users on rows they cannot focus;
+- the renderer returns text-built Nodes only — hostile strings stay text;
+- the styled tooltip is never the only channel: without its script the native
+  `title` still applies (progressive enhancement, not a dependency);
+- the combobox learns no business notion (`duration`, `reason`, login rules).
+
+### Fallback
+
+In fallback mode the recipe degrades to a plain native select: `disabled`,
+`data-*` and `title` are native semantics and keep working with zero JavaScript.
+
+### Tests
+
+`demo/service-options.html` is the working reference, covered by a `test/dist`
+smoke test asserting the rendered contract (duration pills, `aria-disabled` +
+`title` rows, `data-tooltip` markup, keyboard skip, native value on select) —
+never Actual CSS runtime behavior, which belongs to its own project.

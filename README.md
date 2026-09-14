@@ -505,6 +505,10 @@ The main demo covers:
 * form reset;
 * custom clear controls.
 
+Standalone recipe pages: `demo/query-builder.html` (scoped search tokens) and
+`demo/service-options.html` (gated single select with rich rows and
+application-owned tooltips).
+
 Run it locally with:
 
 ```bash

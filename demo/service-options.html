@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Service options · @lekoala/combobox</title>
+  <meta name="description" content="A constrained single select with gated options: native disabled availability, data-* metadata, title tooltips and a rich render.option row. Tooltips are an application-side Actual CSS enhancement.">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/actual-css@0.9.0/dist/actual.full.min.css">
+  <link rel="stylesheet" href="../dist/combobox.css">
+  <script src="../dist/combobox.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "@lekoala/floating": "https://cdn.jsdelivr.net/npm/@lekoala/floating@0.1.1/src/floating.js"
+      }
+    }
+  </script>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/actual-css@0.9.0/src/js/tooltip.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      color: #18202b;
+      background: #f5f7fa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body { margin: 0; }
+
+    main {
+      max-inline-size: 40rem;
+      margin: 4rem auto;
+      padding: 0 1.25rem 4rem;
+    }
+
+    .booking-card {
+      padding: var(--space-40);
+    }
+
+    /* Rich option row. Everything is text: the renderer builds DOM Nodes,
+       the combobox never parses HTML. Full inline-size keeps the hover area
+       natural for the delegated Actual tooltip. */
+    .service-option {
+      display: grid;
+      gap: 0.1rem;
+      min-inline-size: 0;
+      inline-size: 100%;
+    }
+
+    .service-option,
+    .service-option * {
+      white-space: normal;
+    }
+
+    .service-option-main {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-inline-size: 0;
+    }
+
+    .service-option-title {
+      flex: 1 1 auto;
+      min-inline-size: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .service-option-duration {
+      flex: none;
+      padding: 0.15rem 0.55rem;
+      border: var(--border-width) solid
+        color-mix(in oklab, var(--surface) var(--soft-border-mix), var(--primary));
+      border-radius: var(--radius-full);
+      background:
+        color-mix(in oklab, var(--surface) var(--soft-bg-mix), var(--primary));
+      color:
+        color-mix(in oklab, var(--primary) var(--soft-fg-mix), var(--text));
+      font-size: var(--font-size-xs);
+      font-weight: var(--font-weight-semibold);
+      line-height: var(--line-height);
+    }
+
+    .service-option-reason {
+      font-size: 0.8em;
+      font-style: italic;
+      line-height: 1.3;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+  <main class="center stack">
+    <header>
+      <p class="overline">Use-case demo</p>
+      <h1>Service options</h1>
+      <p class="muted">
+        A constrained single select with gated options. Availability is native
+        (<code>disabled</code>), metadata lives in <code>data-*</code>, the long
+        explanation in <code>title</code>, and the rich row is
+        <code>render.option()</code>. The combobox knows none of these business
+        notions. <a href="./index.html">Back to the main demo</a>.
+      </p>
+    </header>
+
+    <section class="card stack booking-card">
+      <form id="booking-form" action="./service-options.html" method="get">
+        <label class="field actual-combobox" for="service-option">
+          <span class="field-label">Service option <span class="required">*</span></span>
+          <combo-box id="service-option-widget" placeholder="Choose an option…">
+            <select id="service-option" name="service-option" required>
+              <option value="">Choose an option…</option>
+              <option
+                value="priority-15"
+                disabled
+                data-duration="15 min"
+                data-reason="Login required · Members"
+                title="Reserved for members. Log in to your account to book this option."
+              >Priority session</option>
+              <option
+                value="priority-30"
+                disabled
+                data-duration="30 min"
+                data-reason="Login required · Members"
+                title="Reserved for members. Log in to your account to book this option."
+              >Priority session</option>
+              <option
+                value="standard-45"
+                data-duration="45 min"
+              >Standard session</option>
+              <option
+                value="intro-20"
+                data-duration="20 min"
+              >Introductory session</option>
+            </select>
+          </combo-box>
+        </label>
+        <p class="muted" id="service-option-status" role="status">No option selected yet.</p>
+        <button class="btn primary" type="submit">Continue</button>
+      </form>
+    </section>
+
+    <footer class="page-note">
+      <span>
+        Tooltips are an application-side Actual CSS enhancement
+        (<code>data-tooltip</code> on the rendered row, delegated so re-rendered
+        rows just work). Without that script the native <code>title</code> still
+        applies — progressive enhancement, not a dependency.
+      </span>
+    </footer>
+  </main>
+
+  <script type="module">
+    const box = document.getElementById("service-option-widget");
+    const status = document.getElementById("service-option-status");
+
+    box.configure({
+      render: {
+        option(item) {
+          const root = document.createElement("span");
+          root.className = "service-option";
+
+          // Application-owned polish: the Actual tooltip runtime discovers
+          // [data-tooltip] triggers through delegation, so rows re-created on
+          // every filter need no lifecycle of their own. The native title
+          // stays as the metadata fallback underneath.
+          if (item.disabled && item.title) {
+            root.dataset.tooltip = item.title;
+          }
+
+          const main = document.createElement("span");
+          main.className = "service-option-main";
+
+          const label = document.createElement("span");
+          label.className = "service-option-title";
+          label.textContent = item.label;
+          main.append(label);
+
+          if (item.data?.duration) {
+            const duration = document.createElement("span");
+            duration.className = "service-option-duration";
+            duration.textContent = item.data.duration;
+            main.append(duration);
+          }
+
+          root.append(main);
+
+          // The short reason stays inline, close under the title: unlike a
+          // hover-only tooltip it is readable by everybody, including keyboard
+          // users who never hover the skipped disabled rows.
+          if (item.data?.reason) {
+            const reason = document.createElement("span");
+            reason.className = "service-option-reason";
+            reason.textContent = item.data.reason;
+            root.append(reason);
+          }
+
+          return root;
+        },
+      },
+    });
+
+    // configure() may rebuild an instance that upgraded during HTML parsing.
+    await new Promise(requestAnimationFrame);
+    const combo = box.combobox;
+    combo.source.addEventListener("change", () => {
+      const current = combo.source.selectedOptions[0];
+      status.textContent = current?.value
+        ? `Selected: ${current.textContent.trim()} (${current.value}).`
+        : "No option selected yet.";
+    });
+  </script>
+</body>
+</html>

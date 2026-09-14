@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Combobox × Actual CSS — theme bridge demo</title>
   <meta name="description" content="@lekoala/combobox loaded locally and skinned entirely with Actual CSS tokens: controls, removable badge chips, picker and states follow the framework, the theme switcher included.">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/actual-css@0.4.2/dist/actual.full.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lekoala/actual-css@0.4.2/site/assets/actual-themes.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/actual-css@0.9.0/dist/actual.full.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lekoala/actual-css@0.9.0/site/assets/actual-themes.min.css">
   <link rel="stylesheet" href="../dist/combobox.css">
   <style>
     /* ------------------------------------------------------------------ */
@@ -92,7 +92,7 @@
 
     /* 4. Chips — re-derive the removable .badge soft recipe */
     .actual-combobox .cb-chip {
-      min-block-size: var(--density-compact-size);
+      min-block-size: var(--control-size-sm);
       padding-inline: 0.55em;
 
       border: var(--border-width) solid
@@ -105,7 +105,7 @@
         color-mix(in oklab, var(--primary) var(--soft-fg-mix), var(--text));
 
       font-size: var(--font-size-xs);
-      font-weight: var(--font-weight-strong);
+      font-weight: var(--font-weight-semibold);
       line-height: var(--line-height);
     }
 
@@ -470,8 +470,8 @@
 
     <footer class="page-note">
       <span>
-        Loaded from jsDelivr, pinned: <code>actual-css@0.4.2/dist/actual.full.min.css</code> and
-        <code>gh/lekoala/actual-css@0.4.2/site/assets/actual-themes.min.css</code>.
+        Loaded from jsDelivr, pinned: <code>actual-css@0.9.0/dist/actual.full.min.css</code> and
+        <code>gh/lekoala/actual-css@0.9.0/site/assets/actual-themes.min.css</code>.
       </span>
       <span>Combobox enhanced from native <code>&lt;input&gt;</code>/<code>&lt;select&gt;</code> — the source owns the form value.</span>
     </footer>

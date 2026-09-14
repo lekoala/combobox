@@ -42,6 +42,8 @@ export function readSourceItems(combobox) {
       .map((option) => ({
         value: option.value,
         label: option.textContent.trim(),
+        // An empty title carries no meaning and is not materialized.
+        title: option.title || undefined,
         disabled:
           option.disabled ||
           (option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.disabled : false),
@@ -146,6 +148,7 @@ export function replaceCatalogue(combobox, normalized, { preserveSelected = comb
       ? Array.from(select.selectedOptions).map((option) => ({
           value: option.value,
           label: option.textContent.trim(),
+          title: option.title || undefined,
           selected: true,
           disabled: option.disabled,
           group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
@@ -165,6 +168,7 @@ export function replaceCatalogue(combobox, normalized, { preserveSelected = comb
       if (!item.value && !options.allowEmptyOption) continue;
       const option = new Option(item.label, item.value, Boolean(item.selected), Boolean(item.selected));
       option.disabled = Boolean(item.disabled);
+      if (item.title) option.title = item.title;
       if (item.data) Object.assign(option.dataset, item.data);
 
       if (item.group) {
@@ -215,6 +219,7 @@ export function appendCatalogOption(combobox, item, { selected = false } = {}) {
       : new Option(item.label, item.value, false, selected);
   if (!(item.option instanceof HTMLOptionElement)) {
     option.disabled = Boolean(item.disabled);
+    if (item.title) option.title = item.title;
     if (item.data) Object.assign(option.dataset, item.data);
     if (item.group) {
       let group = /** @type {HTMLOptGroupElement | undefined} */ (
