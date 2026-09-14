@@ -8,6 +8,8 @@ import {
   findCreateMatch,
   findOptionByValue,
   findSelectableOption,
+  isOptionDisabled,
+  optionToItem,
   readSourceItems,
   replaceCatalogue,
   selectSourceOf,
@@ -271,7 +273,8 @@ function captureAttributes(element, names) {
 
 // Every attribute the engine may touch on an input it does not own (the source
 // input for input+datalist, or an authored filter input). Snapshot before
-// mutation, restore on dispose().
+// mutation, restore on dispose(). `disabled`/`readonly` are driven by
+// refresh() from the source state and must round-trip exactly.
 const INPUT_ATTRS = [
   "list",
   "name",
@@ -279,6 +282,8 @@ const INPUT_ATTRS = [
   "autocomplete",
   "spellcheck",
   "placeholder",
+  "disabled",
+  "readonly",
   "hidden",
   "tabindex",
   "role",
@@ -293,6 +298,11 @@ const INPUT_ATTRS = [
   "aria-describedby",
   "style",
 ];
+
+// Attributes the engine may touch on the source select it does not own.
+// `aria-invalid` is cleared by every value commit; snapshot it so dispose()
+// restores the authored state exactly.
+const SOURCE_ATTRS = ["aria-hidden", "tabindex", "aria-invalid"];
 
 /**
  * Optional bookkeeping snapshot of one element's attributes so `dispose()` can
@@ -589,6 +599,8 @@ export class Combobox {
     /** @type {WeakMap<HTMLElement, HTMLOptionElement>} */
     this._chipOptions = new WeakMap();
     this.searchGeneration = 0;
+    /** @type {Promise<void>} Serialized token-batch queue (see #enqueueTokens). */
+    this.tokenQueue = Promise.resolve();
     /** @type {string | null} */
     this.nextCursor = null;
     this.loading = false;
@@ -635,6 +647,9 @@ export class Combobox {
       // <label> elements whose id the engine invented for aria-labelledby
       /** @type {Array<{ label: HTMLLabelElement, id: string }>} */
       inventedLabels: [],
+      // native options whose mirror markers the engine overwrites
+      /** @type {Array<{ option: HTMLOptionElement, filtered: string | null, active: string | null }>} */
+      optionMarkers: [],
     };
     /** @type {HTMLLabelElement[]} */
     this.boundLabels = [];
@@ -828,12 +843,23 @@ export class Combobox {
     const existing = this.#findCreateMatch(label);
     if (existing) {
       const option = existing.option;
-      if (option && !option.disabled) {
+      if (option && !isOptionDisabled(option)) {
         // No-op re-entries are idempotent and must not fire value events.
+        // A fresh selection runs the same beforeselect gate as the enhanced
+        // path, so one rule covers every addition on both paths.
         if (!option.selected) {
+          const item = { ...existing, option, selected: true };
+          const before = emit(
+            this.source,
+            "combobox:beforeselect",
+            { combobox: this, item },
+            { cancelable: true },
+          );
+          if (before.defaultPrevented || !this.#alive()) return null;
           option.selected = true;
           this.#rememberSelection(option);
           this.#dispatchNativeValueEvents();
+          emit(this.source, "combobox:select", { combobox: this, item });
         }
       }
       return option ?? null;
@@ -897,9 +923,17 @@ export class Combobox {
    */
   #enhanceSelect(source) {
     source.classList.add("cb-source-hidden");
-    const sourceSnapshot = captureAttributes(source, ["aria-hidden", "tabindex"]);
+    const sourceSnapshot = captureAttributes(source, SOURCE_ATTRS);
     source.tabIndex = -1;
     source.setAttribute("aria-hidden", "true");
+    // Mirror markers the engine writes on native options (#applyFilter,
+    // #setActive): record preexisting values now so dispose() restores them
+    // instead of blindly removing the attributes.
+    this.original.optionMarkers = Array.from(source.options).map((option) => ({
+      option,
+      filtered: option.getAttribute("data-filtered"),
+      active: option.getAttribute("data-active-option"),
+    }));
 
     const control = document.createElement("div");
     control.className = `cb-control ${this.isMultiple ? "cb-control-multiple" : "cb-control-single"}`;
@@ -1392,8 +1426,31 @@ export class Combobox {
         this.source.form.addEventListener(
           "formdata",
           (event) => {
-            event.formData.delete(this.source.name);
-            for (const value of this.getSelectedValues()) event.formData.append(this.source.name, value);
+            // A disabled select contributes nothing natively (`:disabled`
+            // covers the fieldset-disabled case too): leave every sibling
+            // control untouched instead of re-inserting our values.
+            if (this.source.matches(":disabled")) return;
+            const name = this.source.name;
+            const ordered = [];
+            for (const option of this.#selectedOptionsInOrder()) {
+              if (!isOptionDisabled(option)) ordered.push(option.value);
+            }
+            // The select's native contribution (catalogue order, submittable
+            // options only): remove one occurrence per entry, keeping every
+            // other control's values even under a shared `name`.
+            const pending = [];
+            for (const option of this.#selectSource().selectedOptions) {
+              if (!isOptionDisabled(option)) pending.push(option.value);
+            }
+            const rest = [];
+            for (const value of event.formData.getAll(name)) {
+              const at = pending.indexOf(/** @type {string} */ (value));
+              if (at >= 0) pending.splice(at, 1);
+              else rest.push(/** @type {string} */ (value));
+            }
+            event.formData.delete(name);
+            for (const value of ordered) event.formData.append(name, value);
+            for (const value of rest) event.formData.append(name, value);
           },
           { signal },
         );
@@ -1541,9 +1598,14 @@ export class Combobox {
       // The chip's exact option is authoritative (duplicate values share a
       // data-value but never an option). data-value is only a fallback.
       const option = this._chipOptions.get(chip);
-      void this.remove(option ?? chip.dataset.value ?? "").then((removed) => {
-        if (removed) this.#focusInputWithoutReopen();
-      });
+      void this.remove(option ?? chip.dataset.value ?? "").then(
+        (removed) => {
+          if (removed) this.#focusInputWithoutReopen();
+          // A rejected guard already emitted `combobox:guarderror`; the
+          // interaction path must not turn it into an unhandled rejection.
+        },
+        () => {},
+      );
       return;
     }
     if (event.type === "keydown") {
@@ -1551,11 +1613,7 @@ export class Combobox {
       if (!chip) return;
       const option = this._chipOptions.get(chip);
       const item = option
-        ? this.getSelectedItems().find((entry) => entry.option === option) || {
-            value: option.value,
-            label: option.textContent.trim(),
-            option,
-          }
+        ? this.getSelectedItems().find((entry) => entry.option === option) || optionToItem(option)
         : { value: chip.dataset.value ?? "", label: chip.dataset.value ?? "" };
       this.#onChipKeyDown(/** @type {KeyboardEvent} */ (event), item);
     }
@@ -1579,8 +1637,14 @@ export class Combobox {
           this.#suppressReopen = true;
           try {
             if (this.#separatorsActive()) {
-              const result = await this.#processTokens(value, { final: true });
-              if (result?.consumed) this.#inputEl().value = result.rest;
+              // Join the serialized token queue: a batch still pending from
+              // typing finishes first, so blur-creation cannot race it past
+              // maxItems either.
+              await this.#enqueueTokens(async () => {
+                if (!this.#alive()) return;
+                const result = await this.#processTokens(this.#inputEl().value, { final: true });
+                if (result?.consumed) this.#inputEl().value = result.rest;
+              });
             } else if (value.trim()) {
               this.#inputEl().value = "";
               await this.#createItem(value.trim());
@@ -1711,7 +1775,7 @@ export class Combobox {
     ) {
       const selected = this.#selectedOptionsInOrder();
       const last = selected[selected.length - 1];
-      if (last && !last.disabled) void this.remove(last);
+      if (last && !last.disabled) void this.remove(last).catch(() => {});
     }
   }
 
@@ -1749,6 +1813,10 @@ export class Combobox {
       await this.#load(this.query, { debounce: reason === "input" });
       if (generation !== this.searchGeneration) return;
     } else {
+      // A local query replaces any pending remote one: abort it so a stale
+      // response can neither repopulate results nor leave a stuck Loading row.
+      this.loadController?.abort();
+      this.loading = false;
       // A local query should not keep stale remote results around.
       if (typeof this.options.load === "function") this.clearResults();
     }
@@ -1871,7 +1939,7 @@ export class Combobox {
         source: this.source,
         input: this.#inputEl(),
       });
-      if (signal.aborted) return;
+      if (signal.aborted || !this.#alive()) return;
 
       const items = Array.isArray(result) ? result : result?.items;
       if (items) {
@@ -2082,14 +2150,7 @@ export class Combobox {
       const placeholder = option.disabled && option.hidden;
       if (!option.value && (!this.options.allowEmptyOption || placeholder)) continue;
 
-      const item = {
-        value: option.value,
-        label: option.textContent.trim(),
-        selected: true,
-        disabled: option.disabled,
-        option,
-        data: { ...option.dataset },
-      };
+      const item = optionToItem(option);
 
       const chip = document.createElement("span");
       chip.className = "cb-chip";
@@ -2208,16 +2269,21 @@ export class Combobox {
 
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      void this.remove(item.option ?? item.value).then((removed) => {
-        if (!removed) return;
-        queueMicrotask(() => {
-          const remaining = /** @type {HTMLElement[]} */ (
-            Array.from(this.#chipsEl()?.querySelectorAll(".cb-chip") || [])
-          );
-          remaining[Math.min(index, remaining.length - 1)]?.focus();
-          if (!remaining.length) this.#focusInputWithoutReopen();
-        });
-      });
+      void this.remove(item.option ?? item.value).then(
+        (removed) => {
+          if (!removed) return;
+          queueMicrotask(() => {
+            const remaining = /** @type {HTMLElement[]} */ (
+              Array.from(this.#chipsEl()?.querySelectorAll(".cb-chip") || [])
+            );
+            remaining[Math.min(index, remaining.length - 1)]?.focus();
+            if (!remaining.length) this.#focusInputWithoutReopen();
+          });
+          // A rejected guard already emitted `combobox:guarderror`; the
+          // interaction path must not turn it into an unhandled rejection.
+        },
+        () => {},
+      );
       return;
     }
 
@@ -2380,10 +2446,15 @@ export class Combobox {
   #toggleSelected(item) {
     if (!this.isMultiple || !this.options.toggleSelected) return false;
     const option = item.option instanceof HTMLOptionElement ? item.option : this.#findOption(item.value);
-    if (!option?.selected || option.disabled || this.source.disabled) return false;
+    if (!option?.selected || isOptionDisabled(option) || this.source.disabled) return false;
     const snapshot = this.#positionSnapshot(item);
     void (async () => {
-      const removed = await this.remove(option);
+      let removed = false;
+      try {
+        removed = await this.remove(option);
+      } catch {
+        // A rejected guard already emitted `combobox:guarderror`.
+      }
       if (!removed) return;
       this.#restorePosition(snapshot);
     })();
@@ -2411,7 +2482,7 @@ export class Combobox {
       // creates a native option when the value is genuinely absent.
       option =
         item.option instanceof HTMLOptionElement ? item.option : this.#findSelectableOption(item.value);
-      if (option?.disabled || (!option && !materialize)) return false;
+      if ((option && isOptionDisabled(option)) || (!option && !materialize)) return false;
 
       const unchanged = option
         ? this.isMultiple
@@ -2435,6 +2506,34 @@ export class Combobox {
       return false;
     }
 
+    return this.#commitItemSelection(option, item, { materialize, keepQuery });
+  }
+
+  /**
+   * Whether this instance still owns its source: registered and not disposed.
+   * Revalidated after every `await` before any native commit, so a pending
+   * guard/create/load that resolves after `dispose()` mutates nothing.
+   * @returns {boolean}
+   */
+  #alive() {
+    return instances.get(this.source) === this && !this.abortController.signal.aborted;
+  }
+
+  /**
+   * Shared validation/commit step for selection and creation: synchronous
+   * `combobox:beforeselect` gate, then native mutation, value events and UI.
+   * Materialization happens only after `beforeselect` allowed the operation,
+   * so cancellation has zero catalogue or value side effects. Creation routes
+   * through here as well, so a `beforeselect` veto blocks the selection of a
+   * freshly created option (the caller drops the just-added node again).
+   * @param {import("./helpers.js").ComboboxItem} item
+   * @param {HTMLOptionElement | null} option Exact option to select, or null
+   *   to materialize one after the gate (select-backed only)
+   * @param {{ materialize?: boolean, keepQuery?: boolean }} [options]
+   * @returns {boolean}
+   */
+  #commitItemSelection(option, item, { materialize = true, keepQuery = false } = {}) {
+    if (this.isSelect && option) item = { ...item, option, selected: true };
     const before = emit(
       this.source,
       "combobox:beforeselect",
@@ -2445,6 +2544,8 @@ export class Combobox {
       { cancelable: true },
     );
     if (before.defaultPrevented) return false;
+    // A synchronous beforeselect handler may have disposed the instance.
+    if (!this.#alive()) return false;
 
     if (this.isSelect) {
       // A transient result becomes native state only after beforeselect has
@@ -2453,7 +2554,13 @@ export class Combobox {
       if (!option) option = this.addOption(item);
       const selectOption = /** @type {HTMLOptionElement} */ (option);
       item = { ...item, option: selectOption, selected: true };
-      if (this.isMultiple) {
+      if (this.mode === "fallback") {
+        // The native fallback has no picker input to clear or refresh: the
+        // gate above still ran, then only native state and value events.
+        selectOption.selected = true;
+        this.#rememberSelection(selectOption);
+        this.#commit();
+      } else if (this.isMultiple) {
         // A toggleSelected row activation is a state change at constant
         // query: keep the filter text and reflect the new state with
         // refresh() instead of starting a new search (no beforefilter/filter
@@ -2500,8 +2607,10 @@ export class Combobox {
 
     const existing = this.#findCreateMatch(label);
     if (existing) {
-      this.#selectItem(existing);
-      return existing.option ?? null;
+      // An already-selected match is an idempotent success; a refused
+      // selection fails the creation so callers keep the text editable.
+      if (existing.option?.selected) return existing.option;
+      return this.#selectItem(existing) ? (existing.option ?? null) : null;
     }
 
     // guards.add is about creating a brand-new item; existing matches are
@@ -2540,6 +2649,7 @@ export class Combobox {
   async #materializeCreated(label, input, { fallback = false } = {}) {
     const guard = await this.#runGuard("add", { label }, input);
     if (!guard.ok) return null;
+    if (!this.#alive()) return null;
 
     const before = emit(
       this.source,
@@ -2576,20 +2686,33 @@ export class Combobox {
         this.loading = false;
       }
     }
+    // Revalidate after the awaits: a concurrent batch may have filled
+    // maxItems, and the instance may have been disposed meanwhile.
+    if (!this.#alive()) return null;
+    if (
+      this.options.maxItems > 0 &&
+      this.isMultiple &&
+      this.#selectSource().selectedOptions.length >= this.options.maxItems
+    ) {
+      return null;
+    }
 
-    const option = this.addOption(created, { selected: true });
+    // Materialize unselected, then run the shared selection commit so a
+    // `combobox:beforeselect` veto blocks the selection. A vetoed creation
+    // leaves zero local side effects: the just-added node is removed again
+    // (a fresh node in an empty single-select would otherwise stay selected
+    // through the platform's first-option rule).
+    const option = this.addOption(created);
     if (!option) return null;
+    if (!this.#commitItemSelection(option, created)) {
+      option.remove();
+      return null;
+    }
     const item = /** @type {import("./helpers.js").ComboboxItem & { option: HTMLOptionElement }} */ ({
       ...created,
       option,
       selected: true,
     });
-    // A successful create clears any stale validation marker before the value
-    // events fire — this is the shared commit step for both paths (the enhanced
-    // wrapper must not re-dispatch native events afterwards).
-    this.source.removeAttribute("aria-invalid");
-    this.input?.removeAttribute("aria-invalid");
-    this.#dispatchNativeValueEvents();
     emit(this.source, "combobox:create", { combobox: this, item });
     return item;
   }
@@ -2703,7 +2826,9 @@ export class Combobox {
     return { consumed: true, rest: final ? "" : rest };
   }
 
-  /** Apply one token: existing option wins, otherwise guarded creation. */
+  /** Apply one token: existing option wins, otherwise guarded creation. A
+   * refused selection is not consumed: the token text stays in the input.
+   * An already-selected option is a no-op success and is consumed. */
   /**
    * @param {string | null | undefined} text
    * @returns {Promise<boolean>}
@@ -2714,33 +2839,58 @@ export class Combobox {
 
     const existing = this.#findCreateMatch(term);
     if (existing) {
-      this.#selectItem(existing);
-      return true;
+      if (existing.option?.selected) return true;
+      return this.#selectItem(existing);
     }
     if (!this.#canCreate(term, this.#inputEl())) return false;
     const created = await this.#createItem(term);
     return created !== null;
   }
 
+  /**
+   * Serialize token batches per instance: two `input` events firing while a
+   * creation is pending queue behind the running batch instead of racing it,
+   * so `maxItems` (revalidated between tokens and at commit time) cannot be
+   * overshot by concurrent lots.
+   * @param {() => Promise<void>} batch
+   * @returns {Promise<void>}
+   */
+  #enqueueTokens(batch) {
+    this.tokenQueue = (this.tokenQueue ?? Promise.resolve()).then(batch).catch(() => {});
+    return this.tokenQueue;
+  }
+
   async #handleTokenInput() {
-    const result = await this.#processTokens(this.#inputEl().value);
-    // #processTokens always returns the computed remainder (`rest`): the
-    // trailing incomplete token on a full consumption, or the unconsumed tail
-    // (including a refused token) on a refusal/maxItems stop. #createItem
-    // clears the interaction input for each created token, so the remainder
-    // must be written back in both cases — otherwise a mid-batch refusal
-    // would silently swallow the rest of the pasted text.
-    if (result) this.#inputEl().value = result.rest;
-    this.search(this.#inputEl().value, { show: true, reason: "input" });
+    // Snapshot the value at event time: a batch still running from an earlier
+    // keystroke writes its own remainder back first, and this batch then
+    // processes the text as typed — never a remainder clobbered mid-flight.
+    const value = this.#inputEl().value;
+    return this.#enqueueTokens(async () => {
+      if (!this.#alive()) return;
+      const result = await this.#processTokens(value);
+      // #processTokens always returns the computed remainder (`rest`): the
+      // trailing incomplete token on a full consumption, or the unconsumed tail
+      // (including a refused token) on a refusal/maxItems stop. #createItem
+      // clears the interaction input for each created token, so the remainder
+      // must be written back in both cases — otherwise a mid-batch refusal
+      // would silently swallow the rest of the pasted text.
+      if (!this.#alive()) return;
+      if (result) this.#inputEl().value = result.rest;
+      this.search(this.#inputEl().value, { show: true, reason: "input" });
+    });
   }
 
   /** @param {{ entries: Array<{ text: string, sep: string }>, rest: string }} resolved */
   async #commitEnterTokens(resolved) {
-    const result = await this.#processTokens(this.#inputEl().value, { final: true, resolved });
-    if (result?.consumed) {
-      this.#inputEl().value = result.rest;
-      this.search("", { show: true, reason: "create" });
-    }
+    return this.#enqueueTokens(async () => {
+      if (!this.#alive()) return;
+      const result = await this.#processTokens(this.#inputEl().value, { final: true, resolved });
+      if (!this.#alive()) return;
+      if (result?.consumed) {
+        this.#inputEl().value = result.rest;
+        this.search("", { show: true, reason: "create" });
+      }
+    });
   }
 
   #dispatchNativeValueEvents() {
@@ -2799,7 +2949,7 @@ export class Combobox {
         this.#dispatchNativeValueEvents();
         return created !== null;
       }
-      if (option.disabled) return false;
+      if (isOptionDisabled(option)) return false;
       const unchanged = this.isMultiple ? option.selected : this.source.value === option.value;
       if (unchanged) return false;
       if (!this.isMultiple) {
@@ -2845,15 +2995,11 @@ export class Combobox {
         ? valueOrOption
         : this.#selectedOptionsInOrder().find((entry) => entry.value === String(valueOrOption));
     if (!option?.selected || option.disabled) return false;
-    const item = {
-      value: option.value,
-      label: option.textContent.trim(),
-      option,
-      selected: true,
-      data: { ...option.dataset },
-    };
+    const item = optionToItem(option);
     const guard = await this.#runGuard("remove", { item });
+    if (guard.error) throw guard.error;
     if (!guard.ok) return false;
+    if (!this.#alive()) return false;
     const before = emit(this.source, "combobox:beforeremove", { combobox: this, item }, { cancelable: true });
     if (before.defaultPrevented) return false;
     option.selected = false;
@@ -2868,8 +3014,10 @@ export class Combobox {
   async clear() {
     if (!this.isSelect) {
       if (!this.source.value) return false;
-      const guard = await this.#runGuard("clear", {});
-      if (!guard.ok) return false;
+      const inputGuard = await this.#runGuard("clear", {});
+      if (inputGuard.error) throw inputGuard.error;
+      if (!inputGuard.ok) return false;
+      if (!this.#alive()) return false;
       const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
       if (before.defaultPrevented) return false;
       this.source.value = "";
@@ -2881,7 +3029,9 @@ export class Combobox {
     const selected = Array.from(this.#selectSource().selectedOptions).filter((option) => !option.disabled);
     if (!selected.length) return false;
     const guard = await this.#runGuard("clear", {});
+    if (guard.error) throw guard.error;
     if (!guard.ok) return false;
+    if (!this.#alive()) return false;
     const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
     if (before.defaultPrevented) return false;
     for (const option of selected) option.selected = false;
@@ -2907,12 +3057,7 @@ export class Combobox {
   getSelectedItems() {
     if (!this.isSelect)
       return [{ value: this.source.value, label: this.source.value }].filter((item) => item.value);
-    return this.#selectedOptionsInOrder().map((option) => ({
-      value: option.value,
-      label: option.textContent.trim(),
-      option,
-      data: { ...option.dataset },
-    }));
+    return this.#selectedOptionsInOrder().map((option) => optionToItem(option));
   }
 
   /**
@@ -2980,7 +3125,7 @@ export class Combobox {
 
   #syncSingleLabel() {
     const selected = this.#selectSource().selectedOptions[0];
-    this.#inputEl().value = selected?.value ? selected.textContent.trim() : "";
+    this.#inputEl().value = selected?.value ? selected.label : "";
   }
 
   show() {
@@ -3047,9 +3192,21 @@ export class Combobox {
     // datalist resolved (input without a valid `list`) never produced mirror
     // state, and #sourceItems would crash on the null datalist.
     if (this.isSelect || this.datalist instanceof HTMLDataListElement) {
-      for (const item of this.#sourceItems()) {
-        item.option?.removeAttribute("data-filtered");
-        item.option?.removeAttribute("data-active-option");
+      const saved = new Map((this.original.optionMarkers ?? []).map((entry) => [entry.option, entry]));
+      const scope = this.isSelect
+        ? Array.from(this.#selectSource().options)
+        : Array.from(/** @type {HTMLDataListElement} */ (this.datalist).options);
+      for (const option of scope) {
+        const marker = saved.get(option);
+        if (!marker) {
+          option.removeAttribute("data-filtered");
+          option.removeAttribute("data-active-option");
+          continue;
+        }
+        if (marker.filtered === null) option.removeAttribute("data-filtered");
+        else option.setAttribute("data-filtered", marker.filtered);
+        if (marker.active === null) option.removeAttribute("data-active-option");
+        else option.setAttribute("data-active-option", marker.active);
       }
     }
 

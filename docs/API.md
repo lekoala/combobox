@@ -396,7 +396,10 @@ Concretely:
   entries.
 - **`setOptions()` replaces the catalogue but preserves every native option that
   is currently selected, whatever its origin** (`preserveSelected`, the default
-  for a select source). A created or materially-realized option therefore
+  for a select source). Preservation keeps the **same nodes** — option identity,
+  `data-*`/title/disabled metadata and the authored `defaultSelected` reset
+  baseline all survive — so references held by `remove()`/`move()` stay valid
+  and `form.reset()` still restores the authored defaults. A created or materially-realized option therefore
   survives `sync()`, `clearResults()` and a `setOptions()` **as long as it is
   selected** — and a future `setOptions()` may drop it once it is not.
 - A native option that was materialized but is **not selected** is not protected:
@@ -491,7 +494,7 @@ guards: {
 Contract:
 
 - `false` is a **voluntary refusal**: the operation is blocked and nothing mutates.
-- A **rejection is an application error**: `combobox:guarderror` (detail `{ guard, error }`) fires and the operation is blocked. Do not reject for a user cancelling a dialog — that must resolve `false`.
+- A **rejection is an application error**: `combobox:guarderror` (detail `{ guard, error }`) fires and the operation is blocked. `remove()`/`clear()` additionally **reject their returned promise** with that error, so a programmatic caller can distinguish refusal (`false`) from failure (throw) — interaction paths (chip click, keyboard) swallow the rejection after the event. Do not reject for a user cancelling a dialog — that must resolve `false`.
 - Guards run on both user and programmatic paths. `before` events still fire (synchronously, cancellable) only after a guard has passed.
 - `guards.add` applies to brand-new items only: an existing match is selected without running it.
 - `createOnBlur` means genuinely leaving the combobox. Blur caused by internal interaction (picker click, adornment, chip removal, clear) never creates, and IME composition also blocks it.
@@ -510,7 +513,8 @@ separators: parseSeparators(",|;"),
 ```
 
 - Separators are **full strings**, matched longest-first (`",|;"` ⇒ `[",", ";"]`); the attribute form is pipe-delimited.
-- Tokens are processed strictly sequentially — `existing → guard → create → select`, never `Promise.all` — and `maxItems` is re-evaluated between tokens (`maxOptions` is unrelated).
+- Tokens are processed strictly sequentially — `existing → guard → create → select`, never `Promise.all` — and `maxItems` is re-evaluated between tokens (`maxOptions` is unrelated). Batches from successive `input` events are serialized behind the running batch, so typing during a pending async creation cannot overshoot `maxItems`.
+- A refused token (vetoed selection, guard refusal, `maxItems` reached) is **not consumed**: its text stays in the input along with the unprocessed remainder.
 - A trailing incomplete token stays in the input.
 - `tokenize(value, ctx)` replaces the default splitter when the application needs quoting or other rules.
 - IME composition feeds search but never tokenizes or creates.
@@ -576,6 +580,11 @@ combo.getSelectedItems();
 For a `<select>`, **option identity is the `HTMLOptionElement`**; `option.value` is only
 the serialized payload. Three `<option value="2">` in the catalogue are three distinct
 choices — each selectable once, each kept as its own chip, each serialized into FormData.
+
+With `selectionOrder: "selected"`, the `formdata` rewrite keeps every other
+control's same-`name` contributions (only the select's own entries are
+reordered) and stays out of the way when the select is not submittable
+(disabled select/fieldset, disabled option or optgroup).
 Two multiple-selection models are valid, and the picker can work as either:
 - default (*pick from what remains*): the picker hides already-selected rows, so
   there is no same-value toggle — best when selecting many values and mostly
@@ -604,12 +613,21 @@ toggle. Reaching `maxItems` never blocks a deselection; it only blocks additions
   and never creates. Repeated `select("2")` on three catalogue `2`s selects all three and
   a fourth call returns `false`.
 - `select()` returns a boolean; nothing is created or changed on `false`.
+- Selection and creation share one commit step behind `combobox:beforeselect`:
+  selecting an existing option, a transient result, or a freshly created option
+  all fire the cancellable gate before any native mutation. Vetoing a creation
+  leaves zero local side effects (no catalogue entry, no selection); a single
+  rule on `combobox:beforeselect` therefore covers every addition. `guards.add`
+  still runs only for brand-new items, before `combobox:beforecreate`.
 - `remove(valueOrOption)` takes an exact `<option>` (e.g. the one behind a chip) or a
   string (the first selected occurrence in the current order).
 - `addOption()` always appends a new native option — it never dedupes by `value` — unless
   `item.option` is passed, in which case that exact option is adopted.
 - `addOption(item, { selected: true })` changes live selection only; it never
   changes `defaultSelected` or rewrites the baseline used by `form.reset()`.
+- The display label of a native option is its `label` property (the `label`
+  attribute when authored, otherwise the text) — picker rows, chips and the
+  single-select field all read it, never raw `textContent`.
 - Empty values are handled deliberately, never through truthiness: a selected
   `<option value="">` reports `[""]` from `getSelectedValues()`/`getSelectedItems()`
   for a select source, and an empty free-text input returns `[]` (nothing
@@ -617,7 +635,7 @@ toggle. Reaching `maxItems` never blocks a deselection; it only blocks additions
   `setOptions()` when `allow-empty-option` admits it; otherwise those APIs throw
   / skip it so the placeholder convention stays the single-select default.
 
-`remove()` and `clear()` are async because they can await `guards`; they resolve `false` when refused (voluntary or guarded).
+`remove()` and `clear()` are async because they can await `guards`; they resolve `false` when refused (voluntary `false`, `before*` veto, disposed instance) and **reject** when a guard throws. A guard that is still pending when `dispose()` runs resolves `false` and mutates nothing.
 
 `clear()` on a **multiple** select deselects every selectable option. On a
 **single** select it deselects the current option and the browser collapses the
@@ -661,7 +679,7 @@ combo.refresh();
 combo.dispose();
 ```
 
-`dispose()` must restore everything the enhancer changed, including datalist linkage and explicit sibling filter-input placement/visibility.
+`dispose()` must restore everything the enhancer changed, including datalist linkage and explicit sibling filter-input placement/visibility. That covers `disabled`/`readonly` driven onto an authored filter input, `aria-invalid` cleared by value commits, and preexisting `data-filtered`/`data-active-option` markers on native options. Operations still pending at dispose time (guard, create, load) resolve without mutating the source.
 
 ## Events
 

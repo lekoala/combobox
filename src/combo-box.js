@@ -311,7 +311,7 @@ export class ComboBoxElement extends HTMLElement {
  * @returns {typeof ComboBoxElement}
  */
 export function defineCombobox() {
-  const registry = globalThis.customElements;
+  const registry = customElements;
   if (!registry.get("combo-box")) registry.define("combo-box", ComboBoxElement);
   return ComboBoxElement;
 }

@@ -316,6 +316,8 @@ export declare class Combobox {
     /** @type {WeakMap<HTMLElement, HTMLOptionElement>} */
     _chipOptions: WeakMap<HTMLElement, HTMLOptionElement>;
     searchGeneration: number;
+    /** @type {Promise<void>} Serialized token-batch queue (see #enqueueTokens). */
+    tokenQueue: Promise<void>;
     /** @type {string | null} */
     nextCursor: string | null;
     loading: boolean;
@@ -340,6 +342,12 @@ export declare class Combobox {
         inventedLabels: Array<{
             label: HTMLLabelElement;
             id: string;
+        }>;
+        /** @type {Array<{ option: HTMLOptionElement, filtered: string | null, active: string | null }>} */
+        optionMarkers: Array<{
+            option: HTMLOptionElement;
+            filtered: string | null;
+            active: string | null;
         }>;
     };
     /** @type {HTMLLabelElement[]} */

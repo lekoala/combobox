@@ -27,6 +27,40 @@ export function selectSourceOf(combobox) {
 }
 
 /**
+ * Whether a native option is ineligible: its own `disabled` flag or a
+ * disabled parent `<optgroup>`. Single source of truth reused by catalogue
+ * reads, value resolution and selection commits.
+ * @param {HTMLOptionElement} option
+ * @returns {boolean}
+ */
+export function isOptionDisabled(option) {
+  return (
+    option.disabled ||
+    (option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.disabled : false)
+  );
+}
+
+/**
+ * Canonical conversion of one native `<option>`: the element is the identity,
+ * `option.label` is the native display label (never `textContent`), and
+ * `data-*` is application metadata exposed via `item.data` only.
+ * @param {HTMLOptionElement} option
+ * @returns {import("./helpers.js").ComboboxItem}
+ */
+export function optionToItem(option) {
+  return {
+    value: option.value,
+    label: option.label,
+    // An empty title carries no meaning and is not materialized.
+    title: option.title || undefined,
+    disabled: isOptionDisabled(option),
+    selected: option.selected,
+    group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
+    option,
+    data: { ...option.dataset },
+  };
+}
+/**
  * Read the native catalogue as canonical items: the select's
  * `<option>`/`<optgroup>` set, or the `<datalist>` for an
  * input-backed combobox. Empty values are dropped unless `allowEmptyOption`
@@ -39,19 +73,7 @@ export function readSourceItems(combobox) {
   if (isSelect) {
     return Array.from(selectSourceOf(combobox).options)
       .filter((option) => option.value || options.allowEmptyOption)
-      .map((option) => ({
-        value: option.value,
-        label: option.textContent.trim(),
-        // An empty title carries no meaning and is not materialized.
-        title: option.title || undefined,
-        disabled:
-          option.disabled ||
-          (option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.disabled : false),
-        selected: option.selected,
-        group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
-        option,
-        data: { ...option.dataset },
-      }));
+      .map((option) => optionToItem(option));
   }
 
   if (!datalist) return [];
@@ -60,7 +82,7 @@ export function readSourceItems(combobox) {
     label: option.label || option.value,
     disabled: option.disabled,
     selected: source.value === option.value,
-    group: option.dataset.group || "",
+    group: "",
     option,
     data: { ...option.dataset },
   }));
@@ -95,7 +117,9 @@ export function findSelectableOption(combobox, value) {
   return (
     Array.from(selectSourceOf(combobox).options).find(
       (option) =>
-        option.value === wanted && !option.disabled && (combobox.isMultiple && option.selected) === false,
+        option.value === wanted &&
+        !isOptionDisabled(option) &&
+        (combobox.isMultiple && option.selected) === false,
     ) || null
   );
 }
@@ -128,10 +152,14 @@ export function fieldsFor(combobox) {
 
 /**
  * Replace the native catalogue. For a select this rebuilds the
- * `<option>`/`<optgroup>` set, keeping the currently selected options first
- * when `preserveSelected` (defaults to select-backed) and re-appending a
- * single-select empty placeholder. No value-based dedupe: catalogue identity is
- * the `<option>` element, so repeated payload values map to their own options.
+ * `<option>`/`<optgroup>` set, keeping the currently selected option *nodes*
+ * themselves when `preserveSelected` (defaults to select-backed) and
+ * re-appending a single-select empty placeholder. Keeping the nodes preserves
+ * option identity (references held by `remove()`/`move()`/`selectionOrder`
+ * stay valid), `data-*` metadata and the authored `defaultSelected` reset
+ * baseline — a dynamic selection never becomes the form-reset default. No
+ * value-based dedupe: catalogue identity is the `<option>` element, so
+ * repeated payload values map to their own options.
  * For an input combobox the `<datalist>` is rebuilt from the payload.
  * @param {import("./combobox.js").Combobox} combobox
  * @param {import("./helpers.js").ComboboxItem[]} normalized
@@ -143,26 +171,63 @@ export function replaceCatalogue(combobox, normalized, { preserveSelected = comb
 
   if (isSelect) {
     const select = selectSourceOf(combobox);
+    // Preserve the selected nodes themselves (identity, dataset, title,
+    // disabled state and defaultSelected all survive). Group labels and the
+    // disabled state are read before the rebuild detaches everything, so
+    // preserved nodes land back under an equivalent group.
+    const preserved = preserveSelected ? Array.from(select.selectedOptions) : [];
+    const preservedSet = new Set(preserved);
     /** @type {import("./helpers.js").ComboboxItem[]} */
-    const preserved = preserveSelected
-      ? Array.from(select.selectedOptions).map((option) => ({
-          value: option.value,
-          label: option.textContent.trim(),
-          title: option.title || undefined,
-          selected: true,
-          disabled: option.disabled,
-          group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
-        }))
-      : [];
+    const preservedItems = preserved.map((option) => ({
+      value: option.value,
+      label: option.label,
+      selected: option.selected,
+      disabled: isOptionDisabled(option),
+      group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
+      option,
+      data: { ...option.dataset },
+    }));
+    // A disabled optgroup disables its options natively; record the state so
+    // rebuilt groups keep it.
+    const groupDisabled = new Map();
+    for (const group of select.querySelectorAll("optgroup")) groupDisabled.set(group.label, group.disabled);
 
     const emptyOption = Array.from(select.options).find((option) => !option.value);
     select.replaceChildren();
-    if (emptyOption && !isMultiple) select.append(emptyOption);
 
-    const catalog = [...preserved, ...normalized];
+    // Adopt one preserved node per selected element, then fresh nodes for the
+    // new catalogue. Normalized `selected` flags select fresh nodes only;
+    // preserved nodes keep their live `selected` state untouched.
+    /** @type {import("./helpers.js").ComboboxItem[]} */
+    const catalog = [...preservedItems, ...normalized];
 
     const groups = new Map();
+    /**
+     * @param {HTMLOptionElement} option
+     * @param {string} groupLabel
+     */
+    const appendOption = (option, groupLabel) => {
+      if (groupLabel) {
+        let group = groups.get(groupLabel);
+        if (!group) {
+          group = document.createElement("optgroup");
+          group.label = groupLabel;
+          if (groupDisabled.get(groupLabel)) group.disabled = true;
+          groups.set(groupLabel, group);
+          select.append(group);
+        }
+        group.append(option);
+      } else {
+        select.append(option);
+      }
+    };
+
+    if (emptyOption && !isMultiple && !preservedSet.has(emptyOption)) appendOption(emptyOption, "");
     for (const item of catalog) {
+      if (item.option instanceof HTMLOptionElement) {
+        appendOption(item.option, item.group || "");
+        continue;
+      }
       // An empty value is a legitimate option only when allowEmptyOption
       // admits it; otherwise it would shadow the collection's real entries.
       if (!item.value && !options.allowEmptyOption) continue;
@@ -170,19 +235,13 @@ export function replaceCatalogue(combobox, normalized, { preserveSelected = comb
       option.disabled = Boolean(item.disabled);
       if (item.title) option.title = item.title;
       if (item.data) Object.assign(option.dataset, item.data);
-
-      if (item.group) {
-        let group = groups.get(item.group);
-        if (!group) {
-          group = document.createElement("optgroup");
-          group.label = item.group;
-          groups.set(item.group, group);
-          select.append(group);
-        }
-        group.append(option);
-      } else {
-        select.append(option);
-      }
+      appendOption(option, item.group || "");
+    }
+    // Drop remembered order entries whose nodes left the catalogue; newly
+    // selected fresh nodes join in catalogue order.
+    combobox.selectionOrder = combobox.selectionOrder.filter((option) => preservedSet.has(option));
+    for (const option of select.selectedOptions) {
+      if (!combobox.selectionOrder.includes(option)) combobox.selectionOrder.push(option);
     }
     return;
   }

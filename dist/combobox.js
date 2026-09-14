@@ -575,19 +575,25 @@
     }
     return combobox.source;
   }
+  function isOptionDisabled(option) {
+    return option.disabled || (option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.disabled : false);
+  }
+  function optionToItem(option) {
+    return {
+      value: option.value,
+      label: option.label,
+      title: option.title || undefined,
+      disabled: isOptionDisabled(option),
+      selected: option.selected,
+      group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
+      option,
+      data: { ...option.dataset }
+    };
+  }
   function readSourceItems(combobox) {
     const { source, isSelect, options, datalist } = combobox;
     if (isSelect) {
-      return Array.from(selectSourceOf(combobox).options).filter((option) => option.value || options.allowEmptyOption).map((option) => ({
-        value: option.value,
-        label: option.textContent.trim(),
-        title: option.title || undefined,
-        disabled: option.disabled || (option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.disabled : false),
-        selected: option.selected,
-        group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
-        option,
-        data: { ...option.dataset }
-      }));
+      return Array.from(selectSourceOf(combobox).options).filter((option) => option.value || options.allowEmptyOption).map((option) => optionToItem(option));
     }
     if (!datalist)
       return [];
@@ -596,7 +602,7 @@
       label: option.label || option.value,
       disabled: option.disabled,
       selected: source.value === option.value,
-      group: option.dataset.group || "",
+      group: "",
       option,
       data: { ...option.dataset }
     }));
@@ -611,7 +617,7 @@
     if (!combobox.isSelect)
       return null;
     const wanted = String(value);
-    return Array.from(selectSourceOf(combobox).options).find((option) => option.value === wanted && !option.disabled && (combobox.isMultiple && option.selected) === false) || null;
+    return Array.from(selectSourceOf(combobox).options).find((option) => option.value === wanted && !isOptionDisabled(option) && (combobox.isMultiple && option.selected) === false) || null;
   }
   function findCreateMatch(combobox, label) {
     const lookup = normalize(label);
@@ -629,21 +635,47 @@
     const { isSelect, isMultiple, options, datalist } = combobox;
     if (isSelect) {
       const select = selectSourceOf(combobox);
-      const preserved = preserveSelected ? Array.from(select.selectedOptions).map((option) => ({
+      const preserved = preserveSelected ? Array.from(select.selectedOptions) : [];
+      const preservedSet = new Set(preserved);
+      const preservedItems = preserved.map((option) => ({
         value: option.value,
-        label: option.textContent.trim(),
-        title: option.title || undefined,
-        selected: true,
-        disabled: option.disabled,
-        group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : ""
-      })) : [];
+        label: option.label,
+        selected: option.selected,
+        disabled: isOptionDisabled(option),
+        group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
+        option,
+        data: { ...option.dataset }
+      }));
+      const groupDisabled = new Map;
+      for (const group of select.querySelectorAll("optgroup"))
+        groupDisabled.set(group.label, group.disabled);
       const emptyOption = Array.from(select.options).find((option) => !option.value);
       select.replaceChildren();
-      if (emptyOption && !isMultiple)
-        select.append(emptyOption);
-      const catalog = [...preserved, ...normalized];
+      const catalog = [...preservedItems, ...normalized];
       const groups = new Map;
+      const appendOption = (option, groupLabel) => {
+        if (groupLabel) {
+          let group = groups.get(groupLabel);
+          if (!group) {
+            group = document.createElement("optgroup");
+            group.label = groupLabel;
+            if (groupDisabled.get(groupLabel))
+              group.disabled = true;
+            groups.set(groupLabel, group);
+            select.append(group);
+          }
+          group.append(option);
+        } else {
+          select.append(option);
+        }
+      };
+      if (emptyOption && !isMultiple && !preservedSet.has(emptyOption))
+        appendOption(emptyOption, "");
       for (const item of catalog) {
+        if (item.option instanceof HTMLOptionElement) {
+          appendOption(item.option, item.group || "");
+          continue;
+        }
         if (!item.value && !options.allowEmptyOption)
           continue;
         const option = new Option(item.label, item.value, Boolean(item.selected), Boolean(item.selected));
@@ -652,18 +684,12 @@
           option.title = item.title;
         if (item.data)
           Object.assign(option.dataset, item.data);
-        if (item.group) {
-          let group = groups.get(item.group);
-          if (!group) {
-            group = document.createElement("optgroup");
-            group.label = item.group;
-            groups.set(item.group, group);
-            select.append(group);
-          }
-          group.append(option);
-        } else {
-          select.append(option);
-        }
+        appendOption(option, item.group || "");
+      }
+      combobox.selectionOrder = combobox.selectionOrder.filter((option) => preservedSet.has(option));
+      for (const option of select.selectedOptions) {
+        if (!combobox.selectionOrder.includes(option))
+          combobox.selectionOrder.push(option);
       }
       return;
     }
@@ -820,6 +846,8 @@
     "autocomplete",
     "spellcheck",
     "placeholder",
+    "disabled",
+    "readonly",
     "hidden",
     "tabindex",
     "role",
@@ -834,6 +862,7 @@
     "aria-describedby",
     "style"
   ];
+  var SOURCE_ATTRS = ["aria-hidden", "tabindex", "aria-invalid"];
 
   class Combobox {
     static supported = supportsModernCombobox();
@@ -895,6 +924,7 @@
       this.selectionOrder = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
       this._chipOptions = new WeakMap;
       this.searchGeneration = 0;
+      this.tokenQueue = Promise.resolve();
       this.nextCursor = null;
       this.loading = false;
       this.loadError = null;
@@ -922,7 +952,8 @@
       }
       this.original = {
         filterInputPlaceholder: null,
-        inventedLabels: []
+        inventedLabels: [],
+        optionMarkers: []
       };
       this.boundLabels = [];
       this.ownsInput = false;
@@ -1024,11 +1055,16 @@
       const existing = this.#findCreateMatch(label);
       if (existing) {
         const option = existing.option;
-        if (option && !option.disabled) {
+        if (option && !isOptionDisabled(option)) {
           if (!option.selected) {
+            const item = { ...existing, option, selected: true };
+            const before = emit(this.source, "combobox:beforeselect", { combobox: this, item }, { cancelable: true });
+            if (before.defaultPrevented || !this.#alive())
+              return null;
             option.selected = true;
             this.#rememberSelection(option);
             this.#dispatchNativeValueEvents();
+            emit(this.source, "combobox:select", { combobox: this, item });
           }
         }
         return option ?? null;
@@ -1062,9 +1098,14 @@
     }
     #enhanceSelect(source) {
       source.classList.add("cb-source-hidden");
-      const sourceSnapshot = captureAttributes(source, ["aria-hidden", "tabindex"]);
+      const sourceSnapshot = captureAttributes(source, SOURCE_ATTRS);
       source.tabIndex = -1;
       source.setAttribute("aria-hidden", "true");
+      this.original.optionMarkers = Array.from(source.options).map((option) => ({
+        option,
+        filtered: option.getAttribute("data-filtered"),
+        active: option.getAttribute("data-active-option")
+      }));
       const control = document.createElement("div");
       control.className = `cb-control ${this.isMultiple ? "cb-control-multiple" : "cb-control-single"}`;
       const chips = document.createElement("span");
@@ -1357,9 +1398,32 @@
         }
         if (this.isMultiple && this.options.selectionOrder === "selected" && this.source.name && this.source.form) {
           this.source.form.addEventListener("formdata", (event) => {
-            event.formData.delete(this.source.name);
-            for (const value of this.getSelectedValues())
-              event.formData.append(this.source.name, value);
+            if (this.source.matches(":disabled"))
+              return;
+            const name = this.source.name;
+            const ordered = [];
+            for (const option of this.#selectedOptionsInOrder()) {
+              if (!isOptionDisabled(option))
+                ordered.push(option.value);
+            }
+            const pending = [];
+            for (const option of this.#selectSource().selectedOptions) {
+              if (!isOptionDisabled(option))
+                pending.push(option.value);
+            }
+            const rest = [];
+            for (const value of event.formData.getAll(name)) {
+              const at = pending.indexOf(value);
+              if (at >= 0)
+                pending.splice(at, 1);
+              else
+                rest.push(value);
+            }
+            event.formData.delete(name);
+            for (const value of ordered)
+              event.formData.append(name, value);
+            for (const value of rest)
+              event.formData.append(name, value);
           }, { signal });
         }
         this.source.addEventListener("invalid", (event) => {
@@ -1475,7 +1539,7 @@
         this.remove(option ?? chip.dataset.value ?? "").then((removed) => {
           if (removed)
             this.#focusInputWithoutReopen();
-        });
+        }, () => {});
         return;
       }
       if (event.type === "keydown") {
@@ -1483,11 +1547,7 @@
         if (!chip)
           return;
         const option = this._chipOptions.get(chip);
-        const item = option ? this.getSelectedItems().find((entry) => entry.option === option) || {
-          value: option.value,
-          label: option.textContent.trim(),
-          option
-        } : { value: chip.dataset.value ?? "", label: chip.dataset.value ?? "" };
+        const item = option ? this.getSelectedItems().find((entry) => entry.option === option) || optionToItem(option) : { value: chip.dataset.value ?? "", label: chip.dataset.value ?? "" };
         this.#onChipKeyDown(event, item);
       }
     }
@@ -1503,9 +1563,13 @@
             this.#suppressReopen = true;
             try {
               if (this.#separatorsActive()) {
-                const result = await this.#processTokens(value, { final: true });
-                if (result?.consumed)
-                  this.#inputEl().value = result.rest;
+                await this.#enqueueTokens(async () => {
+                  if (!this.#alive())
+                    return;
+                  const result = await this.#processTokens(this.#inputEl().value, { final: true });
+                  if (result?.consumed)
+                    this.#inputEl().value = result.rest;
+                });
               } else if (value.trim()) {
                 this.#inputEl().value = "";
                 await this.#createItem(value.trim());
@@ -1617,7 +1681,7 @@
         const selected = this.#selectedOptionsInOrder();
         const last = selected[selected.length - 1];
         if (last && !last.disabled)
-          this.remove(last);
+          this.remove(last).catch(() => {});
       }
     }
     async search(query = "", { show = false, reason = "api" } = {}) {
@@ -1638,6 +1702,8 @@
         if (generation !== this.searchGeneration)
           return;
       } else {
+        this.loadController?.abort();
+        this.loading = false;
         if (typeof this.options.load === "function")
           this.clearResults();
       }
@@ -1715,7 +1781,7 @@
           source: this.source,
           input: this.#inputEl()
         });
-        if (signal.aborted)
+        if (signal.aborted || !this.#alive())
           return;
         const items = Array.isArray(result) ? result : result?.items;
         if (items) {
@@ -1877,14 +1943,7 @@
         const placeholder = option.disabled && option.hidden;
         if (!option.value && (!this.options.allowEmptyOption || placeholder))
           continue;
-        const item = {
-          value: option.value,
-          label: option.textContent.trim(),
-          selected: true,
-          disabled: option.disabled,
-          option,
-          data: { ...option.dataset }
-        };
+        const item = optionToItem(option);
         const chip = document.createElement("span");
         chip.className = "cb-chip";
         chip.tabIndex = -1;
@@ -1967,7 +2026,7 @@
             if (!remaining.length)
               this.#focusInputWithoutReopen();
           });
-        });
+        }, () => {});
         return;
       }
       if (event.key === "Escape") {
@@ -2071,11 +2130,14 @@
       if (!this.isMultiple || !this.options.toggleSelected)
         return false;
       const option = item.option instanceof HTMLOptionElement ? item.option : this.#findOption(item.value);
-      if (!option?.selected || option.disabled || this.source.disabled)
+      if (!option?.selected || isOptionDisabled(option) || this.source.disabled)
         return false;
       const snapshot = this.#positionSnapshot(item);
       (async () => {
-        const removed = await this.remove(option);
+        let removed = false;
+        try {
+          removed = await this.remove(option);
+        } catch {}
         if (!removed)
           return;
         this.#restorePosition(snapshot);
@@ -2088,7 +2150,7 @@
       let option = null;
       if (this.isSelect) {
         option = item.option instanceof HTMLOptionElement ? item.option : this.#findSelectableOption(item.value);
-        if (option?.disabled || !option && !materialize)
+        if (option && isOptionDisabled(option) || !option && !materialize)
           return false;
         const unchanged = option ? this.isMultiple ? option.selected : this.#selectSource().selectedOptions[0] === option : false;
         if (unchanged) {
@@ -2105,18 +2167,32 @@
         this.hide();
         return false;
       }
+      return this.#commitItemSelection(option, item, { materialize, keepQuery });
+    }
+    #alive() {
+      return instances.get(this.source) === this && !this.abortController.signal.aborted;
+    }
+    #commitItemSelection(option, item, { materialize = true, keepQuery = false } = {}) {
+      if (this.isSelect && option)
+        item = { ...item, option, selected: true };
       const before = emit(this.source, "combobox:beforeselect", {
         combobox: this,
         item
       }, { cancelable: true });
       if (before.defaultPrevented)
         return false;
+      if (!this.#alive())
+        return false;
       if (this.isSelect) {
         if (!option)
           option = this.addOption(item);
         const selectOption = option;
         item = { ...item, option: selectOption, selected: true };
-        if (this.isMultiple) {
+        if (this.mode === "fallback") {
+          selectOption.selected = true;
+          this.#rememberSelection(selectOption);
+          this.#commit();
+        } else if (this.isMultiple) {
           const snapshot = keepQuery ? this.#positionSnapshot(item) : null;
           selectOption.selected = true;
           this.#rememberSelection(selectOption);
@@ -2156,8 +2232,9 @@
         return null;
       const existing = this.#findCreateMatch(label);
       if (existing) {
-        this.#selectItem(existing);
-        return existing.option ?? null;
+        if (existing.option?.selected)
+          return existing.option;
+        return this.#selectItem(existing) ? existing.option ?? null : null;
       }
       const item = await this.#materializeCreated(label, this.#inputEl());
       if (!item)
@@ -2179,6 +2256,8 @@
     async#materializeCreated(label, input, { fallback = false } = {}) {
       const guard = await this.#runGuard("add", { label }, input);
       if (!guard.ok)
+        return null;
+      if (!this.#alive())
         return null;
       const before = emit(this.source, "combobox:beforecreate", {
         combobox: this,
@@ -2210,17 +2289,23 @@
           this.loading = false;
         }
       }
-      const option = this.addOption(created, { selected: true });
+      if (!this.#alive())
+        return null;
+      if (this.options.maxItems > 0 && this.isMultiple && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
+        return null;
+      }
+      const option = this.addOption(created);
       if (!option)
         return null;
+      if (!this.#commitItemSelection(option, created)) {
+        option.remove();
+        return null;
+      }
       const item = {
         ...created,
         option,
         selected: true
       };
-      this.source.removeAttribute("aria-invalid");
-      this.input?.removeAttribute("aria-invalid");
-      this.#dispatchNativeValueEvents();
       emit(this.source, "combobox:create", { combobox: this, item });
       return item;
     }
@@ -2298,26 +2383,44 @@
         return true;
       const existing = this.#findCreateMatch(term);
       if (existing) {
-        this.#selectItem(existing);
-        return true;
+        if (existing.option?.selected)
+          return true;
+        return this.#selectItem(existing);
       }
       if (!this.#canCreate(term, this.#inputEl()))
         return false;
       const created = await this.#createItem(term);
       return created !== null;
     }
+    #enqueueTokens(batch) {
+      this.tokenQueue = (this.tokenQueue ?? Promise.resolve()).then(batch).catch(() => {});
+      return this.tokenQueue;
+    }
     async#handleTokenInput() {
-      const result = await this.#processTokens(this.#inputEl().value);
-      if (result)
-        this.#inputEl().value = result.rest;
-      this.search(this.#inputEl().value, { show: true, reason: "input" });
+      const value = this.#inputEl().value;
+      return this.#enqueueTokens(async () => {
+        if (!this.#alive())
+          return;
+        const result = await this.#processTokens(value);
+        if (!this.#alive())
+          return;
+        if (result)
+          this.#inputEl().value = result.rest;
+        this.search(this.#inputEl().value, { show: true, reason: "input" });
+      });
     }
     async#commitEnterTokens(resolved) {
-      const result = await this.#processTokens(this.#inputEl().value, { final: true, resolved });
-      if (result?.consumed) {
-        this.#inputEl().value = result.rest;
-        this.search("", { show: true, reason: "create" });
-      }
+      return this.#enqueueTokens(async () => {
+        if (!this.#alive())
+          return;
+        const result = await this.#processTokens(this.#inputEl().value, { final: true, resolved });
+        if (!this.#alive())
+          return;
+        if (result?.consumed) {
+          this.#inputEl().value = result.rest;
+          this.search("", { show: true, reason: "create" });
+        }
+      });
     }
     #dispatchNativeValueEvents() {
       this.source.dispatchEvent(new Event("input", { bubbles: true }));
@@ -2355,7 +2458,7 @@
           this.#dispatchNativeValueEvents();
           return created !== null;
         }
-        if (option.disabled)
+        if (isOptionDisabled(option))
           return false;
         const unchanged = this.isMultiple ? option.selected : this.source.value === option.value;
         if (unchanged)
@@ -2390,15 +2493,13 @@
       const option = valueOrOption instanceof HTMLOptionElement ? valueOrOption : this.#selectedOptionsInOrder().find((entry) => entry.value === String(valueOrOption));
       if (!option?.selected || option.disabled)
         return false;
-      const item = {
-        value: option.value,
-        label: option.textContent.trim(),
-        option,
-        selected: true,
-        data: { ...option.dataset }
-      };
+      const item = optionToItem(option);
       const guard = await this.#runGuard("remove", { item });
+      if (guard.error)
+        throw guard.error;
       if (!guard.ok)
+        return false;
+      if (!this.#alive())
         return false;
       const before = emit(this.source, "combobox:beforeremove", { combobox: this, item }, { cancelable: true });
       if (before.defaultPrevented)
@@ -2415,8 +2516,12 @@
       if (!this.isSelect) {
         if (!this.source.value)
           return false;
-        const guard = await this.#runGuard("clear", {});
-        if (!guard.ok)
+        const inputGuard = await this.#runGuard("clear", {});
+        if (inputGuard.error)
+          throw inputGuard.error;
+        if (!inputGuard.ok)
+          return false;
+        if (!this.#alive())
           return false;
         const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
         if (before.defaultPrevented)
@@ -2430,7 +2535,11 @@
       if (!selected.length)
         return false;
       const guard = await this.#runGuard("clear", {});
+      if (guard.error)
+        throw guard.error;
       if (!guard.ok)
+        return false;
+      if (!this.#alive())
         return false;
       const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
       if (before.defaultPrevented)
@@ -2452,12 +2561,7 @@
     getSelectedItems() {
       if (!this.isSelect)
         return [{ value: this.source.value, label: this.source.value }].filter((item) => item.value);
-      return this.#selectedOptionsInOrder().map((option) => ({
-        value: option.value,
-        label: option.textContent.trim(),
-        option,
-        data: { ...option.dataset }
-      }));
+      return this.#selectedOptionsInOrder().map((option) => optionToItem(option));
     }
     move(itemOrValue, index) {
       if (!this.isMultiple || this.options.selectionOrder !== "selected")
@@ -2513,7 +2617,7 @@
     }
     #syncSingleLabel() {
       const selected = this.#selectSource().selectedOptions[0];
-      this.#inputEl().value = selected?.value ? selected.textContent.trim() : "";
+      this.#inputEl().value = selected?.value ? selected.label : "";
     }
     show() {
       if (this.mode !== "enhanced" || this.isOpen())
@@ -2573,9 +2677,23 @@
       this.stopAutoUpdate = null;
       this.#popoverEl()?.remove();
       if (this.isSelect || this.datalist instanceof HTMLDataListElement) {
-        for (const item of this.#sourceItems()) {
-          item.option?.removeAttribute("data-filtered");
-          item.option?.removeAttribute("data-active-option");
+        const saved = new Map((this.original.optionMarkers ?? []).map((entry) => [entry.option, entry]));
+        const scope = this.isSelect ? Array.from(this.#selectSource().options) : Array.from(this.datalist.options);
+        for (const option of scope) {
+          const marker = saved.get(option);
+          if (!marker) {
+            option.removeAttribute("data-filtered");
+            option.removeAttribute("data-active-option");
+            continue;
+          }
+          if (marker.filtered === null)
+            option.removeAttribute("data-filtered");
+          else
+            option.setAttribute("data-filtered", marker.filtered);
+          if (marker.active === null)
+            option.removeAttribute("data-active-option");
+          else
+            option.setAttribute("data-active-option", marker.active);
         }
       }
       for (const { label, id } of this.original.inventedLabels) {
@@ -2773,7 +2891,7 @@
     }
   }
   function defineCombobox() {
-    const registry = globalThis.customElements;
+    const registry = customElements;
     if (!registry.get("combo-box"))
       registry.define("combo-box", ComboBoxElement);
     return ComboBoxElement;

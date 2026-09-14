@@ -276,7 +276,8 @@ Requirements:
 ### Fallback
 
 The fallback Add input runs the same create pipeline (`guards.add`,
-`combobox:beforecreate`, `createerror`) and the same existing-match resolution.
+`combobox:beforecreate`, `createerror`), the same existing-match resolution,
+and the same `combobox:beforeselect` gate on selection.
 
 ### Tests
 

@@ -18,6 +18,22 @@
  */
 export declare function selectSourceOf(combobox: import("./combobox.js").Combobox): HTMLSelectElement;
 /**
+ * Whether a native option is ineligible: its own `disabled` flag or a
+ * disabled parent `<optgroup>`. Single source of truth reused by catalogue
+ * reads, value resolution and selection commits.
+ * @param {HTMLOptionElement} option
+ * @returns {boolean}
+ */
+export declare function isOptionDisabled(option: HTMLOptionElement): boolean;
+/**
+ * Canonical conversion of one native `<option>`: the element is the identity,
+ * `option.label` is the native display label (never `textContent`), and
+ * `data-*` is application metadata exposed via `item.data` only.
+ * @param {HTMLOptionElement} option
+ * @returns {import("./helpers.js").ComboboxItem}
+ */
+export declare function optionToItem(option: HTMLOptionElement): import("./helpers.js").ComboboxItem;
+/**
  * Read the native catalogue as canonical items: the select's
  * `<option>`/`<optgroup>` set, or the `<datalist>` for an
  * input-backed combobox. Empty values are dropped unless `allowEmptyOption`
@@ -62,10 +78,14 @@ export declare function findCreateMatch(combobox: import("./combobox.js").Combob
 export declare function fieldsFor(combobox: import("./combobox.js").Combobox): import("./helpers.js").ItemFields | null;
 /**
  * Replace the native catalogue. For a select this rebuilds the
- * `<option>`/`<optgroup>` set, keeping the currently selected options first
- * when `preserveSelected` (defaults to select-backed) and re-appending a
- * single-select empty placeholder. No value-based dedupe: catalogue identity is
- * the `<option>` element, so repeated payload values map to their own options.
+ * `<option>`/`<optgroup>` set, keeping the currently selected option *nodes*
+ * themselves when `preserveSelected` (defaults to select-backed) and
+ * re-appending a single-select empty placeholder. Keeping the nodes preserves
+ * option identity (references held by `remove()`/`move()`/`selectionOrder`
+ * stay valid), `data-*` metadata and the authored `defaultSelected` reset
+ * baseline — a dynamic selection never becomes the form-reset default. No
+ * value-based dedupe: catalogue identity is the `<option>` element, so
+ * repeated payload values map to their own options.
  * For an input combobox the `<datalist>` is rebuilt from the payload.
  * @param {import("./combobox.js").Combobox} combobox
  * @param {import("./helpers.js").ComboboxItem[]} normalized

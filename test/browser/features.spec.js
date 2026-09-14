@@ -761,7 +761,12 @@ test("guards.clear rejection surfaces guarderror and keeps the selection", async
     const combo = Combobox.getOrCreateInstance(select, {
       guards: { clear: async () => Promise.reject(new Error("app boom")) },
     });
-    const result = await combo.clear();
+    let result;
+    try {
+      result = await combo.clear();
+    } catch (error) {
+      result = `rejected: ${error.message}`;
+    }
     return {
       result,
       guardErrors,
@@ -769,7 +774,10 @@ test("guards.clear rejection surfaces guarderror and keeps the selection", async
       selected: Array.from(select.selectedOptions, (o) => o.value),
     };
   });
-  expect(state.result).toBe(false);
+  // A rejected guard is an application error: it propagates to the
+  // programmatic caller (unlike a voluntary `false` refusal) while the
+  // generic guarderror event still fires and the selection is kept.
+  expect(state.result).toBe("rejected: app boom");
   expect(state.guardErrors).toEqual([{ guard: "clear", message: "app boom" }]);
   expect(state.unhandled).toEqual([]);
   expect(state.selected).toEqual(["1"]);
