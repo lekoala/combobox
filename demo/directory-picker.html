@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Directory picker · @lekoala/combobox</title>
+  <meta name="description" content="Remote rich directory results: selecting a member materializes a native option, activating a profile row cancels selection and runs an application action instead. Same beforeselect seam for keyboard and mouse.">
+  <link rel="stylesheet" href="../dist/combobox.css">
+  <script src="../dist/combobox.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      color: #18202b;
+      background: #f5f7fa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body { margin: 0; }
+
+    main {
+      max-inline-size: 40rem;
+      margin: 4rem auto;
+      padding: 0 1.25rem 4rem;
+    }
+
+    a { color: #175cd3; }
+
+    .card {
+      display: grid;
+      gap: 1rem;
+      margin-block-start: 1.5rem;
+      padding: 1.5rem;
+      border: 1px solid #dfe3e8;
+      border-radius: 0.85rem;
+      background: white;
+      box-shadow: 0 0.5rem 2rem rgb(16 24 40 / 7%);
+    }
+
+    .muted { color: #667085; }
+
+    .card form {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .card form > :where(p) {
+      margin: 0;
+    }
+
+    .card form button {
+      justify-self: start;
+    }
+
+    .status {
+      min-block-size: 2.5rem;
+      margin: 0;
+      padding: 0.75rem 1rem;
+      border-radius: 0.55rem;
+      background: #f2f4f7;
+      font-size: 0.92rem;
+    }
+
+    /* Rich directory row. Text only: the renderer builds DOM Nodes,
+       the combobox never parses HTML. The avatar is pure CSS initials,
+       so the demo has no network dependency and works over file://. */
+    .directory-result {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-inline-size: 0;
+      inline-size: 100%;
+    }
+
+    .directory-avatar {
+      display: grid;
+      place-items: center;
+      flex: none;
+      inline-size: 2rem;
+      block-size: 2rem;
+      border-radius: 50%;
+      background: #e0e7ff;
+      color: #3538cd;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .directory-text {
+      display: grid;
+      min-inline-size: 0;
+    }
+
+    .directory-meta {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      /* Inherit the row color so the active (blue) row stays readable:
+         fixed gray on --cb-option-active-bg fails contrast. */
+      color: inherit;
+      opacity: 0.72;
+      font-size: 0.85em;
+    }
+
+    .directory-hint {
+      margin-inline-start: auto;
+      flex: none;
+      color: inherit;
+      opacity: 0.72;
+      font-size: 0.8em;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="muted"><a href="./index.html">← Main demo</a></p>
+    <p class="muted">Use-case demo</p>
+    <h1>Directory picker</h1>
+    <p class="muted">
+      Remote rich results over a constrained single select. Type
+      <code>denis</code>: one row selects a member (the transient result becomes
+      a native <code>&lt;option&gt;</code>), the other row opens a profile
+      instead — cancelled synchronously in
+      <code>combobox:beforeselect</code>, identically for <code>Enter</code>
+      and click. The combobox emits an activation intent; the application
+      chooses the effect. A list that is mostly links/actions is no longer a
+      combobox — see the ARIA note below.
+    </p>
+
+    <section class="card">
+      <form id="directory-form" action="./directory-picker.html" method="get">
+        <label for="member">Team member</label>
+        <combo-box id="member-widget" min-chars="1" debounce="120" placeholder="Search the directory…">
+          <select id="member" name="member">
+            <option value="">Choose a member…</option>
+          </select>
+        </combo-box>
+        <p class="status" id="directory-status" role="status">No action yet.</p>
+        <p class="muted" id="directory-value">Native value: (empty)</p>
+        <button type="submit">Submit</button>
+      </form>
+    </section>
+
+    <p class="muted">
+      ARIA boundary: focus stays on the input
+      (<code>role=combobox</code> + <code>aria-activedescendant</code>, picker
+      is <code>listbox</code>). That fits a selector where some activations
+      branch elsewhere. If almost every result were a navigation link, prefer a
+      search-results / command-palette primitive instead.
+    </p>
+    <p class="muted">
+      Fallback: remote loading is enhanced-mode only. Without enhancement this
+      degrades to a plain native select with its placeholder option.
+    </p>
+  </main>
+
+  <script type="module">
+    const box = document.getElementById("member-widget");
+    const source = document.getElementById("member");
+    const status = document.getElementById("directory-status");
+    const nativeValue = document.getElementById("directory-value");
+
+    // value/label is the combobox contract; everything domain-specific
+    // lives in opaque `data`. The engine never interprets role/team/url.
+    const DIRECTORY = [
+      {
+        value: "42",
+        label: "Denis Léonard",
+        data: { role: "Designer", team: "Platform", action: "navigate", url: "/people/denis-leonard" },
+      },
+      {
+        value: "84",
+        label: "Fredy Denis",
+        data: { role: "Engineer", team: "Checkout", action: "select" },
+      },
+      { value: "17", label: "Aïcha Benali", data: { role: "Engineer", team: "Platform", action: "select" } },
+      { value: "23", label: "Marco Rossi", data: { role: "Support", team: "Helpdesk", action: "select" } },
+      { value: "31", label: "Zoe Laurent", data: { role: "Manager", team: "Platform", action: "navigate", url: "/people/zoe-laurent" } },
+      // Hostile label stays text: the renderer only uses textContent.
+      { value: "99", label: "<img src=x onerror=alert(1)>", data: { role: "Tester", team: "QA", action: "select" } },
+    ];
+
+    const normalize = (value) =>
+      String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase();
+
+    const delay = (ms, signal) =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, ms);
+        signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      });
+
+    const initials = (label) =>
+      normalize(label).split(/[^a-z]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toLocaleUpperCase() || "•";
+
+    // Application effect for an activated profile row. The combobox only
+    // emits the intent (a cancellable beforeselect); navigation, dialog,
+    // or any other outcome is application-owned.
+    function navigate(url) {
+      status.textContent = `Would navigate to ${url} — selection cancelled, catalogue untouched.`;
+      // Real app:
+      // window.location.assign(url);
+    }
+
+    box.configure({
+      shouldLoad: (query) => query.trim().length >= 1,
+      load: async (query, { signal }) => {
+        await delay(150, signal);
+        const q = normalize(query);
+        return DIRECTORY.filter((entry) =>
+          normalize(entry.label).includes(q)
+          || normalize(entry.data.role).includes(q)
+          || normalize(entry.data.team).includes(q));
+      },
+      render: {
+        // An empty query never searches, so "No results" would lie: invite
+        // typing instead, and only report a genuine miss once searching.
+        // Returned strings render as text, so interpolating the query stays
+        // XSS-safe.
+        noResults(query) {
+          if (!query.trim()) return "Type to search the directory…";
+          return `No members for "${query.trim()}"`;
+        },
+        option(item) {
+          const row = document.createElement("span");
+          row.className = "directory-result";
+
+          const avatar = document.createElement("span");
+          avatar.className = "directory-avatar";
+          avatar.setAttribute("aria-hidden", "true");
+          avatar.textContent = initials(item.label);
+
+          const text = document.createElement("span");
+          text.className = "directory-text";
+
+          const name = document.createElement("strong");
+          name.textContent = item.label;
+
+          const meta = document.createElement("span");
+          meta.className = "directory-meta";
+          meta.textContent = `${item.data?.role ?? ""} · ${item.data?.team ?? ""}`;
+
+          text.append(name, meta);
+          row.append(avatar, text);
+
+          if (item.data?.action === "navigate") {
+            const hint = document.createElement("span");
+            hint.className = "directory-hint";
+            hint.textContent = "Profile →";
+            row.append(hint);
+          }
+
+          return row;
+        },
+      },
+    });
+
+    // One seam for every modality: Enter and click both flow through
+    // combobox:beforeselect. Cancelling is synchronous and therefore has
+    // zero catalogue or value side effects (no materialized option,
+    // no input/change events).
+    source.addEventListener("combobox:beforeselect", (event) => {
+      const item = event.detail.item;
+      if (item.data?.action !== "navigate") return;
+      event.preventDefault();
+      navigate(item.data.url);
+    });
+
+    // configure() may rebuild an instance that upgraded during HTML parsing.
+    await new Promise(requestAnimationFrame);
+    const combo = box.combobox;
+    combo.source.addEventListener("change", () => {
+      const current = combo.source.selectedOptions[0];
+      nativeValue.textContent = current?.value
+        ? `Native value: ${current.value} (${current.textContent.trim()})`
+        : "Native value: (empty)";
+      if (current?.value) status.textContent = `Selected ${current.textContent.trim()}.`;
+    });
+  </script>
+</body>
+</html>

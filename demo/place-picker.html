@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Place picker · @lekoala/combobox</title>
+  <meta name="description" content="Provider-neutral remote place search: the combobox queries an application datasource, renders primary/secondary rows, and materializes only the selected transient result. No maps SDK in the browser.">
+  <link rel="stylesheet" href="../dist/combobox.css">
+  <script src="../dist/combobox.js"></script>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      color: #18202b;
+      background: #f5f7fa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body { margin: 0; }
+
+    main {
+      max-inline-size: 40rem;
+      margin: 4rem auto;
+      padding: 0 1.25rem 4rem;
+    }
+
+    a { color: #175cd3; }
+
+    .card {
+      display: grid;
+      gap: 1rem;
+      margin-block-start: 1.5rem;
+      padding: 1.5rem;
+      border: 1px solid #dfe3e8;
+      border-radius: 0.85rem;
+      background: white;
+      box-shadow: 0 0.5rem 2rem rgb(16 24 40 / 7%);
+    }
+
+    .muted { color: #667085; }
+
+    .card form {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .card form > :where(p) {
+      margin: 0;
+    }
+
+    .card form button {
+      justify-self: start;
+    }
+
+    .status {
+      min-block-size: 2.5rem;
+      margin: 0;
+      padding: 0.75rem 1rem;
+      border-radius: 0.55rem;
+      background: #f2f4f7;
+      font-size: 0.92rem;
+    }
+
+    /* Rich place row. Text only: the renderer builds DOM Nodes,
+       the combobox never parses HTML. */
+    .place-result {
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+      min-inline-size: 0;
+      inline-size: 100%;
+    }
+
+    .place-result-icon {
+      flex: none;
+      color: inherit;
+      opacity: 0.6;
+    }
+
+    .place-result-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .place-result-secondary {
+      margin-inline-start: auto;
+      flex: none;
+      /* Inherit the row color so the active (blue) row stays readable:
+         fixed gray on --cb-option-active-bg fails contrast. */
+      color: inherit;
+      opacity: 0.72;
+      font-size: 0.85em;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="muted"><a href="./index.html">← Main demo</a></p>
+    <p class="muted">Use-case demo</p>
+    <h1>Place picker</h1>
+    <p class="muted">
+      The browser never talks to a maps SDK. The combobox queries an
+      application datasource (<code>load(query, { signal })</code>), renders
+      provider-neutral <code>{ value, label, data }</code> items, and
+      materializes only the selected transient result into the native
+      <code>&lt;select&gt;</code>. Swap the provider (Google / Mapbox /
+      Nominatim / internal API) without touching the renderer.
+    </p>
+
+    <section class="card">
+      <form id="place-form" action="./place-picker.html" method="get">
+        <label for="place">Place</label>
+        <combo-box id="place-widget" min-chars="2" debounce="150" placeholder="Search places…">
+          <select id="place" name="place">
+            <option value="">Choose a place…</option>
+          </select>
+        </combo-box>
+        <p class="status" id="place-status" role="status">Type at least 2 characters.</p>
+        <p class="muted" id="place-value">Native value: (empty)</p>
+        <button type="submit">Submit</button>
+      </form>
+    </section>
+
+    <p class="muted">
+      Contract under test here is the datasource (<code>query + AbortSignal →
+      items</code>), not any maps API: this page uses an async fake provider
+      with an abortable delay. In production <code>load()</code> would
+      <code>fetch()</code> an application endpoint that normalizes the third
+      party response into the neutral shape below.
+    </p>
+    <p class="muted">
+      Fallback: remote loading is enhanced-mode only. Without enhancement this
+      degrades to a plain native select with its placeholder option.
+    </p>
+  </main>
+
+  <script type="module">
+    const box = document.getElementById("place-widget");
+    const status = document.getElementById("place-status");
+    const nativeValue = document.getElementById("place-value");
+
+    // Neutral DTO. value/label is the combobox contract; provider identity,
+    // kind and secondary text are opaque application metadata in `data`.
+    const PLACES = [
+      { value: "place-1", label: "Saint-Gilles", data: { secondary: "Belgium", kind: "locality", providerId: "google-ChIJ1" } },
+      { value: "place-2", label: "Saint-Hubert", data: { secondary: "Belgium", kind: "locality", providerId: "google-ChIJ2" } },
+      { value: "place-3", label: "Saint-Josse-ten-Noode", data: { secondary: "Belgium", kind: "locality", providerId: "google-ChIJ3" } },
+      { value: "place-4", label: "Saint-Nicolas", data: { secondary: "Belgium", kind: "municipality", providerId: "google-ChIJ4" } },
+      { value: "place-5", label: "Saint-Truiden", data: { secondary: "Belgium", kind: "municipality", providerId: "google-ChIJ5" } },
+      { value: "place-6", label: "Saint-Malo", data: { secondary: "France", kind: "locality", providerId: "google-ChIJ6" } },
+      // Hostile label stays text: the renderer only uses textContent.
+      { value: "place-7", label: "<b>Saint-XSS</b>", data: { secondary: "Belgium", kind: "locality", providerId: "google-ChIJ7" } },
+    ];
+
+    const normalize = (value) =>
+      String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase();
+
+    const delay = (ms, signal) =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, ms);
+        signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(new DOMException("Aborted", "AbortError"));
+        }, { once: true });
+      });
+
+    // Search threshold, mirrored in min-chars="2", shouldLoad and the
+    // noResults hint below so the three never drift apart.
+    const MIN_CHARS = 2;
+
+    // Demo stand-in for an application endpoint (e.g. GET /api/places?q=…).
+    // Production shape:
+    //   GooglePlacesProvider → fetch("/api/places?q=" + encodeURIComponent(query), { signal })
+    //   MapboxProvider / NominatimProvider / InternalAddressProvider
+    // …each returning the same neutral items, so the renderer never changes.
+    const placeProvider = {
+      async search(query, { signal }) {
+        await delay(150, signal);
+        const q = normalize(query);
+        return PLACES.filter((entry) =>
+          normalize(entry.label).includes(q)
+          || normalize(entry.data.secondary).includes(q));
+      },
+    };
+
+    box.configure({
+      shouldLoad: (query) => query.trim().length >= MIN_CHARS,
+      load: (query, context) => placeProvider.search(query, context),
+      render: {
+        // Below the threshold no search ever runs, so "No results" would
+        // lie: name the wait instead, and only report a genuine miss above
+        // it. Returned strings render as text, so interpolating the query
+        // stays XSS-safe.
+        // Known core quirk: the SR live region still announces the static
+        // messages.noResults while this hint shows — visual recipe only.
+        noResults(query) {
+          if (query.trim().length < MIN_CHARS) {
+            return `Type at least ${MIN_CHARS} characters to search…`;
+          }
+          return `No places for "${query.trim()}"`;
+        },
+        option(item) {
+          const row = document.createElement("span");
+          row.className = "place-result";
+
+          const icon = document.createElement("span");
+          icon.className = "place-result-icon";
+          icon.setAttribute("aria-hidden", "true");
+          icon.textContent = "●";
+
+          const label = document.createElement("strong");
+          label.className = "place-result-label";
+          label.textContent = item.label;
+
+          const secondary = document.createElement("span");
+          secondary.className = "place-result-secondary";
+          secondary.textContent = item.data?.secondary ?? "";
+
+          row.append(icon, label, secondary);
+          return row;
+        },
+      },
+    });
+
+    // configure() may rebuild an instance that upgraded during HTML parsing.
+    await new Promise(requestAnimationFrame);
+    const combo = box.combobox;
+    combo.source.addEventListener("change", () => {
+      const current = combo.source.selectedOptions[0];
+      nativeValue.textContent = current?.value
+        ? `Native value: ${current.value} (${current.textContent.trim()})`
+        : "Native value: (empty)";
+      if (current?.value) {
+        const item = combo.getSelectedItems()[0];
+        status.textContent = `Selected ${current.textContent.trim()} — secondary: ${item?.data?.secondary ?? "—"}.`;
+      }
+    });
+  </script>
+</body>
+</html>

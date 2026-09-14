@@ -485,3 +485,146 @@ In fallback mode the recipe degrades to a plain native select: `disabled`,
 smoke test asserting the rendered contract (duration pills, `aria-disabled` +
 `title` rows, `data-tooltip` markup, keyboard skip, native value on select) —
 never Actual CSS runtime behavior, which belongs to its own project.
+
+## UC16 — Directory picker (remote rich results + selection/action)
+
+A constrained single select over a remote directory. Most rows select a
+member; some rows are profile actions that branch elsewhere. Both modalities
+(keyboard `Enter` and click) flow through the same seam.
+
+### Recette
+
+```js
+box.configure({
+  shouldLoad: (query) => query.trim().length >= 1,
+  load: async (query, { signal }) => directory.search(query, { signal }),
+  render: {
+    option(item) {
+      const row = document.createElement("span");
+      const avatar = document.createElement("span");
+      avatar.textContent = initials(item.label);
+      const name = document.createElement("strong");
+      name.textContent = item.label;
+      const meta = document.createElement("span");
+      meta.textContent = `${item.data.role} · ${item.data.team}`;
+      row.append(avatar, name, meta);
+      return row;
+    },
+  },
+});
+
+// One activation intent for every modality.
+source.addEventListener("combobox:beforeselect", (event) => {
+  const item = event.detail.item;
+  if (item.data?.action !== "navigate") return;
+  event.preventDefault();
+  navigate(item.data.url);
+  // Real app: window.location.assign(item.data.url);
+});
+```
+
+Neutral item shape — `value`/`label` is the combobox contract, the rest is
+opaque application metadata:
+
+```js
+{
+  value: "42",
+  label: "Denis Léonard",
+  data: { role: "Designer", team: "Platform", action: "navigate", url: "/people/denis-leonard" },
+}
+```
+
+Requirements:
+
+- activating a result (keyboard or mouse) fires synchronous, cancellable
+  `combobox:beforeselect` with `event.detail.item`;
+- a cancelled activation materializes nothing: no native `<option>`, no
+  `input`/`change` events, catalogue untouched;
+- a normal selection materializes exactly that one transient result;
+- the renderer returns text-built DOM Nodes only (avatar = CSS initials, so
+  the demo has no network dependency and works over `file://`);
+- below the search threshold no search ever runs, so the empty row must not
+  claim "No results": a `render.noResults(query)` branch names the wait
+  (`Type to search the directory…`) and only reports a genuine miss above
+  it — returned strings render as text, so interpolating the query stays
+  safe;
+- the combobox learns no domain notion (`role`, `team`, profile URLs).
+
+ARIA boundary: focus stays on the input (`role=combobox` +
+`aria-activedescendant`, picker is `listbox`). That fits a selector where
+some activations branch elsewhere. If almost every result were a navigation
+link, prefer a search-results / command-palette primitive instead of a
+combobox.
+
+### Fallback
+
+Remote loading is enhanced-mode only. In fallback mode the recipe degrades
+to a plain native select with its placeholder option.
+
+### Tests
+
+`demo/directory-picker.html` is the working reference, covered by a
+`test/dist` smoke test: rich rows render, `Enter` and click on a `navigate`
+row cancel with zero native side effects, selecting a normal row
+materializes one option and emits native value events.
+
+## UC17 — Place picker (provider-neutral remote datasource)
+
+The browser never talks to a maps SDK. The combobox queries an application
+datasource and renders provider-neutral items; swapping Google / Mapbox /
+Nominatim / internal API changes the provider, never the renderer.
+
+### Recette
+
+```js
+const placeProvider = {
+  async search(query, { signal }) {
+    const response = await fetch(`/api/places?q=${encodeURIComponent(query)}`, { signal });
+    return response.json(); // neutral { value, label, data } items
+  },
+};
+
+box.configure({
+  shouldLoad: (query) => query.trim().length >= 2,
+  load: (query, context) => placeProvider.search(query, context),
+  render: {
+    option(item) {
+      const row = document.createElement("span");
+      const label = document.createElement("strong");
+      label.textContent = item.label;
+      const secondary = document.createElement("span");
+      secondary.textContent = item.data?.secondary ?? "";
+      row.append(label, secondary);
+      return row;
+    },
+  },
+});
+```
+
+```js
+{ value: "place-1", label: "Saint-Gilles", data: { secondary: "Belgium", kind: "locality", providerId: "…" } }
+```
+
+Requirements:
+
+- the contract under test is the datasource (`query + AbortSignal →
+  items`), not any maps API — the demo uses an async fake provider with an
+  abortable delay;
+- transient remote results never fill the native select; only the selected
+  result is materialized;
+- `minChars`/`shouldLoad` gate short queries; abort/stale rules follow UC5;
+- below the threshold the empty row names the wait (`Type at least 2
+  characters to search…`, via `render.noResults`) instead of reporting a
+  miss; only a searched query with zero hits reports one;
+- the renderer only knows `label` + opaque `data`.
+
+### Fallback
+
+Same as UC16: a plain native select with its placeholder option.
+
+### Tests
+
+`demo/place-picker.html` is the working reference, covered by a `test/dist`
+smoke test: below-threshold query loads nothing, results stay transient
+until selection, one selection materializes one native option with its
+secondary text.

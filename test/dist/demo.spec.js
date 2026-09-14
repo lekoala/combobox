@@ -136,3 +136,105 @@ test("Actual CSS bridge keeps SVG chip removal visible and functional", async ({
   await remove.click();
   await expect(page.locator("#skills + .cb-control .cb-chip")).toHaveCount(2);
 });
+
+test("directory demo renders rich rows and cancels navigate activations without native side effects", async ({
+  page,
+}) => {
+  await page.goto("/demo/directory-picker.html");
+  const input = page.locator("#member + .cb-control .cb-input");
+
+  await input.fill("denis");
+  const rows = page.locator(".cb-popover:visible .directory-result");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first().locator(".directory-avatar")).toHaveText("DL");
+  await expect(rows.first()).toContainText("Designer · Platform");
+  await expect(rows.first().locator(".directory-hint")).toHaveText("Profile →");
+
+  // Keyboard activation of a navigate row: same beforeselect seam as click.
+  await input.press("ArrowDown");
+  await input.press("Enter");
+  await expect(page.locator("#directory-status")).toHaveText(/Would navigate to \/people\/denis-leonard/);
+  await expect(page.locator("#member")).toHaveValue("");
+  expect(await page.locator("#member option").count()).toBe(1);
+
+  // Click parity: reload, then click the navigate row.
+  await page.goto("/demo/directory-picker.html");
+  const clicked = page.locator("#member + .cb-control .cb-input");
+  await clicked.fill("denis");
+  await page.locator(".cb-popover:visible .cb-option", { hasText: "Denis Léonard" }).first().click();
+  await expect(page.locator("#directory-status")).toHaveText(/Would navigate to \/people\/denis-leonard/);
+  await expect(page.locator("#member")).toHaveValue("");
+  expect(await page.locator("#member option").count()).toBe(1);
+});
+
+test("directory demo selects a normal row and keeps hostile labels as text", async ({ page }) => {
+  await page.goto("/demo/directory-picker.html");
+  const input = page.locator("#member + .cb-control .cb-input");
+
+  await input.fill("fredy");
+  await page.locator(".cb-popover:visible .cb-option", { hasText: "Fredy Denis" }).click();
+  await expect(page.locator("#member")).toHaveValue("84");
+  await expect(page.locator("#directory-value")).toHaveText(/84.*Fredy Denis/);
+
+  await input.fill("<img");
+  const hostile = page.locator(".cb-popover:visible .cb-option", { hasText: "<img" });
+  await expect(hostile).toHaveCount(1);
+  expect(await hostile.locator("img").count()).toBe(0);
+});
+
+test("place demo gates short queries, keeps results transient, then materializes one option", async ({
+  page,
+}) => {
+  await page.goto("/demo/place-picker.html");
+  const input = page.locator("#place + .cb-control .cb-input");
+
+  await input.fill("s");
+  await expect(page.locator(".cb-popover:visible .place-result")).toHaveCount(0);
+  // Below the threshold no search runs: the empty row names the wait
+  // instead of reporting a miss.
+  await expect(page.locator(".cb-popover:visible .cb-empty")).toHaveText(
+    "Type at least 2 characters to search…",
+  );
+  expect(await page.locator("#place option").count()).toBe(1);
+
+  await input.fill("saint");
+  const rows = page.locator(".cb-popover:visible .place-result");
+  await expect(rows.first()).toBeVisible();
+  await expect(rows.first().locator(".place-result-label")).toHaveText("Saint-Gilles");
+  await expect(rows.first().locator(".place-result-secondary")).toHaveText("Belgium");
+  // Transient: the catalogue is untouched until a selection happens.
+  expect(await page.locator("#place option").count()).toBe(1);
+
+  await rows.first().click();
+  await expect(page.locator("#place")).toHaveValue("place-1");
+  await expect(page.locator("#place-value")).toHaveText(/place-1.*Saint-Gilles/);
+  await expect(page.locator("#place-status")).toHaveText(/secondary: Belgium/);
+  expect(await page.locator("#place option").count()).toBe(2);
+});
+
+test("place demo renders hostile labels as text", async ({ page }) => {
+  await page.goto("/demo/place-picker.html");
+  const input = page.locator("#place + .cb-control .cb-input");
+
+  await input.fill("xss");
+  const hostile = page.locator(".cb-popover:visible .cb-option", { hasText: "Saint-XSS" });
+  await expect(hostile).toHaveCount(1);
+  await expect(hostile.locator(".place-result-label")).toHaveText("<b>Saint-XSS</b>");
+  expect(await hostile.locator("b").count()).toBe(0);
+});
+
+test("empty rows distinguish waiting-for-input from genuine misses", async ({ page }) => {
+  await page.goto("/demo/place-picker.html");
+  const place = page.locator("#place + .cb-control .cb-input");
+  await place.fill("zzz-no-such-place");
+  await expect(page.locator(".cb-popover:visible .cb-empty")).toHaveText('No places for "zzz-no-such-place"');
+
+  await page.goto("/demo/directory-picker.html");
+  const member = page.locator("#member + .cb-control .cb-input");
+  await member.click();
+  await expect(page.locator(".cb-popover:visible .cb-empty")).toHaveText("Type to search the directory…");
+  await member.fill("zzz-no-such-member");
+  await expect(page.locator(".cb-popover:visible .cb-empty")).toHaveText(
+    'No members for "zzz-no-such-member"',
+  );
+});
