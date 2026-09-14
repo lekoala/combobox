@@ -2167,12 +2167,12 @@
         this.hide();
         return false;
       }
-      return this.#commitItemSelection(option, item, { materialize, keepQuery });
+      return this.#commitItemSelection(option, item, { keepQuery });
     }
     #alive() {
       return instances.get(this.source) === this && !this.abortController.signal.aborted;
     }
-    #commitItemSelection(option, item, { materialize = true, keepQuery = false } = {}) {
+    #commitItemSelection(option, item, { keepQuery = false } = {}) {
       if (this.isSelect && option)
         item = { ...item, option, selected: true };
       const before = emit(this.source, "combobox:beforeselect", {

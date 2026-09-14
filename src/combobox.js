@@ -2506,7 +2506,7 @@ export class Combobox {
       return false;
     }
 
-    return this.#commitItemSelection(option, item, { materialize, keepQuery });
+    return this.#commitItemSelection(option, item, { keepQuery });
   }
 
   /**
@@ -2529,10 +2529,10 @@ export class Combobox {
    * @param {import("./helpers.js").ComboboxItem} item
    * @param {HTMLOptionElement | null} option Exact option to select, or null
    *   to materialize one after the gate (select-backed only)
-   * @param {{ materialize?: boolean, keepQuery?: boolean }} [options]
+   * @param {{ keepQuery?: boolean }} [options]
    * @returns {boolean}
    */
-  #commitItemSelection(option, item, { materialize = true, keepQuery = false } = {}) {
+  #commitItemSelection(option, item, { keepQuery = false } = {}) {
     if (this.isSelect && option) item = { ...item, option, selected: true };
     const before = emit(
       this.source,
