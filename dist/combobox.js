@@ -708,13 +708,16 @@
   }
   function appendCatalogOption(combobox, item, { selected = false } = {}) {
     const source = selectSourceOf(combobox);
-    const option = item.option instanceof HTMLOptionElement ? item.option : new Option(item.label, item.value, false, selected);
-    if (!(item.option instanceof HTMLOptionElement)) {
+    const adopted = item.option instanceof HTMLOptionElement;
+    const option = adopted ? item.option : new Option(item.label, item.value, false, selected);
+    if (!adopted) {
       option.disabled = Boolean(item.disabled);
       if (item.title)
         option.title = item.title;
       if (item.data)
         Object.assign(option.dataset, item.data);
+    }
+    if (option.closest("select") !== source) {
       if (item.group) {
         let group = Array.from(source.children).find((node) => node instanceof HTMLOptGroupElement && node.label === item.group);
         if (!group) {
@@ -867,6 +870,8 @@
   class Combobox {
     static supported = supportsModernCombobox();
     #suppressReopen = false;
+    #resolvedCoordinateSpace = "viewport";
+    #tokenQueue = Promise.resolve();
     static getDefaultMessages() {
       return getDefaultMessages();
     }
@@ -924,7 +929,6 @@
       this.selectionOrder = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
       this._chipOptions = new WeakMap;
       this.searchGeneration = 0;
-      this.tokenQueue = Promise.resolve();
       this.nextCursor = null;
       this.loading = false;
       this.loadError = null;
@@ -953,7 +957,7 @@
       this.original = {
         filterInputPlaceholder: null,
         inventedLabels: [],
-        optionMarkers: []
+        optionMarkers: new WeakMap
       };
       this.boundLabels = [];
       this.ownsInput = false;
@@ -961,7 +965,6 @@
       this.control = null;
       this.anchor = null;
       this.stopAutoUpdate = null;
-      this.coordinateSpace = "viewport";
       this.input = null;
       this.chips = null;
       this.datalist = null;
@@ -1101,11 +1104,6 @@
       const sourceSnapshot = captureAttributes(source, SOURCE_ATTRS);
       source.tabIndex = -1;
       source.setAttribute("aria-hidden", "true");
-      this.original.optionMarkers = Array.from(source.options).map((option) => ({
-        option,
-        filtered: option.getAttribute("data-filtered"),
-        active: option.getAttribute("data-active-option")
-      }));
       const control = document.createElement("div");
       control.className = `cb-control ${this.isMultiple ? "cb-control-multiple" : "cb-control-single"}`;
       const chips = document.createElement("span");
@@ -1333,7 +1331,7 @@
         distance: 4,
         flip: true,
         shift: true,
-        coordinateSpace: this.coordinateSpace
+        coordinateSpace: this.#resolvedCoordinateSpace
       });
     }
     #startAutoUpdate() {
@@ -1432,7 +1430,7 @@
           this.#inputEl().focus();
         }, { signal });
       }
-      this.source.form?.addEventListener("reset", () => queueMicrotask(() => {
+      this.source.form?.addEventListener("reset", () => setTimeout(() => {
         if (instances.get(this.source) !== this)
           return;
         this.searchGeneration++;
@@ -1571,8 +1569,9 @@
                     this.#inputEl().value = result.rest;
                 });
               } else if (value.trim()) {
-                this.#inputEl().value = "";
-                await this.#createItem(value.trim());
+                const created = await this.#createItem(value.trim());
+                if (created)
+                  this.#inputEl().value = "";
               }
             } finally {
               this.#suppressReopen = false;
@@ -1680,7 +1679,7 @@
       if (event.key === "Backspace" && this.isMultiple && !this.#inputEl().value && this.#selectSource().selectedOptions.length) {
         const selected = this.#selectedOptionsInOrder();
         const last = selected[selected.length - 1];
-        if (last && !last.disabled)
+        if (last && !isOptionDisabled(last))
           this.remove(last).catch(() => {});
       }
     }
@@ -1809,13 +1808,23 @@
           this.loading = false;
       }
     }
+    #writeOptionMarker(option, attribute, on) {
+      if (!this.original.optionMarkers.has(option)) {
+        this.original.optionMarkers.set(option, {
+          filtered: option.getAttribute("data-filtered"),
+          active: option.getAttribute("data-active-option")
+        });
+      }
+      option.toggleAttribute(attribute, on);
+    }
     #applyFilter(query) {
       const items = this.#items();
       const visible = computeFilteredItems(this, items, query);
       this.filteredItems = visible;
       const visibleOptions = new Set(visible.map((item) => item.option));
       for (const item of items) {
-        item.option?.toggleAttribute("data-filtered", !visibleOptions.has(item.option));
+        if (item.option)
+          this.#writeOptionMarker(item.option, "data-filtered", !visibleOptions.has(item.option));
       }
       this.#renderList();
       this.#setActive(this.options.autoselectFirst ? this.visibleItems.findIndex((item) => !item.disabled) : -1);
@@ -1956,7 +1965,7 @@
         const rendered = this.options.render.item?.(item, { combobox: this });
         setContent(label, rendered ?? item.label);
         chip.append(label);
-        if (!option.disabled && !this.source.disabled) {
+        if (!isOptionDisabled(option) && !this.source.disabled) {
           const remove = document.createElement("button");
           remove.type = "button";
           remove.className = "cb-chip-remove";
@@ -2089,15 +2098,19 @@
       if (index >= this.visibleItems.length)
         index = -1;
       this.activeIndex = index;
-      for (const item of this.#sourceItems())
-        item.option?.removeAttribute("data-active-option");
+      for (const item of this.#sourceItems()) {
+        if (item.option)
+          this.#writeOptionMarker(item.option, "data-active-option", false);
+      }
       for (const option of this.#listEl().querySelectorAll(".cb-option[data-index]")) {
         const el = option;
         const active = Number(el.dataset.index) === index;
         el.toggleAttribute("data-active", active);
         if (active) {
           this.#inputEl().setAttribute("aria-activedescendant", el.id);
-          this.visibleItems[index]?.option?.setAttribute("data-active-option", "");
+          const activeOption = this.visibleItems[index]?.option;
+          if (activeOption)
+            this.#writeOptionMarker(activeOption, "data-active-option", true);
           el.scrollIntoView({ block: "nearest" });
         }
       }
@@ -2150,7 +2163,11 @@
       let option = null;
       if (this.isSelect) {
         option = item.option instanceof HTMLOptionElement ? item.option : this.#findSelectableOption(item.value);
-        if (option && isOptionDisabled(option) || !option && !materialize)
+        if (option && isOptionDisabled(option))
+          return false;
+        if (option && option.closest("select") !== this.#selectSource())
+          option = null;
+        if (!option && !materialize)
           return false;
         const unchanged = option ? this.isMultiple ? option.selected : this.#selectSource().selectedOptions[0] === option : false;
         if (unchanged) {
@@ -2184,8 +2201,11 @@
       if (!this.#alive())
         return false;
       if (this.isSelect) {
-        if (!option)
+        if (!option) {
+          if (!item.value && !this.options.allowEmptyOption)
+            return false;
           option = this.addOption(item);
+        }
         const selectOption = option;
         item = { ...item, option: selectOption, selected: true };
         if (this.mode === "fallback") {
@@ -2294,7 +2314,13 @@
       if (this.options.maxItems > 0 && this.isMultiple && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
         return null;
       }
-      const option = this.addOption(created);
+      let option;
+      try {
+        option = this.addOption(created);
+      } catch (error) {
+        emit(this.source, "combobox:createerror", { combobox: this, label, error });
+        return null;
+      }
       if (!option)
         return null;
       if (!this.#commitItemSelection(option, created)) {
@@ -2393,8 +2419,8 @@
       return created !== null;
     }
     #enqueueTokens(batch) {
-      this.tokenQueue = (this.tokenQueue ?? Promise.resolve()).then(batch).catch(() => {});
-      return this.tokenQueue;
+      this.#tokenQueue = this.#tokenQueue.then(batch).catch(() => {});
+      return this.#tokenQueue;
     }
     async#handleTokenInput() {
       const value = this.#inputEl().value;
@@ -2446,32 +2472,6 @@
     }
     select(itemOrValue) {
       const isObject = typeof itemOrValue === "object" && itemOrValue !== null;
-      if (this.mode === "fallback" && this.isSelect) {
-        const item = isObject ? toItem(itemOrValue, this.#fields()) : { value: String(itemOrValue), label: String(itemOrValue) };
-        if (!item)
-          return false;
-        const option = (this.isMultiple ? this.#findSelectableOption(item.value) : null) || this.#findOption(item.value);
-        if (!option) {
-          if (!isObject)
-            return false;
-          const created = this.addOption(item, { selected: true });
-          this.#dispatchNativeValueEvents();
-          return created !== null;
-        }
-        if (isOptionDisabled(option))
-          return false;
-        const unchanged = this.isMultiple ? option.selected : this.source.value === option.value;
-        if (unchanged)
-          return false;
-        if (!this.isMultiple) {
-          for (const other of this.#selectSource().options)
-            other.selected = false;
-        }
-        option.selected = true;
-        this.#rememberSelection(option);
-        this.#dispatchNativeValueEvents();
-        return true;
-      }
       if (isObject) {
         const item = toItem(itemOrValue, this.#fields());
         if (!item)
@@ -2491,8 +2491,9 @@
       if (!this.isSelect)
         return false;
       const option = valueOrOption instanceof HTMLOptionElement ? valueOrOption : this.#selectedOptionsInOrder().find((entry) => entry.value === String(valueOrOption));
-      if (!option?.selected || option.disabled)
+      if (!option?.selected || option.closest("select") !== this.#selectSource() || isOptionDisabled(option)) {
         return false;
+      }
       const item = optionToItem(option);
       const guard = await this.#runGuard("remove", { item });
       if (guard.error)
@@ -2531,7 +2532,7 @@
         emit(this.source, "combobox:clear", { combobox: this });
         return true;
       }
-      const selected = Array.from(this.#selectSource().selectedOptions).filter((option) => !option.disabled);
+      const selected = Array.from(this.#selectSource().selectedOptions).filter((option) => !isOptionDisabled(option));
       if (!selected.length)
         return false;
       const guard = await this.#runGuard("clear", {});
@@ -2636,7 +2637,7 @@
         this.#popoverEl().showPopover();
       }
       const mode = this.#resolvePositionMode();
-      this.coordinateSpace = mode.space;
+      this.#resolvedCoordinateSpace = mode.space;
       this.#popoverEl().style.position = mode.position;
       this.#positionPicker();
       this.#startAutoUpdate();
@@ -2677,10 +2678,9 @@
       this.stopAutoUpdate = null;
       this.#popoverEl()?.remove();
       if (this.isSelect || this.datalist instanceof HTMLDataListElement) {
-        const saved = new Map((this.original.optionMarkers ?? []).map((entry) => [entry.option, entry]));
         const scope = this.isSelect ? Array.from(this.#selectSource().options) : Array.from(this.datalist.options);
         for (const option of scope) {
-          const marker = saved.get(option);
+          const marker = this.original.optionMarkers.get(option);
           if (!marker) {
             option.removeAttribute("data-filtered");
             option.removeAttribute("data-active-option");

@@ -161,6 +161,12 @@
   white-space: nowrap;
 }
 
+/* Without a remove button (locked/disabled selection) the end padding
+   otherwise reserved for the button must fall back to the symmetric value. */
+.cb-chip:not(:has(.cb-chip-remove)) {
+  padding-inline-end: 0.5714em;
+}
+
 .cb-chip .cb-chip-remove {
   appearance: none;
   display: inline-grid;

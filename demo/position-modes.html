@@ -230,8 +230,10 @@
       const immediate = gapOf(combo); // same task: no correction has run yet
       await frames(2);
       const settled = gapOf(combo);
-      const space = combo.coordinateSpace;
+      // The resolved space is internal; the written position style is the
+      // observable: fixed ↔ viewport, absolute ↔ document.
       const position = combo.popover.style.position;
+      const space = position === "fixed" ? "viewport" : "document";
       combo.hide();
       return { immediate, settled, space, position };
     }

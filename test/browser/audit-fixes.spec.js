@@ -303,6 +303,286 @@ test("dispose restores authored filter and source attributes", async ({ page }) 
   expect(state.ariaInvalid).toBe("true");
 });
 
+test("fallback select() runs beforeselect, combobox:select and maxItems", async ({ page }) => {
+  const state = await page.evaluate(() => {
+    const make = (html) => {
+      const form = document.createElement("form");
+      form.innerHTML = html;
+      document.body.append(form);
+      return form;
+    };
+    const forms = [];
+
+    // A beforeselect veto covers additions on the fallback path too.
+    const vetoForm = make(`<select multiple><option value="a">A</option></select>`);
+    forms.push(vetoForm);
+    const vetoed = vetoForm.querySelector("select");
+    const vetoEvents = [];
+    vetoed.addEventListener("combobox:beforeselect", (event) => {
+      vetoEvents.push("beforeselect");
+      event.preventDefault();
+    });
+    vetoed.addEventListener("combobox:select", () => vetoEvents.push("select"));
+    const vetoCombo = Combobox.getOrCreateInstance(vetoed, { mode: "fallback" });
+    const vetoResult = vetoCombo.select("a");
+
+    // maxItems caps additions through select() as well.
+    const capForm = make(
+      `<select multiple><option value="a" selected>A</option><option value="b">B</option></select>`,
+    );
+    forms.push(capForm);
+    const capped = capForm.querySelector("select");
+    const cappedCombo = Combobox.getOrCreateInstance(capped, { mode: "fallback", maxItems: 1 });
+    const capResult = cappedCombo.select("b");
+
+    // The happy path emits the same events as the enhanced picker.
+    const plainForm = make(`<select><option value="a">A</option><option value="b">B</option></select>`);
+    forms.push(plainForm);
+    const plain = plainForm.querySelector("select");
+    const plainEvents = [];
+    plain.addEventListener("combobox:beforeselect", () => plainEvents.push("beforeselect"));
+    plain.addEventListener("combobox:select", () => plainEvents.push("select"));
+    const plainCombo = Combobox.getOrCreateInstance(plain, { mode: "fallback" });
+    const ok = plainCombo.select("b");
+
+    const result = {
+      vetoResult,
+      vetoEvents,
+      vetoSelected: vetoed.selectedOptions.length,
+      capResult,
+      capSelected: Array.from(capped.selectedOptions, (o) => o.value),
+      ok,
+      plainEvents,
+      plainValue: plain.value,
+    };
+    for (const form of forms) form.remove();
+    return result;
+  });
+
+  expect(state.vetoResult).toBe(false);
+  expect(state.vetoEvents).toEqual(["beforeselect"]);
+  expect(state.vetoSelected).toBe(0);
+  expect(state.capResult).toBe(false);
+  expect(state.capSelected).toEqual(["a"]);
+  expect(state.ok).toBe(true);
+  expect(state.plainEvents).toEqual(["beforeselect", "select"]);
+  expect(state.plainValue).toBe("b");
+});
+
+test("optgroup-disabled selections cannot be removed and get no chip remove button", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(async () => {
+    const form = document.createElement("form");
+    form.innerHTML = `<select name="choice" multiple>
+      <optgroup label="Locked" disabled><option value="a" selected>A</option></optgroup>
+      <option value="b" selected>B</option>
+    </select>`;
+    document.body.append(form);
+    const select = form.querySelector("select");
+    const combo = Combobox.getOrCreateInstance(select);
+    const locked = select.options[0];
+    const chipButtons = Array.from(
+      form.querySelectorAll(".cb-chip"),
+      (chip) => chip.querySelector(".cb-chip-remove") !== null,
+    );
+    const removedLocked = await combo.remove(locked);
+    const cleared = await combo.clear();
+    const result = {
+      chipButtons,
+      removedLocked,
+      cleared,
+      selected: Array.from(select.selectedOptions, (o) => o.value),
+    };
+    combo.dispose();
+    form.remove();
+    return result;
+  });
+
+  expect(state.chipButtons).toEqual([false, true]);
+  expect(state.removedLocked).toBe(false);
+  expect(state.cleared).toBe(true);
+  expect(state.selected).toEqual(["a"]);
+});
+
+test("addOption/select adopt a detached or foreign option node for real", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(() => {
+    const form = document.createElement("form");
+    form.innerHTML = `<select name="choice" multiple><option value="a">A</option></select>`;
+    document.body.append(form);
+    const select = form.querySelector("select");
+    // multiple: a plain <select>'s first option is auto-selected by the
+    // platform, and adoption must preserve the node's own state.
+    const other = document.createElement("select");
+    other.multiple = true;
+    other.innerHTML = `<option value="f">Foreign</option>`;
+    document.body.append(other);
+    const combo = Combobox.getOrCreateInstance(select);
+
+    const detached = new Option("Detached", "d");
+    combo.addOption({ value: "d", label: "Detached", option: detached });
+    const detachedInSelect = detached.closest("select") === select;
+
+    const foreign = other.options[0];
+    combo.addOption({ value: "f", label: "Foreign", option: foreign });
+    const foreignMoved = foreign.closest("select") === select && other.options.length === 0;
+
+    const viaSelect = new Option("ViaSelect", "v");
+    const selectedViaSelect = combo.select({ value: "v", label: "ViaSelect", option: viaSelect });
+    const viaSelectLanded = viaSelect.closest("select") === select && viaSelect.selected;
+
+    const result = {
+      detachedInSelect,
+      foreignMoved,
+      selectedViaSelect,
+      viaSelectLanded,
+      values: combo.getSelectedValues(),
+    };
+    combo.dispose();
+    form.remove();
+    other.remove();
+    return result;
+  });
+
+  expect(state.detachedInSelect).toBe(true);
+  expect(state.foreignMoved).toBe(true);
+  expect(state.selectedViaSelect).toBe(true);
+  expect(state.viaSelectLanded).toBe(true);
+  expect(state.values).toEqual(["v"]);
+});
+
+test("createOnBlur keeps the typed text when creation is refused", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(async () => {
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 30));
+    const form = document.createElement("form");
+    form.innerHTML = `<select name="choice" multiple></select><button type="button">Away</button>`;
+    document.body.append(form);
+    const select = form.querySelector("select");
+    const combo = Combobox.getOrCreateInstance(select, {
+      create: true,
+      createOnBlur: true,
+      guards: { add: () => false },
+    });
+    combo.input.value = "keepme";
+    combo.input.focus();
+    await tick();
+    form.querySelector("button").focus();
+    await tick();
+    await tick();
+    const result = { text: combo.input.value, selected: combo.getSelectedValues() };
+    combo.dispose();
+    form.remove();
+    return result;
+  });
+
+  expect(state.text).toBe("keepme");
+  expect(state.selected).toEqual([]);
+});
+
+test("select({ value: '' }) refuses instead of throwing", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(() => {
+    const form = document.createElement("form");
+    form.innerHTML = `<select name="choice"><option value="a">A</option></select>`;
+    document.body.append(form);
+    const select = form.querySelector("select");
+    const combo = Combobox.getOrCreateInstance(select);
+    let threw = null;
+    let returned = null;
+    try {
+      returned = combo.select({ value: "", label: "Empty" });
+    } catch (error) {
+      threw = error.message;
+    }
+    const result = { threw, returned, options: select.options.length };
+    combo.dispose();
+    form.remove();
+    return result;
+  });
+
+  expect(state.threw).toBeNull();
+  expect(state.returned).toBe(false);
+  expect(state.options).toBe(1);
+});
+
+test("dispose restores markers authored post-init and on datalist options", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(async () => {
+    // Select: an option added after init with authored markers keeps them.
+    const form = document.createElement("form");
+    form.innerHTML = `<select name="choice" multiple><option value="a">A</option></select>`;
+    document.body.append(form);
+    const select = form.querySelector("select");
+    const combo = Combobox.getOrCreateInstance(select);
+    const late = new Option("Late", "l");
+    late.setAttribute("data-filtered", "keep");
+    late.setAttribute("data-active-option", "keep");
+    select.add(late);
+    await combo.search("zzz");
+    combo.dispose();
+    const selectState = {
+      filtered: late.getAttribute("data-filtered"),
+      active: late.getAttribute("data-active-option"),
+      plainFiltered: select.options[0].hasAttribute("data-filtered"),
+      plainActive: select.options[0].hasAttribute("data-active-option"),
+    };
+    form.remove();
+
+    // Input+datalist: authored markers on datalist options survive dispose.
+    const wrap = document.createElement("div");
+    wrap.innerHTML = `<input id="dl-input" list="dl"><datalist id="dl"><option value="a" data-filtered="keep" data-active-option="keep">A</option><option value="b">B</option></datalist>`;
+    document.body.append(wrap);
+    const input = wrap.querySelector("input");
+    const dlCombo = Combobox.getOrCreateInstance(input);
+    await dlCombo.search("zzz");
+    dlCombo.dispose();
+    const dlOptions = wrap.querySelectorAll("option");
+    const datalistState = {
+      filtered: dlOptions[0].getAttribute("data-filtered"),
+      active: dlOptions[0].getAttribute("data-active-option"),
+      plainFiltered: dlOptions[1].hasAttribute("data-filtered"),
+      plainActive: dlOptions[1].hasAttribute("data-active-option"),
+    };
+    wrap.remove();
+    return { selectState, datalistState };
+  });
+
+  expect(state.selectState).toEqual({
+    filtered: "keep",
+    active: "keep",
+    plainFiltered: false,
+    plainActive: false,
+  });
+  expect(state.datalistState).toEqual({
+    filtered: "keep",
+    active: "keep",
+    plainFiltered: false,
+    plainActive: false,
+  });
+});
+
+test("resolved coordinate space and the token queue are not public surface", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(() => {
+    const form = document.createElement("form");
+    form.innerHTML = `<select name="choice"><option value="a">A</option></select>`;
+    document.body.append(form);
+    const select = form.querySelector("select");
+    const combo = Combobox.getOrCreateInstance(select);
+    const result = {
+      coordinateSpace: combo.coordinateSpace,
+      tokenQueue: combo.tokenQueue,
+    };
+    combo.dispose();
+    form.remove();
+    return result;
+  });
+
+  expect(state.coordinateSpace).toBeUndefined();
+  expect(state.tokenQueue).toBeUndefined();
+});
+
 test("native option label wins over text content", async ({ page }) => {
   test.skip(!(await modernSupported(page)), MODERN);
   const state = await page.evaluate(() => {

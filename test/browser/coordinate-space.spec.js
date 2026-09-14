@@ -27,7 +27,8 @@ test("auto resolves document + absolute for a normal-flow anchor", async ({ page
     const top = Number.parseFloat(combo.popover.style.top);
     const left = Number.parseFloat(combo.popover.style.left);
     return {
-      space: combo.coordinateSpace,
+      // The resolved space is observable through the written position style:
+      // document space writes absolute, viewport space writes fixed.
       position: combo.popover.style.position,
       // Document coordinates: the written top is the viewport rect plus the
       // page scroll; the visible gap still honors the 4px distance.
@@ -37,7 +38,6 @@ test("auto resolves document + absolute for a normal-flow anchor", async ({ page
     };
   });
 
-  expect(state.space).toBe("document");
   expect(state.position).toBe("absolute");
   expect(state.topMatches).toBe(true);
   expect(state.leftMatches).toBe(true);
@@ -58,7 +58,6 @@ test("an invalid coordinateSpace falls back to auto with an observable effect", 
     combo.show();
     return {
       option: combo.options.coordinateSpace,
-      space: combo.coordinateSpace,
       position: combo.popover.style.position,
     };
   });
@@ -66,7 +65,6 @@ test("an invalid coordinateSpace falls back to auto with an observable effect", 
   // Garbage normalizes to auto at construction, and auto resolves document
   // in normal flow: the fallback is observable, not just stored.
   expect(state.option).toBe("auto");
-  expect(state.space).toBe("document");
   expect(state.position).toBe("absolute");
 });
 
@@ -92,7 +90,6 @@ test("a forced viewport keeps fixed coordinates after scrolling", async ({ page 
     const popoverRect = combo.popover.getBoundingClientRect();
     const top = Number.parseFloat(combo.popover.style.top);
     return {
-      space: combo.coordinateSpace,
       position: combo.popover.style.position,
       // Viewport coordinates track the visible rect exactly, whatever the scroll.
       topMatches: Math.abs(top - popoverRect.top) <= 2,
@@ -100,7 +97,6 @@ test("a forced viewport keeps fixed coordinates after scrolling", async ({ page 
     };
   });
 
-  expect(state.space).toBe("viewport");
   expect(state.position).toBe("fixed");
   expect(state.topMatches).toBe(true);
   expect(Math.abs(state.gap - 4)).toBeLessThan(3);
@@ -117,7 +113,6 @@ test("auto resolves viewport for sticky and fixed lineages, even unstuck", async
       combo.show();
       out[id] = {
         open: combo.isOpen(),
-        space: combo.coordinateSpace,
         position: combo.popover.style.position,
       };
       combo.hide();
@@ -128,10 +123,8 @@ test("auto resolves viewport for sticky and fixed lineages, even unstuck", async
   // No scroll: the sticky bar is not stuck yet, but sticky counts anyway
   // because it may stick mid-opening while the mode stays frozen.
   expect(state.sticky.open).toBe(true);
-  expect(state.sticky.space).toBe("viewport");
   expect(state.sticky.position).toBe("fixed");
   expect(state.fixedsel.open).toBe(true);
-  expect(state.fixedsel.space).toBe("viewport");
   expect(state.fixedsel.position).toBe("fixed");
 });
 
@@ -153,7 +146,6 @@ test("a modal dialog resolves viewport under auto and honors a document override
     const resolved = {
       modal: document.getElementById("dlg").matches(":modal"),
       open: auto.isOpen(),
-      space: auto.coordinateSpace,
       position: auto.popover.style.position,
     };
     auto.hide();
@@ -164,7 +156,6 @@ test("a modal dialog resolves viewport under auto and honors a document override
     forced.show();
     const overridden = {
       open: forced.isOpen(),
-      space: forced.coordinateSpace,
       position: forced.popover.style.position,
     };
     forced.hide();
@@ -173,10 +164,8 @@ test("a modal dialog resolves viewport under auto and honors a document override
 
   expect(state.resolved.modal).toBe(true);
   expect(state.resolved.open).toBe(true);
-  expect(state.resolved.space).toBe("viewport");
   expect(state.resolved.position).toBe("fixed");
   expect(state.overridden.open).toBe(true);
-  expect(state.overridden.space).toBe("document");
   expect(state.overridden.position).toBe("absolute");
 });
 
@@ -196,7 +185,6 @@ test("a non-modal dialog resolves document under auto: the rule is modal, not di
     const resolved = {
       modal: document.getElementById("dlg").matches(":modal"),
       open: combo.isOpen(),
-      space: combo.coordinateSpace,
       position: combo.popover.style.position,
     };
     combo.hide();
@@ -205,7 +193,6 @@ test("a non-modal dialog resolves document under auto: the rule is modal, not di
 
   expect(state.modal).toBe(false);
   expect(state.open).toBe(true);
-  expect(state.space).toBe("document");
   expect(state.position).toBe("absolute");
 });
 
@@ -225,7 +212,6 @@ test("auto resolves from the custom anchor, not the input", async ({ page }) => 
     const controlWidth = document.getElementById("anchored").nextElementSibling.getBoundingClientRect().width;
     return {
       open: combo.isOpen(),
-      space: combo.coordinateSpace,
       position: combo.popover.style.position,
       popoverWidth: combo.popover.getBoundingClientRect().width,
       shellWidth,
@@ -236,7 +222,6 @@ test("auto resolves from the custom anchor, not the input", async ({ page }) => 
 
   expect(state.shellWider).toBe(true);
   expect(state.open).toBe(true);
-  expect(state.space).toBe("document");
   expect(state.position).toBe("absolute");
   expect(Math.abs(state.popoverWidth - state.shellWidth)).toBeLessThan(3);
 });

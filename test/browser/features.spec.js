@@ -290,6 +290,32 @@ test("form reset restores native selection and chips", async ({ page }) => {
   expect(state.chips).toEqual(["1"]);
 });
 
+test("a native reset button restores chips in the same click", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+  await page.evaluate(() => {
+    Combobox.getOrCreateInstance(document.getElementById("tags"));
+  });
+
+  // Remove the server-rendered selection.
+  await page.locator('#tags + .cb-control .cb-chip[data-value="1"] .cb-chip-remove').click();
+  await expect(page.locator("#tags + .cb-control .cb-chip")).toHaveCount(0);
+
+  // A real reset button restores defaultSelected *after* the reset event
+  // dispatch returns to the activation code; a microtask still observes the
+  // pre-reset state, so the engine must resync from a later task.
+  await page.locator("#form-reset").click();
+  await page.waitForTimeout(40);
+
+  const state = await page.evaluate(() => ({
+    selected: Array.from(document.getElementById("tags").selectedOptions, (o) => o.value),
+    chips: Array.from(document.querySelectorAll("#tags + .cb-control .cb-chip"), (chip) =>
+      chip.getAttribute("data-value"),
+    ),
+  }));
+  expect(state.selected).toEqual(["1"]);
+  expect(state.chips).toEqual(["1"]);
+});
+
 test("created selected options never rewrite the form reset baseline", async ({ page }) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   await page.evaluate(() => {

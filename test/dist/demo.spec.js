@@ -46,6 +46,47 @@ test("demo page works directly from file:// via the dist bundle", async ({ page 
   expect(state.formUsable).toBe(true);
 });
 
+test("demo index keeps disabled optgroup selections locked until the group is enabled", async ({ page }) => {
+  await page.goto(DEMO_HTML);
+  await page.evaluate(() => document.getElementById("plans-widget").whenReady());
+
+  // Starter (removable), Legacy 2019 and Starter 2019 legacy (locked: no ×).
+  const chips = page.locator("#plans-widget .cb-chip");
+  await expect(chips).toHaveCount(3);
+  await expect(chips.nth(0).locator(".cb-chip-remove")).toHaveCount(1);
+  await expect(chips.nth(1).locator(".cb-chip-remove")).toHaveCount(0);
+  await expect(chips.nth(2).locator(".cb-chip-remove")).toHaveCount(0);
+
+  // A locked chip keeps symmetric inline padding (no button fills the end).
+  const lockedPadding = await chips.nth(1).evaluate((chip) => {
+    const style = getComputedStyle(chip);
+    return [style.paddingInlineStart, style.paddingInlineEnd];
+  });
+  expect(lockedPadding[0]).toBe(lockedPadding[1]);
+
+  // Disabled-group rows are announced and refuse activation.
+  await page.locator("#plans + .cb-control .cb-input").focus();
+  const retired = page.locator(".cb-popover:visible .cb-option", { hasText: "Bronze" });
+  await expect(retired).toHaveAttribute("aria-disabled", "true");
+  await retired.dispatchEvent("click");
+  await expect(chips).toHaveCount(3);
+
+  // clear() spares the locked selections; the duplicate "starter" survives
+  // through its retired option node only.
+  await page.locator("#clear-plans").click();
+  await expect(chips).toHaveCount(2);
+  await page.locator("#remove-starter").click();
+  await expect(page.locator("#plans-status")).toHaveText('remove("starter") → false');
+  const remaining = await page.evaluate(() =>
+    document.getElementById("plans-widget").combobox.getSelectedValues(),
+  );
+  expect(remaining).toEqual(["legacy", "starter"]);
+
+  // Enabling the group + refresh() unlocks rows and chips alike.
+  await page.locator("#toggle-plans-group").click();
+  await expect(chips.locator(".cb-chip-remove")).toHaveCount(2);
+});
+
 test("query-builder demo turns a suggestion into application state", async ({ page }) => {
   await page.goto("/demo/query-builder.html");
 
@@ -274,7 +315,6 @@ test("position demo measures the sticky mismatch sequentially, one picker at a t
       combo.hide();
       out[id] = {
         opened,
-        space: combo.coordinateSpace,
         position: combo.popover.style.position,
         immediate,
         settled,
@@ -286,9 +326,7 @@ test("position demo measures the sticky mismatch sequentially, one picker at a t
   expect(state.stuck).toBe(true);
   expect(state["bad-widget"].opened).toBe(true);
   expect(state["good-widget"].opened).toBe(true);
-  expect(state["bad-widget"].space).toBe("document");
   expect(state["bad-widget"].position).toBe("absolute");
-  expect(state["good-widget"].space).toBe("viewport");
   expect(state["good-widget"].position).toBe("fixed");
 
   // The forced-document picker trails the stuck toolbar until the next

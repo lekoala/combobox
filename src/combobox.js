@@ -456,6 +456,18 @@ export class Combobox {
   #suppressReopen = false;
 
   /**
+   * Coordinate space resolved for the current opening ("viewport" until the
+   * first show()). #positionPicker() stays mechanical: it consumes this field
+   * and never re-resolves mid-opening. Distinct from options.coordinateSpace
+   * ("auto" | forced space): this is the resolved "viewport" | "document".
+   * @type {"viewport" | "document"}
+   */
+  #resolvedCoordinateSpace = "viewport";
+
+  /** @type {Promise<void>} Serialized token-batch queue (see #enqueueTokens). */
+  #tokenQueue = Promise.resolve();
+
+  /**
    * Read the current default UI messages. Returns a shallow copy; mutating
    * the result does not affect the engine.
    * @returns {Messages}
@@ -599,8 +611,6 @@ export class Combobox {
     /** @type {WeakMap<HTMLElement, HTMLOptionElement>} */
     this._chipOptions = new WeakMap();
     this.searchGeneration = 0;
-    /** @type {Promise<void>} Serialized token-batch queue (see #enqueueTokens). */
-    this.tokenQueue = Promise.resolve();
     /** @type {string | null} */
     this.nextCursor = null;
     this.loading = false;
@@ -647,9 +657,11 @@ export class Combobox {
       // <label> elements whose id the engine invented for aria-labelledby
       /** @type {Array<{ label: HTMLLabelElement, id: string }>} */
       inventedLabels: [],
-      // native options whose mirror markers the engine overwrites
-      /** @type {Array<{ option: HTMLOptionElement, filtered: string | null, active: string | null }>} */
-      optionMarkers: [],
+      // native options whose mirror markers the engine overwrites; the
+      // authored values are snapshotted lazily on first write so datalist
+      // options and post-init additions are covered too
+      /** @type {WeakMap<HTMLOptionElement, { filtered: string | null, active: string | null }>} */
+      optionMarkers: new WeakMap(),
     };
     /** @type {HTMLLabelElement[]} */
     this.boundLabels = [];
@@ -663,13 +675,6 @@ export class Combobox {
     this.anchor = null;
     /** @type {(() => void) | null} */
     this.stopAutoUpdate = null;
-    /**
-     * Coordinate space resolved for the current opening ("viewport" until
-     * the first show()). #positionPicker() stays mechanical: it consumes
-     * this field and never re-resolves mid-opening.
-     * @type {"viewport" | "document"}
-     */
-    this.coordinateSpace = "viewport";
     /** @type {HTMLInputElement | null} */
     this.input = null;
     /** @type {HTMLElement | null} */
@@ -926,14 +931,6 @@ export class Combobox {
     const sourceSnapshot = captureAttributes(source, SOURCE_ATTRS);
     source.tabIndex = -1;
     source.setAttribute("aria-hidden", "true");
-    // Mirror markers the engine writes on native options (#applyFilter,
-    // #setActive): record preexisting values now so dispose() restores them
-    // instead of blindly removing the attributes.
-    this.original.optionMarkers = Array.from(source.options).map((option) => ({
-      option,
-      filtered: option.getAttribute("data-filtered"),
-      active: option.getAttribute("data-active-option"),
-    }));
 
     const control = document.createElement("div");
     control.className = `cb-control ${this.isMultiple ? "cb-control-multiple" : "cb-control-single"}`;
@@ -1323,7 +1320,7 @@ export class Combobox {
       distance: 4,
       flip: true,
       shift: true,
-      coordinateSpace: this.coordinateSpace,
+      coordinateSpace: this.#resolvedCoordinateSpace,
     });
   }
 
@@ -1469,7 +1466,10 @@ export class Combobox {
     this.source.form?.addEventListener(
       "reset",
       () =>
-        queueMicrotask(() => {
+        // A real task, not a microtask: when the reset event returns to the
+        // button's native activation code the JS stack is empty, so a
+        // microtask would run *before* the browser restores defaultSelected.
+        setTimeout(() => {
           if (instances.get(this.source) !== this) return;
           this.searchGeneration++;
           this.loadController?.abort();
@@ -1646,8 +1646,11 @@ export class Combobox {
                 if (result?.consumed) this.#inputEl().value = result.rest;
               });
             } else if (value.trim()) {
-              this.#inputEl().value = "";
-              await this.#createItem(value.trim());
+              // The input clears only once the creation actually landed:
+              // a refused guard, a cancelled beforecreate or a vetoed
+              // beforeselect leaves the typed text editable.
+              const created = await this.#createItem(value.trim());
+              if (created) this.#inputEl().value = "";
             }
           } finally {
             this.#suppressReopen = false;
@@ -1775,7 +1778,7 @@ export class Combobox {
     ) {
       const selected = this.#selectedOptionsInOrder();
       const last = selected[selected.length - 1];
-      if (last && !last.disabled) void this.remove(last).catch(() => {});
+      if (last && !isOptionDisabled(last)) void this.remove(last).catch(() => {});
     }
   }
 
@@ -1973,6 +1976,25 @@ export class Combobox {
   }
 
   /**
+   * Write a presence marker mirroring picker state on a native option. The
+   * authored attribute values are snapshotted on the first write per option —
+   * lazily, so datalist options and options added after init (setOptions,
+   * observeSource, app mutations) are restored exactly by dispose() too.
+   * @param {HTMLOptionElement} option
+   * @param {"data-filtered" | "data-active-option"} attribute
+   * @param {boolean} on
+   */
+  #writeOptionMarker(option, attribute, on) {
+    if (!this.original.optionMarkers.has(option)) {
+      this.original.optionMarkers.set(option, {
+        filtered: option.getAttribute("data-filtered"),
+        active: option.getAttribute("data-active-option"),
+      });
+    }
+    option.toggleAttribute(attribute, on);
+  }
+
+  /**
    * @param {string} query
    */
   #applyFilter(query) {
@@ -1984,7 +2006,8 @@ export class Combobox {
     // migration path to the platform primitive is explicit.
     const visibleOptions = new Set(visible.map((item) => item.option));
     for (const item of items) {
-      item.option?.toggleAttribute("data-filtered", !visibleOptions.has(item.option));
+      if (item.option)
+        this.#writeOptionMarker(item.option, "data-filtered", !visibleOptions.has(item.option));
     }
 
     this.#renderList();
@@ -2167,7 +2190,7 @@ export class Combobox {
       setContent(label, rendered ?? item.label);
       chip.append(label);
 
-      if (!option.disabled && !this.source.disabled) {
+      if (!isOptionDisabled(option) && !this.source.disabled) {
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "cb-chip-remove";
@@ -2376,7 +2399,9 @@ export class Combobox {
     if (index >= this.visibleItems.length) index = -1;
     this.activeIndex = index;
 
-    for (const item of this.#sourceItems()) item.option?.removeAttribute("data-active-option");
+    for (const item of this.#sourceItems()) {
+      if (item.option) this.#writeOptionMarker(item.option, "data-active-option", false);
+    }
 
     for (const option of this.#listEl().querySelectorAll(".cb-option[data-index]")) {
       const el = /** @type {HTMLElement} */ (option);
@@ -2384,7 +2409,8 @@ export class Combobox {
       el.toggleAttribute("data-active", active);
       if (active) {
         this.#inputEl().setAttribute("aria-activedescendant", el.id);
-        this.visibleItems[index]?.option?.setAttribute("data-active-option", "");
+        const activeOption = this.visibleItems[index]?.option;
+        if (activeOption) this.#writeOptionMarker(activeOption, "data-active-option", true);
         el.scrollIntoView({ block: "nearest" });
       }
     }
@@ -2482,7 +2508,12 @@ export class Combobox {
       // creates a native option when the value is genuinely absent.
       option =
         item.option instanceof HTMLOptionElement ? item.option : this.#findSelectableOption(item.value);
-      if ((option && isOptionDisabled(option)) || (!option && !materialize)) return false;
+      if (option && isOptionDisabled(option)) return false;
+      // A provided node only counts as resolved when it already lives in this
+      // select; a detached or foreign node goes through the materialize path
+      // so addOption() inserts it for real.
+      if (option && option.closest("select") !== this.#selectSource()) option = null;
+      if (!option && !materialize) return false;
 
       const unchanged = option
         ? this.isMultiple
@@ -2551,7 +2582,12 @@ export class Combobox {
       // A transient result becomes native state only after beforeselect has
       // allowed the operation. Cancellation therefore has zero catalogue or
       // value side effects, as a synchronous `before*` contract promises.
-      if (!option) option = this.addOption(item);
+      if (!option) {
+        // addOption() throws on an empty value without allowEmptyOption;
+        // select() stays a boolean API and refuses instead.
+        if (!item.value && !this.options.allowEmptyOption) return false;
+        option = this.addOption(item);
+      }
       const selectOption = /** @type {HTMLOptionElement} */ (option);
       item = { ...item, option: selectOption, selected: true };
       if (this.mode === "fallback") {
@@ -2702,7 +2738,16 @@ export class Combobox {
     // leaves zero local side effects: the just-added node is removed again
     // (a fresh node in an empty single-select would otherwise stay selected
     // through the platform's first-option rule).
-    const option = this.addOption(created);
+    // A create() result without a usable value cannot materialize: addOption()
+    // throws TypeError, which is surfaced like any other creation failure
+    // rather than leaking as an unhandled rejection on an interaction path.
+    let option;
+    try {
+      option = this.addOption(created);
+    } catch (error) {
+      emit(this.source, "combobox:createerror", { combobox: this, label, error });
+      return null;
+    }
     if (!option) return null;
     if (!this.#commitItemSelection(option, created)) {
       option.remove();
@@ -2856,8 +2901,8 @@ export class Combobox {
    * @returns {Promise<void>}
    */
   #enqueueTokens(batch) {
-    this.tokenQueue = (this.tokenQueue ?? Promise.resolve()).then(batch).catch(() => {});
-    return this.tokenQueue;
+    this.#tokenQueue = this.#tokenQueue.then(batch).catch(() => {});
+    return this.#tokenQueue;
   }
 
   async #handleTokenInput() {
@@ -2936,31 +2981,10 @@ export class Combobox {
   select(itemOrValue) {
     const isObject = typeof itemOrValue === "object" && itemOrValue !== null;
 
-    if (this.mode === "fallback" && this.isSelect) {
-      const item = isObject
-        ? toItem(itemOrValue, this.#fields())
-        : { value: String(itemOrValue), label: String(itemOrValue) };
-      if (!item) return false;
-      const option =
-        (this.isMultiple ? this.#findSelectableOption(item.value) : null) || this.#findOption(item.value);
-      if (!option) {
-        if (!isObject) return false;
-        const created = this.addOption(item, { selected: true });
-        this.#dispatchNativeValueEvents();
-        return created !== null;
-      }
-      if (isOptionDisabled(option)) return false;
-      const unchanged = this.isMultiple ? option.selected : this.source.value === option.value;
-      if (unchanged) return false;
-      if (!this.isMultiple) {
-        for (const other of this.#selectSource().options) other.selected = false;
-      }
-      option.selected = true;
-      this.#rememberSelection(option);
-      this.#dispatchNativeValueEvents();
-      return true;
-    }
-
+    // One selection pipeline for both modes: #selectItem -> #commitItemSelection
+    // carries the maxItems cap, the disabled checks and the synchronous
+    // beforeselect/select events; the fallback branch inside the commit keeps
+    // the native-only tail (no picker input to clear or refresh).
     if (isObject) {
       const item = toItem(itemOrValue, this.#fields());
       if (!item) return false;
@@ -2994,7 +3018,12 @@ export class Combobox {
       valueOrOption instanceof HTMLOptionElement
         ? valueOrOption
         : this.#selectedOptionsInOrder().find((entry) => entry.value === String(valueOrOption));
-    if (!option?.selected || option.disabled) return false;
+    // The option must belong to this select and be removable: an option in a
+    // disabled optgroup is ineligible exactly like a natively disabled one,
+    // and a node from another select is never ours to mutate.
+    if (!option?.selected || option.closest("select") !== this.#selectSource() || isOptionDisabled(option)) {
+      return false;
+    }
     const item = optionToItem(option);
     const guard = await this.#runGuard("remove", { item });
     if (guard.error) throw guard.error;
@@ -3026,7 +3055,9 @@ export class Combobox {
       return true;
     }
 
-    const selected = Array.from(this.#selectSource().selectedOptions).filter((option) => !option.disabled);
+    const selected = Array.from(this.#selectSource().selectedOptions).filter(
+      (option) => !isOptionDisabled(option),
+    );
     if (!selected.length) return false;
     const guard = await this.#runGuard("clear", {});
     if (guard.error) throw guard.error;
@@ -3146,7 +3177,7 @@ export class Combobox {
     // space must agree, and must not drift mid-opening (e.g. a sticky anchor
     // sticking after the picker opened).
     const mode = this.#resolvePositionMode();
-    this.coordinateSpace = mode.space;
+    this.#resolvedCoordinateSpace = mode.space;
     this.#popoverEl().style.position = mode.position;
     this.#positionPicker();
     this.#startAutoUpdate();
@@ -3192,12 +3223,11 @@ export class Combobox {
     // datalist resolved (input without a valid `list`) never produced mirror
     // state, and #sourceItems would crash on the null datalist.
     if (this.isSelect || this.datalist instanceof HTMLDataListElement) {
-      const saved = new Map((this.original.optionMarkers ?? []).map((entry) => [entry.option, entry]));
       const scope = this.isSelect
         ? Array.from(this.#selectSource().options)
         : Array.from(/** @type {HTMLDataListElement} */ (this.datalist).options);
       for (const option of scope) {
-        const marker = saved.get(option);
+        const marker = this.original.optionMarkers.get(option);
         if (!marker) {
           option.removeAttribute("data-filtered");
           option.removeAttribute("data-active-option");

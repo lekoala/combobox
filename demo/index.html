@@ -475,6 +475,44 @@
       </section>
 
       <section class="demo-card">
+        <h2>21. Disabled optgroup and locked selections</h2>
+        <p class="demo-note">
+          A <code>disabled</code> <code>&lt;optgroup&gt;</code> disables every
+          option inside: rows render with <code>aria-disabled</code> and cannot
+          be selected. A server-rendered selection inside it stays as a locked
+          chip — no remove button, <code>clear()</code> spares it, and
+          <code>remove()</code> resolves <code>false</code>. Enabling the group
+          and calling <code>.combobox.refresh()</code> unlocks it at runtime.
+        </p>
+        <p class="demo-note">
+          Bonus: “Starter” exists in both groups under the same
+          <code>value="starter"</code>. Option identity is the
+          <code>HTMLOptionElement</code>, so the two chips stay distinct —
+          <code>remove("starter")</code> clears the removable one only.
+        </p>
+
+        <label for="plans">Support plans</label>
+        <combo-box id="plans-widget" placeholder="Pick plans…">
+          <select id="plans" name="plans[]" multiple>
+            <optgroup label="Current plans">
+              <option value="starter" selected>Starter</option>
+              <option value="pro">Pro</option>
+              <option value="enterprise" disabled>Enterprise (contact sales)</option>
+            </optgroup>
+            <optgroup label="Retired plans" disabled>
+              <option value="legacy" selected>Legacy 2019</option>
+              <option value="starter" selected>Starter (2019 legacy)</option>
+              <option value="bronze">Bronze</option>
+            </optgroup>
+          </select>
+        </combo-box>
+        <button type="button" id="clear-plans">Clear (spares locked)</button>
+        <button type="button" id="remove-starter">remove("starter")</button>
+        <button type="button" id="toggle-plans-group">Toggle group disabled</button>
+        <output id="plans-status" class="demo-events">Legacy 2019 and Starter (2019 legacy) are locked chips.</output>
+      </section>
+
+      <section class="demo-card">
         <h2>Event / extension log</h2>
         <p class="demo-note">
           The architecture exposes cancellable “before” events, including the
@@ -682,6 +720,26 @@
           const banana = document.getElementById("fruit").querySelector('option[value="banana"]');
           banana.toggleAttribute("disabled");
           fruitWidget.refresh();
+        });
+
+        const plansWidget = await document.getElementById("plans-widget").whenReady();
+        const plansStatus = document.getElementById("plans-status");
+        document.getElementById("clear-plans").addEventListener("click", async () => {
+          await plansWidget.clear();
+          plansStatus.textContent =
+            `clear() → remaining: ${plansWidget.getSelectedValues().join(", ") || "none"}`;
+        });
+        document.getElementById("remove-starter").addEventListener("click", async () => {
+          plansStatus.textContent = `remove("starter") → ${await plansWidget.remove("starter")}`;
+        });
+        document.getElementById("toggle-plans-group").addEventListener("click", () => {
+          const group = document
+            .getElementById("plans")
+            .querySelector('optgroup[label="Retired plans"]');
+          group.toggleAttribute("disabled");
+          plansWidget.refresh();
+          plansStatus.textContent =
+            `"Retired plans" ${group.disabled ? "disabled" : "enabled"} — refresh() applied`;
         });
 
         const clearableWidget = await document.getElementById("clearable-widget").whenReady();

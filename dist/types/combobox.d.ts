@@ -316,8 +316,6 @@ export declare class Combobox {
     /** @type {WeakMap<HTMLElement, HTMLOptionElement>} */
     _chipOptions: WeakMap<HTMLElement, HTMLOptionElement>;
     searchGeneration: number;
-    /** @type {Promise<void>} Serialized token-batch queue (see #enqueueTokens). */
-    tokenQueue: Promise<void>;
     /** @type {string | null} */
     nextCursor: string | null;
     loading: boolean;
@@ -343,9 +341,8 @@ export declare class Combobox {
             label: HTMLLabelElement;
             id: string;
         }>;
-        /** @type {Array<{ option: HTMLOptionElement, filtered: string | null, active: string | null }>} */
-        optionMarkers: Array<{
-            option: HTMLOptionElement;
+        /** @type {WeakMap<HTMLOptionElement, { filtered: string | null, active: string | null }>} */
+        optionMarkers: WeakMap<HTMLOptionElement, {
             filtered: string | null;
             active: string | null;
         }>;
@@ -361,13 +358,6 @@ export declare class Combobox {
     anchor: HTMLElement | null;
     /** @type {(() => void) | null} */
     stopAutoUpdate: (() => void) | null;
-    /**
-     * Coordinate space resolved for the current opening ("viewport" until
-     * the first show()). #positionPicker() stays mechanical: it consumes
-     * this field and never re-resolves mid-opening.
-     * @type {"viewport" | "document"}
-     */
-    coordinateSpace: "viewport" | "document";
     /** @type {HTMLInputElement | null} */
     input: HTMLInputElement | null;
     /** @type {HTMLElement | null} */

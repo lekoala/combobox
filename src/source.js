@@ -272,14 +272,19 @@ export function replaceCatalogue(combobox, normalized, { preserveSelected = comb
  */
 export function appendCatalogOption(combobox, item, { selected = false } = {}) {
   const source = selectSourceOf(combobox);
-  const option =
-    item.option instanceof HTMLOptionElement
-      ? item.option
-      : new Option(item.label, item.value, false, selected);
-  if (!(item.option instanceof HTMLOptionElement)) {
+  const adopted = item.option instanceof HTMLOptionElement;
+  const option = adopted
+    ? /** @type {HTMLOptionElement} */ (item.option)
+    : new Option(item.label, item.value, false, selected);
+  if (!adopted) {
     option.disabled = Boolean(item.disabled);
     if (item.title) option.title = item.title;
     if (item.data) Object.assign(option.dataset, item.data);
+  }
+  // An adopted node already inside this select keeps its place (group
+  // included); a detached or foreign node is inserted like a fresh one so the
+  // selection and the form value actually land.
+  if (option.closest("select") !== source) {
     if (item.group) {
       let group = /** @type {HTMLOptGroupElement | undefined} */ (
         Array.from(source.children).find(
