@@ -279,6 +279,10 @@ test("long option labels truncate without horizontal picker scroll", async ({ pa
   const overflow = await page.evaluate(async () => {
     const wrap = document.createElement("combo-box");
     wrap.style.width = "220px";
+    // Pinned typography: outside main.demo the wrapper would inherit the
+    // browser default font, whose metrics vary by platform (CI Linux gives
+    // ~34px rows). Pin 16px/1.5 so rowHeight is deterministic (~40px).
+    wrap.style.font = "16px/1.5 system-ui, sans-serif";
     wrap.innerHTML =
       `<select>` +
       `<option value="">—</option>` +
