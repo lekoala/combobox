@@ -90,6 +90,7 @@ export type ComboboxOptions = {
     createOnBlur?: boolean;
     autoselectFirst?: boolean;
     tabSelect?: boolean;
+    toggleSelected?: boolean;
     labelField?: string;
     valueField?: string;
     guards?: GuardMap;
@@ -119,6 +120,7 @@ export type ResolvedOptions = ComboboxOptions & {
     createOnBlur: boolean;
     autoselectFirst: boolean;
     tabSelect: boolean;
+    toggleSelected: boolean;
     guards: GuardMap;
     selectionOrder: "source" | "selected";
     observeSource: boolean;
@@ -210,6 +212,7 @@ export type ViewState = {
  * @property {boolean} [createOnBlur]
  * @property {boolean} [autoselectFirst]
  * @property {boolean} [tabSelect]
+ * @property {boolean} [toggleSelected]
  * @property {string} [labelField]
  * @property {string} [valueField]
  * @property {GuardMap} [guards]
@@ -240,6 +243,7 @@ export type ViewState = {
  *   createOnBlur: boolean,
  *   autoselectFirst: boolean,
  *   tabSelect: boolean,
+ *   toggleSelected: boolean,
  *   guards: GuardMap,
  *   selectionOrder: "source" | "selected",
  *   observeSource: boolean,

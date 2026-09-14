@@ -133,6 +133,7 @@ const DEFAULTS = {
   createOnBlur: false,
   autoselectFirst: false,
   tabSelect: false, // when true, Tab commits the active option like Enter
+  toggleSelected: false, // when true, multiple shows selected rows and Enter/click deselects them
   labelField: undefined,
   valueField: undefined,
   guards: {}, // async add/remove/clear guards
@@ -337,6 +338,7 @@ const INPUT_ATTRS = [
  * @property {boolean} [createOnBlur]
  * @property {boolean} [autoselectFirst]
  * @property {boolean} [tabSelect]
+ * @property {boolean} [toggleSelected]
  * @property {string} [labelField]
  * @property {string} [valueField]
  * @property {GuardMap} [guards]
@@ -368,6 +370,7 @@ const INPUT_ATTRS = [
  *   createOnBlur: boolean,
  *   autoselectFirst: boolean,
  *   tabSelect: boolean,
+ *   toggleSelected: boolean,
  *   guards: GuardMap,
  *   selectionOrder: "source" | "selected",
  *   observeSource: boolean,
@@ -1407,7 +1410,9 @@ export class Combobox {
         return;
       }
       const item = this.visibleItems[Number(/** @type {HTMLElement} */ (option).dataset.index)];
-      if (item) this.#selectItem(item);
+      if (item && !this.#toggleSelected(item)) {
+        this.#selectItem(item, { keepQuery: this.isMultiple && this.options.toggleSelected });
+      }
     }
   }
 
@@ -1522,7 +1527,9 @@ export class Combobox {
       const active = this.visibleItems[this.activeIndex];
       if (active) {
         event.preventDefault();
-        this.#selectItem(active);
+        if (!this.#toggleSelected(active)) {
+          this.#selectItem(active, { keepQuery: this.isMultiple && this.options.toggleSelected });
+        }
       } else if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
         event.preventDefault();
         void this.#createItem(this.#inputEl().value.trim());
@@ -1552,7 +1559,9 @@ export class Combobox {
         const active = this.visibleItems[this.activeIndex];
         if (active) {
           event.preventDefault();
-          this.#selectItem(active);
+          if (!this.#toggleSelected(active)) {
+            this.#selectItem(active, { keepQuery: this.isMultiple && this.options.toggleSelected });
+          }
           return;
         }
         if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
@@ -2206,11 +2215,79 @@ export class Combobox {
   }
 
   /**
+   * Keep the manipulated row active across a toggleSelected-mode re-render:
+   * the exact `<option>` identity first (a sort on `selected` or fresh
+   * results may have moved it), then the same/nearest selectable index, then
+   * nothing when the list is empty. Scroll is restored after setActive's
+   * scrollIntoView. No-op when the picker closed meanwhile or the instance
+   * was disposed/rebuilt. A null option (transient result without a native
+   * option yet) has no stable identity and falls straight to the spatial
+   * fallback.
+   * @param {{ option: HTMLOptionElement | null, index: number, scrollTop: number }} snapshot
+   */
+  #restorePosition({ option, index, scrollTop }) {
+    if (instances.get(this.source) !== this || !this.isOpen()) return;
+    if (option) {
+      const at = this.visibleItems.findIndex((item) => item.option === option);
+      if (at >= 0) {
+        this.#setActive(at);
+        this.#listEl().scrollTop = scrollTop;
+        return;
+      }
+    }
+    if (index >= 0 && this.visibleItems.length) {
+      const last = this.visibleItems.length - 1;
+      this.#setActive(this.#nearestSelectable(Math.max(0, Math.min(index, last)), 1));
+    }
+    this.#listEl().scrollTop = scrollTop;
+  }
+
+  /**
+   * Snapshot the navigation state a toggleSelected restore needs for one
+   * manipulated row: its exact `<option>` identity when it has one, its
+   * current index as a fallback, and the list scroll.
    * @param {import("./helpers.js").ComboboxItem} item
-   * @param {{ materialize?: boolean }} [options]
+   * @returns {{ option: HTMLOptionElement | null, index: number, scrollTop: number }}
+   */
+  #positionSnapshot(item) {
+    const option = item?.option instanceof HTMLOptionElement ? item.option : null;
+    const at = option ? this.visibleItems.findIndex((entry) => entry.option === option) : -1;
+    return { option, index: at >= 0 ? at : this.activeIndex, scrollTop: this.#listEl().scrollTop };
+  }
+
+  /**
+   * GitHub-topics style toggle for multiple selects: when `toggleSelected` is
+   * on, an already-selected row stays visible and Enter/click deselects it
+   * through the normal guarded `remove()` path (guards + `beforeremove`,
+   * native `input`/`change`, picker stays open). The manipulated row keeps
+   * the active state instead of falling back to the first row. Single
+   * selects, disabled rows and programmatic `select()` never toggle.
+   * @param {import("./helpers.js").ComboboxItem} item
+   * @returns {boolean} True when the toggle path claimed the interaction.
+   */
+  #toggleSelected(item) {
+    if (!this.isMultiple || !this.options.toggleSelected) return false;
+    const option = item.option instanceof HTMLOptionElement ? item.option : this.#findOption(item.value);
+    if (!option?.selected || option.disabled || this.source.disabled) return false;
+    const snapshot = this.#positionSnapshot(item);
+    void (async () => {
+      const removed = await this.remove(option);
+      if (!removed) return;
+      this.#restorePosition(snapshot);
+    })();
+    return true;
+  }
+
+  /**
+   * @param {import("./helpers.js").ComboboxItem} item
+   * @param {{ materialize?: boolean, keepQuery?: boolean }} [options] `keepQuery`
+   *   is an intent argument for toggleSelected row activation (Enter/click/Tab
+   *   on a visible row): the filter text is kept and the new state is
+   *   reflected with refresh() instead of a new search. Never an instance
+   *   flag. Programmatic select(), tokens and creation always clear.
    * @returns {boolean}
    */
-  #selectItem(item, { materialize = true } = {}) {
+  #selectItem(item, { materialize = true, keepQuery = false } = {}) {
     if (item.disabled) return false;
 
     let option = null;
@@ -2265,13 +2342,23 @@ export class Combobox {
       const selectOption = /** @type {HTMLOptionElement} */ (option);
       item = { ...item, option: selectOption, selected: true };
       if (this.isMultiple) {
+        // A toggleSelected row activation is a state change at constant
+        // query: keep the filter text and reflect the new state with
+        // refresh() instead of starting a new search (no beforefilter/filter
+        // events, no load). Query change → search; state change → refresh.
+        const snapshot = keepQuery ? this.#positionSnapshot(item) : null;
         selectOption.selected = true;
         this.#rememberSelection(selectOption);
-        this.#inputEl().value = "";
+        if (!keepQuery) this.#inputEl().value = "";
         this.#commit();
-        if (this.suppressReopen) this.refresh();
-        else if (this.#closeOnSelect()) this.hide();
-        else this.search("", { show: true, reason: "select" });
+        if (this.suppressReopen) {
+          this.refresh();
+          if (snapshot) this.#restorePosition(snapshot);
+        } else if (this.#closeOnSelect()) this.hide();
+        else if (snapshot) {
+          this.refresh();
+          this.#restorePosition(snapshot);
+        } else this.search("", { show: true, reason: "select" });
       } else {
         // Select the exact option rather than assigning source.value, so a
         // duplicate value keeps its own label and selectedIndex.

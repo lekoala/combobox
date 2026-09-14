@@ -446,6 +446,31 @@
       </section>
 
       <section class="demo-card">
+        <h2>20. GitHub-style topics</h2>
+        <p class="demo-note">
+          Chips + <code>toggle-selected</code> + <code>autoselect-first</code>: typing
+          highlights the first match, <code>Enter</code>/click selects it, and
+          <code>Enter</code>/click on a checked row deselects it again. Unknown
+          text shows a single “Press Enter to add as new topic” row (only when
+          nothing matches). No checkbox styling needed — the checked state is
+          the existing <code>aria-selected</code> row.
+        </p>
+
+        <label for="repo-topics">Topics</label>
+        <combo-box id="repo-topics-widget" create toggle-selected autoselect-first placeholder="Add a topic…">
+          <select id="repo-topics" name="repo-topics[]" multiple>
+            <option value="php" selected>php</option>
+            <option value="framework" selected>framework</option>
+            <option value="http" selected>http</option>
+            <option value="docker">docker</option>
+            <option value="devops">devops</option>
+            <option value="psr-7">psr-7</option>
+            <option value="psr-15">psr-15</option>
+          </select>
+        </combo-box>
+      </section>
+
+      <section class="demo-card">
         <h2>Event / extension log</h2>
         <p class="demo-note">
           The architecture exposes cancellable “before” events, including the
@@ -479,6 +504,12 @@
           if (term.length <= 2) return false;
           if (term !== "" && !Number.isNaN(Number(term))) return false;
           return true;
+        },
+      });
+
+      document.getElementById("repo-topics-widget").configure({
+        messages: {
+          create: () => "Press Enter to add as new topic",
         },
       });
 

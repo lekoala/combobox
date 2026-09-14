@@ -112,6 +112,7 @@ leaking into the engine.
 | `close-on-select` | `closeOnSelect: true` |
 | `autoselect-first` | `autoselectFirst: true` |
 | `tab-select` | `tabSelect: true` |
+| `toggle-selected` | `toggleSelected: true` (multiple only: keep selected rows visible, Enter/click deselects) |
 | `search-fields` | `searchFields: ["label", "email", ...]` (comma-delimited) |
 | `label-field` | `labelField` |
 | `value-field` | `valueField` |
@@ -186,6 +187,7 @@ configuration, not application metadata.
   closeOnSelect: undefined, // default: single true, multiple false
   autoselectFirst: false,
   tabSelect: false,          // true: Tab commits the active option / eligible create like Enter
+  toggleSelected: false,    // multiple only: selected rows stay visible; Enter/click deselects
   labelField: undefined,
   valueField: undefined,
   guards: {},               // async { add, remove, clear }
@@ -530,7 +532,7 @@ Focus stays in the search input; the picker is driven entirely through it (`role
 | `ArrowDown` / `ArrowUp` | open the picker when closed; move the active option, wrapping within the rendered window and skipping `disabled` rows |
 | `Home` / `End` | stay on the native caret inside the editable filter input (per the ARIA APG editable-combobox guidance) |
 | `PageDown` / `PageUp` | move the active option by a page (listbox viewport height ÷ row height), clamped to the first/last selectable option |
-| `Enter` | select the active option, or create/commit an eligible entry when no option is active; without a possible commit, preserve native behavior such as form submission |
+| `Enter` | select the active option, or create/commit an eligible entry when no option is active; with `toggleSelected: true` on a multiple select, Enter on an already-selected row deselects it instead; without a possible commit, preserve native behavior such as form submission |
 | `Escape` | close the picker and clear `aria-activedescendant` |
 | `Tab` | native focus traversal by default (an open picker closes first without blocking traversal, per the ARIA APG combobox pattern); with `tabSelect: true` commits the active option / eligible create like Enter, and only `preventDefault()`s when a commit is actually possible |
 
@@ -559,8 +561,25 @@ combo.getSelectedItems();
 For a `<select>`, **option identity is the `HTMLOptionElement`**; `option.value` is only
 the serialized payload. Three `<option value="2">` in the catalogue are three distinct
 choices — each selectable once, each kept as its own chip, each serialized into FormData.
-This replaces any notion of a same-value toggle entirely: the catalogue decides how many copies exist,
-and nothing magically makes a single option selectable twice.
+Two multiple-selection models are valid, and the picker can work as either:
+- default (*pick from what remains*): the picker hides already-selected rows, so
+  there is no same-value toggle — best when selecting many values and mostly
+  searching for the next thing to add;
+- `toggleSelected: true` (or `<combo-box toggle-selected>`, *edit the current
+  selection*): selected rows stay visible with `aria-selected="true"` and
+  activating one again removes it — best for tags/topics/labels where the list
+  doubles as a state editor. The catalogue still decides how many copies exist,
+  and nothing magically makes a single option selectable twice.
+
+In `toggleSelected` mode, deselecting goes through the normal guarded `remove()`
+path (`guards.remove`, `combobox:beforeremove`, native `input`/`change`), and
+checking an option is a state change at constant query: the filter text is kept
+and the new state is reflected with `refresh()` (no `beforefilter`/`filter`, no
+`load`). Query change → `search`; state change → `refresh`. The manipulated row
+keeps the active state by exact `<option>` identity (falling back to the
+same/nearest index, then to no active row), and the list scroll is preserved.
+Programmatic `select()` never toggles; single selects and disabled rows never
+toggle. Reaching `maxItems` never blocks a deselection; it only blocks additions.
 
 - `select({value, label})` is the external-create seam: if no selectable catalogue option
   carries that value, the component materializes one, selects it, refreshes UI and emits

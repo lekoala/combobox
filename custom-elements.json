@@ -49,6 +49,9 @@
               "name": "tab-select"
             },
             {
+              "name": "toggle-selected"
+            },
+            {
               "name": "search-fields"
             },
             {

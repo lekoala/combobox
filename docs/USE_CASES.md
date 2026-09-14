@@ -43,8 +43,37 @@ Requirements:
 - Arrow Left/Right keyboard access to chips;
 - max selections can prevent further additions without making existing chips impossible to remove;
 - duplicate labels and duplicate values remain distinguishable by native option identity.
+- Two models: default *pick from what remains* (selected rows hidden, re-selecting
+  is a no-op) or opt-in *edit the current selection* via `toggleSelected: true`
+  (or `<combo-box toggle-selected>`): selected rows stay visible and Enter/click
+  deselects them through the guarded `remove()` path. Checking keeps the filter
+  text and reflects state with `refresh()`; the manipulated row keeps active by
+  exact `<option>` identity.
 
 ## UC4 — Creatable tags
+
+GitHub-topics recipe (demo 20):
+
+```html
+<combo-box create toggle-selected autoselect-first placeholder="Add a topic…">
+  <select name="topics[]" multiple>
+    <option value="php" selected>php</option>
+    <option value="docker">docker</option>
+  </select>
+</combo-box>
+```
+
+```js
+box.configure({
+  messages: { create: () => "Press Enter to add as new topic" },
+});
+```
+
+`toggle-selected` keeps checked rows visible so Enter/click deselects;
+`autoselect-first` highlights the first match like GitHub; the create row only
+appears when nothing matches (default behavior, text via `messages.create` or
+`render.create`). No checkbox restyle is needed: `aria-selected="true"` already
+marks checked rows.
 
 Requirements:
 

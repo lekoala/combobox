@@ -36,6 +36,7 @@ const OPTION_ATTRIBUTES = {
   "close-on-select": { type: "boolean" },
   "autoselect-first": { type: "boolean" },
   "tab-select": { type: "boolean" },
+  "toggle-selected": { type: "boolean" },
   "search-fields": { parse: parseList },
   "label-field": {},
   "value-field": {},

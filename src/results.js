@@ -79,7 +79,7 @@ export function shouldLoadRemote(combobox, query) {
 export function computeFilteredItems(combobox, items, query) {
   const input = /** @type {HTMLInputElement} */ (combobox.input);
   let visible = items.filter((item) => {
-    if (combobox.isMultiple && item.selected) return false;
+    if (combobox.isMultiple && item.selected && !combobox.options.toggleSelected) return false;
     return matchesItem(combobox, item, query);
   });
 
