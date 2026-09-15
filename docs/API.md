@@ -200,7 +200,7 @@ configuration, not application metadata.
   selectionOrder: "source", // source | selected
   observeSource: false,     // opt-in MutationObserver -> debounced sync()
   anchor: null,             // optional consumer-authored HTMLElement
-  coordinateSpace: "auto",  // auto | document | viewport (JS-only)
+  coordinateSpace: "viewport",  // viewport | document (JS-only)
 
   render: {
     option: null,
@@ -270,17 +270,19 @@ and as its internal-interaction boundary. This lets an input-backed combobox sit
 beside application buttons/tokens without teaching the core what those adornments
 mean. The anchor is not mutated by the engine.
 
-`coordinateSpace` (`"auto"` default, `"document"`/`"viewport"` overrides,
-JS-only, no attribute) picks the picker coordinate model **once per opening**:
-a normal document-flow anchor gets document coordinates + `absolute` (the
-browser scrolls the surface with the page, so async touch scrolling cannot
-detach it), while a modal dialog, an open popover, or a fixed/sticky anchor
-lineage keeps viewport coordinates + `fixed`. Document coordinates assume an
-anchor that moves with the page — forcing `"document"` inside sticky/fixed
-detaches the picker until `autoUpdate()` corrects it. A sticky ancestor counts
-whether or not it is stuck, since it may stick mid-opening and the mode never
-re-resolves. `demo/position-modes.html` demonstrates both the correct mode and
-the forced-document anti-pattern with a sequential measurement.
+`coordinateSpace` (`"viewport"` default, `"document"` opt-in, JS-only, no
+attribute) controls how the popup is positioned. `"viewport"` is the default
+and uses `position: fixed`. `"document"` uses `position: absolute` and is an
+explicit optimization for layouts where the reference is known to move with
+root-page scrolling. No layout inference is performed. See the
+[`@lekoala/floating` coordinate-space docs](https://github.com/lekoala/floating#coordinate-space).
+
+The value is read once per opening in `show()` and stays frozen for that
+opening; a change while open applies to the next opening. `document`
+coordinates assume an anchor that moves with the page — inside a
+fixed/sticky lineage or a stuck container the picker detaches until
+`autoUpdate()` corrects it. `demo/position-modes.html` compares both modes
+side by side with a sequential measurement.
 
 ## Item shape
 

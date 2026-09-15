@@ -766,7 +766,7 @@
     guards: {},
     selectionOrder: "source",
     observeSource: false,
-    coordinateSpace: "auto",
+    coordinateSpace: "viewport",
     sort: null,
     score: null,
     filter: null,
@@ -808,16 +808,6 @@
     } else if (content !== null && content !== undefined) {
       element.textContent = String(content);
     }
-  }
-  function hasFixedOrStickyAncestor(element) {
-    let node = element;
-    while (node instanceof Element) {
-      const position = node.ownerDocument.defaultView?.getComputedStyle(node).position;
-      if (position === "fixed" || position === "sticky")
-        return true;
-      node = node.parentElement;
-    }
-    return false;
   }
   function createRemoveIcon() {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -951,8 +941,8 @@
           ...options.render || {}
         }
       };
-      if (!["auto", "document", "viewport"].includes(this.options.coordinateSpace)) {
-        this.options.coordinateSpace = "auto";
+      if (!["document", "viewport"].includes(this.options.coordinateSpace)) {
+        this.options.coordinateSpace = "viewport";
       }
       this.original = {
         filterInputPlaceholder: null,
@@ -1312,14 +1302,7 @@
       if (this.options.coordinateSpace === "document") {
         return { space: "document", position: "absolute" };
       }
-      if (this.options.coordinateSpace === "viewport") {
-        return { space: "viewport", position: "fixed" };
-      }
-      const anchor = this.#anchorEl();
-      if (anchor.closest("dialog:modal") || anchor.closest(":popover-open") || hasFixedOrStickyAncestor(anchor)) {
-        return { space: "viewport", position: "fixed" };
-      }
-      return { space: "document", position: "absolute" };
+      return { space: "viewport", position: "fixed" };
     }
     #positionPicker() {
       const anchor = this.#anchorEl();

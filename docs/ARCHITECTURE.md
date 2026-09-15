@@ -196,22 +196,26 @@ the picker.
 
 ### Coordinate space
 
-The `coordinateSpace` option (`"auto"` default, `"document"`/`"viewport"`
-overrides, JS-only) picks the coordinate model **once per opening**, in
-`show()`, and `style.position` is coupled to it (`absolute`/`fixed`):
+The `coordinateSpace` option (`"viewport"` default, `"document"` opt-in,
+JS-only) controls how the popup is positioned. `"viewport"` is the default
+and uses `position: fixed`. `"document"` uses `position: absolute` and is an
+explicit optimization for layouts where the reference is known to move with
+root-page scrolling. No layout inference is performed. See the
+[`@lekoala/floating` coordinate-space docs](https://github.com/lekoala/floating#coordinate-space).
+
+The value is read once per opening, in `show()`, and `style.position` is
+coupled to it (`fixed`/`absolute`); it stays frozen for that opening and a
+change while open applies to the next opening:
 
 ```text
-auto
-  normal document-flow anchor → document + absolute
-  fixed/sticky/modal/popover  → viewport + fixed
+viewport (default) -> position: fixed
+document           -> position: absolute
 ```
 
 Document coordinates let the browser scroll the surface with the page (no
 touch-scroll lag); they assume an anchor that moves with the page, which a
-stuck sticky or fixed anchor is not. A sticky ancestor counts whether or not
-it is stuck yet, because it may stick mid-opening and the mode never
-re-resolves. `demo/position-modes.html` is the diagnostic page proving the
-mismatch (and the convergence after correction).
+stuck sticky or fixed anchor is not. `demo/position-modes.html` compares both
+modes side by side with a sequential measurement.
 
 ## 5. Filtering model
 

@@ -97,12 +97,11 @@ export type ComboboxOptions = {
     selectionOrder?: "source" | "selected";
     observeSource?: boolean;
     /**
-     * Picker
-     * coordinate space: "auto" resolves once per opening (document flow →
-     * document + absolute, fixed/sticky/modal/popover anchor → viewport +
-     * fixed), "document"/"viewport" force one space unconditionally
+     * Picker coordinate
+     * space: "viewport" uses position: fixed (default), "document" uses
+     * position: absolute. Read once per opening; no layout inference.
      */
-    coordinateSpace?: "auto" | "document" | "viewport";
+    coordinateSpace?: "viewport" | "document";
     render?: RenderMap;
     /**
      * Consumer-authored positioning/control region
@@ -131,7 +130,7 @@ export type ResolvedOptions = ComboboxOptions & {
     guards: GuardMap;
     selectionOrder: "source" | "selected";
     observeSource: boolean;
-    coordinateSpace: "auto" | "document" | "viewport";
+    coordinateSpace: "viewport" | "document";
     render: RenderMap;
     load: LoadCallback | null;
     create: boolean | CreateCallback;
@@ -226,10 +225,9 @@ export type ViewState = {
  * @property {GuardMap} [guards]
  * @property {"source" | "selected"} [selectionOrder]
  * @property {boolean} [observeSource]
- * @property {"auto" | "document" | "viewport"} [coordinateSpace] Picker
- *   coordinate space: "auto" resolves once per opening (document flow →
- *   document + absolute, fixed/sticky/modal/popover anchor → viewport +
- *   fixed), "document"/"viewport" force one space unconditionally
+ * @property {"viewport" | "document"} [coordinateSpace] Picker coordinate
+ *   space: "viewport" uses position: fixed (default), "document" uses
+ *   position: absolute. Read once per opening; no layout inference.
  * @property {RenderMap} [render]
  * @property {HTMLElement} [anchor] Consumer-authored positioning/control region
  * @property {(a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number} [sort]
@@ -259,7 +257,7 @@ export type ViewState = {
  *   guards: GuardMap,
  *   selectionOrder: "source" | "selected",
  *   observeSource: boolean,
- *   coordinateSpace: "auto" | "document" | "viewport",
+ *   coordinateSpace: "viewport" | "document",
  *   render: RenderMap,
  *   load: LoadCallback | null,
  *   create: boolean | CreateCallback,

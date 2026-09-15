@@ -330,7 +330,7 @@ test("position demo measures the sticky mismatch sequentially, one picker at a t
   expect(state["good-widget"].position).toBe("fixed");
 
   // The forced-document picker trails the stuck toolbar until the next
-  // correction; the auto one never detaches. Both converge afterwards.
+  // correction; the viewport one never detaches. Both converge afterwards.
   expect(Math.abs(state["bad-widget"].immediate - EXPECTED_GAP)).toBeGreaterThan(100);
   expect(Math.abs(state["good-widget"].immediate - EXPECTED_GAP)).toBeLessThan(2);
   expect(Math.abs(state["bad-widget"].settled - EXPECTED_GAP)).toBeLessThan(2);

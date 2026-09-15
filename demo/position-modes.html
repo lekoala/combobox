@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Position modes · @lekoala/combobox</title>
-  <meta name="description" content="Diagnostic page for the coordinateSpace option: auto keeps a sticky-anchored picker attached, while a forced document space visibly detaches it until JavaScript catches up. Measured sequentially, one open picker at a time.">
+  <meta name="description" content="Comparison page for the coordinateSpace option: viewport (default, fixed) stays attached on a sticky anchor, while document (opt-in, absolute) assumes the anchor moves with root-page scrolling and visibly detaches until JavaScript catches up. Measured sequentially, one open picker at a time.">
   <link rel="stylesheet" href="../dist/combobox.css">
   <script src="../dist/combobox.js"></script>
   <style>
@@ -121,18 +121,20 @@
     <p class="muted">Diagnostic page</p>
     <h1>Position modes</h1>
     <p class="muted">
-      The <code>coordinateSpace</code> option picks the picker coordinate model
-      once per opening. <strong>Auto (recommended)</strong>: sticky and fixed
-      anchors use viewport coordinates, so the picker stays attached while the
-      browser scrolls. <strong>Forced document (wrong for sticky)</strong>:
-      document coordinates assume the anchor moves with the page — a stuck
-      sticky anchor does not, so the picker visibly trails until JavaScript
-      repositions it.
+      The <code>coordinateSpace</code> option controls how the popup is
+      positioned. <strong>Viewport (default)</strong>: viewport coordinates +
+      <code>fixed</code>, so the picker stays attached while the browser
+      scrolls. <strong>Document (opt-in)</strong>: document coordinates +
+      <code>absolute</code>, an explicit optimization for references known to
+      move with root-page scrolling — a stuck sticky anchor does not, so the
+      picker visibly trails until JavaScript repositions it. No layout
+      inference is performed. The value is read once per opening; a change
+      while open applies to the next opening.
     </p>
 
     <div class="toolbar" id="toolbar">
       <div class="widget-label">
-        <span class="badge badge-good">Auto — recommended</span>
+        <span class="badge badge-good">Viewport — default</span>
         <label for="good">Sticky pick</label>
         <combo-box id="good-widget" placeholder="Search…">
           <select id="good" name="good">
@@ -144,7 +146,7 @@
         </combo-box>
       </div>
       <div class="widget-label">
-        <span class="badge badge-bad">Forced document — don't</span>
+        <span class="badge badge-bad">Document — opt-in</span>
         <label for="bad">Sticky pick</label>
         <combo-box id="bad-widget" placeholder="Search…">
           <select id="bad" name="bad">
@@ -163,7 +165,7 @@
     </div>
 
     <div class="results">
-      <p class="result" id="good-result" role="status">Auto: not measured yet.</p>
+      <p class="result" id="good-result" role="status">Viewport: not measured yet.</p>
       <p class="result" id="bad-result" role="status">Document: not measured yet.</p>
     </div>
 
@@ -195,8 +197,8 @@
     const EXPECTED_GAP = 4; // floating `distance` used by the engine
     const SCROLL_BY = 300;
 
-    // Forced document space: the documented anti-pattern inside sticky/fixed.
-    // Auto (the other widget) resolves viewport here on its own.
+    // Document space: the explicit opt-in, mismatched here inside a sticky
+    // toolbar on purpose. The viewport widget uses the default.
     badBox.configure({ coordinateSpace: "document" });
 
     const frames = (count) =>
@@ -256,7 +258,7 @@
         }
         if (good) {
           goodResult.textContent =
-            `AUTO / sticky\nImmediate gap: ${format(good.immediate)}\nAfter update:  ${format(good.settled)}\n` +
+            `VIEWPORT / sticky\nImmediate gap: ${format(good.immediate)}\nAfter update:  ${format(good.settled)}\n` +
             `(${good.space} + ${good.position})\n` +
             (Math.abs(good.immediate - EXPECTED_GAP) < 2
               ? "✓ browser carries the correct coordinate model"

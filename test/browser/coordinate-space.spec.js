@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 720 });
 });
 
-test("auto resolves document + absolute for a normal-flow anchor", async ({ page }) => {
+test("the default space is viewport + fixed for a normal-flow anchor", async ({ page }) => {
   await setup(page, POSITION);
   test.skip(!(await modernSupported(page)), MODERN);
 
@@ -27,8 +27,78 @@ test("auto resolves document + absolute for a normal-flow anchor", async ({ page
     const top = Number.parseFloat(combo.popover.style.top);
     const left = Number.parseFloat(combo.popover.style.left);
     return {
+      option: combo.options.coordinateSpace,
       // The resolved space is observable through the written position style:
-      // document space writes absolute, viewport space writes fixed.
+      // viewport space writes fixed, document space writes absolute.
+      position: combo.popover.style.position,
+      // Viewport coordinates track the visible rect exactly, whatever the scroll.
+      topMatches: Math.abs(top - popoverRect.top) <= 2,
+      leftMatches: Math.abs(left - popoverRect.left) <= 2,
+      gap: popoverRect.top - anchorRect.bottom,
+    };
+  });
+
+  expect(state.option).toBe("viewport");
+  expect(state.position).toBe("fixed");
+  expect(state.topMatches).toBe(true);
+  expect(state.leftMatches).toBe(true);
+  expect(Math.abs(state.gap - 4)).toBeLessThan(3);
+});
+
+test("an invalid coordinateSpace falls back to viewport with an observable effect", async ({ page }) => {
+  await setup(page, POSITION);
+  test.skip(!(await modernSupported(page)), MODERN);
+
+  const state = await page.evaluate(async () => {
+    document.getElementById("flow").scrollIntoView({ block: "center" });
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    const out = {};
+    for (const value of ["banana", "auto"]) {
+      const host = document.createElement("div");
+      host.innerHTML = `<select><option value="">Choose</option><option value="1">One</option></select>`;
+      document.body.append(host);
+      const combo = Combobox.getOrCreateInstance(host.querySelector("select"), {
+        coordinateSpace: value,
+      });
+      combo.show();
+      out[String(value)] = {
+        option: combo.options.coordinateSpace,
+        position: combo.popover.style.position,
+      };
+      combo.hide();
+      combo.dispose();
+      host.remove();
+    }
+    return out;
+  });
+
+  // Garbage (including the removed "auto") normalizes to viewport at
+  // construction, and the fallback is observable, not just stored.
+  for (const value of ["banana", "auto"]) {
+    expect(state[value].option).toBe("viewport");
+    expect(state[value].position).toBe("fixed");
+  }
+});
+
+test("an explicit document space writes absolute coordinates", async ({ page }) => {
+  await setup(page, POSITION);
+  test.skip(!(await modernSupported(page)), MODERN);
+
+  const state = await page.evaluate(async () => {
+    document.getElementById("flow").scrollIntoView({ block: "center" });
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    const combo = Combobox.getOrCreateInstance(document.getElementById("flow"), {
+      coordinateSpace: "document",
+    });
+    combo.show();
+    const popoverRect = combo.popover.getBoundingClientRect();
+    const top = Number.parseFloat(combo.popover.style.top);
+    const left = Number.parseFloat(combo.popover.style.left);
+    const anchor = combo.anchor || combo.control;
+    const anchorRect = anchor.getBoundingClientRect();
+    return {
       position: combo.popover.style.position,
       // Document coordinates: the written top is the viewport rect plus the
       // page scroll; the visible gap still honors the 4px distance.
@@ -42,30 +112,6 @@ test("auto resolves document + absolute for a normal-flow anchor", async ({ page
   expect(state.topMatches).toBe(true);
   expect(state.leftMatches).toBe(true);
   expect(Math.abs(state.gap - 4)).toBeLessThan(3);
-});
-
-test("an invalid coordinateSpace falls back to auto with an observable effect", async ({ page }) => {
-  await setup(page, POSITION);
-  test.skip(!(await modernSupported(page)), MODERN);
-
-  const state = await page.evaluate(async () => {
-    document.getElementById("flow").scrollIntoView({ block: "center" });
-    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
-    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
-    const combo = Combobox.getOrCreateInstance(document.getElementById("flow"), {
-      coordinateSpace: "banana",
-    });
-    combo.show();
-    return {
-      option: combo.options.coordinateSpace,
-      position: combo.popover.style.position,
-    };
-  });
-
-  // Garbage normalizes to auto at construction, and auto resolves document
-  // in normal flow: the fallback is observable, not just stored.
-  expect(state.option).toBe("auto");
-  expect(state.position).toBe("absolute");
 });
 
 test("a forced viewport keeps fixed coordinates after scrolling", async ({ page }) => {
@@ -102,17 +148,18 @@ test("a forced viewport keeps fixed coordinates after scrolling", async ({ page 
   expect(Math.abs(state.gap - 4)).toBeLessThan(3);
 });
 
-test("auto resolves viewport for sticky and fixed lineages, even unstuck", async ({ page }) => {
+test("no layout inference: sticky, fixed and dialog anchors default to viewport", async ({ page }) => {
   await setup(page, POSITION);
   test.skip(!(await modernSupported(page)), MODERN);
 
   const state = await page.evaluate(async () => {
     const out = {};
-    for (const id of ["sticky", "fixedsel"]) {
+    for (const id of ["sticky", "fixedsel", "flow"]) {
       const combo = Combobox.getOrCreateInstance(document.getElementById(id));
       combo.show();
       out[id] = {
         open: combo.isOpen(),
+        option: combo.options.coordinateSpace,
         position: combo.popover.style.position,
       };
       combo.hide();
@@ -120,36 +167,32 @@ test("auto resolves viewport for sticky and fixed lineages, even unstuck", async
     return out;
   });
 
-  // No scroll: the sticky bar is not stuck yet, but sticky counts anyway
-  // because it may stick mid-opening while the mode stays frozen.
-  expect(state.sticky.open).toBe(true);
-  expect(state.sticky.position).toBe("fixed");
-  expect(state.fixedsel.open).toBe(true);
-  expect(state.fixedsel.position).toBe("fixed");
+  // Whatever the anchor lineage, the default space is viewport + fixed.
+  // Document coordinates are an explicit opt-in, never inferred.
+  for (const id of ["sticky", "fixedsel", "flow"]) {
+    expect(state[id].open).toBe(true);
+    expect(state[id].option).toBe("viewport");
+    expect(state[id].position).toBe("fixed");
+  }
 });
 
-test("a modal dialog resolves viewport under auto and honors a document override", async ({ page }) => {
+test("a modal dialog defaults to viewport; document stays an explicit override", async ({ page }) => {
   await setup(page, DIALOG);
   test.skip(!(await modernSupported(page)), MODERN);
-  // The fixture pins the dialog to position:fixed; neutralize it so the
-  // modal test proves the :modal branch specifically, not the fixed one.
-  await page.evaluate(() => {
-    document.getElementById("dlg").style.position = "static";
-  });
   await page.click("#open");
 
   const state = await page.evaluate(async () => {
     const source = document.getElementById("fruit");
-    const auto = Combobox.getOrCreateInstance(source);
-    auto.input.focus();
-    auto.show();
+    const def = Combobox.getOrCreateInstance(source);
+    def.input.focus();
+    def.show();
     const resolved = {
       modal: document.getElementById("dlg").matches(":modal"),
-      open: auto.isOpen(),
-      position: auto.popover.style.position,
+      open: def.isOpen(),
+      position: def.popover.style.position,
     };
-    auto.hide();
-    auto.dispose();
+    def.hide();
+    def.dispose();
 
     const forced = Combobox.getOrCreateInstance(source, { coordinateSpace: "document" });
     forced.input.focus();
@@ -169,34 +212,35 @@ test("a modal dialog resolves viewport under auto and honors a document override
   expect(state.overridden.position).toBe("absolute");
 });
 
-test("a non-modal dialog resolves document under auto: the rule is modal, not dialog", async ({ page }) => {
-  await setup(page, DIALOG);
+test("the space is frozen per opening: a change while open applies to the next opening", async ({ page }) => {
+  await setup(page, POSITION);
   test.skip(!(await modernSupported(page)), MODERN);
 
   const state = await page.evaluate(async () => {
-    // Same neutralization as the modal test: without the fixture's fixed
-    // positioning, a non-modal dialog is plain document flow.
-    const dialog = document.getElementById("dlg");
-    dialog.style.position = "static";
-    dialog.show();
-    const combo = Combobox.getOrCreateInstance(document.getElementById("fruit"));
-    combo.input.focus();
+    document.getElementById("flow").scrollIntoView({ block: "center" });
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    const combo = Combobox.getOrCreateInstance(document.getElementById("flow"));
     combo.show();
-    const resolved = {
-      modal: document.getElementById("dlg").matches(":modal"),
-      open: combo.isOpen(),
-      position: combo.popover.style.position,
-    };
+    const before = combo.popover.style.position;
+    // Mutate mid-opening: the open picker must not drift.
+    combo.options.coordinateSpace = "document";
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    const during = combo.popover.style.position;
     combo.hide();
-    return resolved;
+    combo.show();
+    const next = combo.popover.style.position;
+    combo.hide();
+    return { before, during, next };
   });
 
-  expect(state.modal).toBe(false);
-  expect(state.open).toBe(true);
-  expect(state.position).toBe("absolute");
+  expect(state.before).toBe("fixed");
+  expect(state.during).toBe("fixed");
+  expect(state.next).toBe("absolute");
 });
 
-test("auto resolves from the custom anchor, not the input", async ({ page }) => {
+test("the popover width follows the custom anchor under the default space", async ({ page }) => {
   await setup(page, POSITION);
   test.skip(!(await modernSupported(page)), MODERN);
 
@@ -222,6 +266,6 @@ test("auto resolves from the custom anchor, not the input", async ({ page }) => 
 
   expect(state.shellWider).toBe(true);
   expect(state.open).toBe(true);
-  expect(state.position).toBe("absolute");
+  expect(state.position).toBe("fixed");
   expect(Math.abs(state.popoverWidth - state.shellWidth)).toBeLessThan(3);
 });

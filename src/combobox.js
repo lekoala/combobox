@@ -141,7 +141,7 @@ const DEFAULTS = {
   guards: {}, // async add/remove/clear guards
   selectionOrder: "source", // source | selected
   observeSource: false, // opt-in MutationObserver -> debounced sync()
-  coordinateSpace: "auto", // auto | document | viewport: picker coordinate space, resolved once per opening
+  coordinateSpace: "viewport", // viewport | document: picker coordinate space, read once per opening
   sort: null,
   score: null,
   filter: null,
@@ -216,24 +216,6 @@ function setContent(element, content) {
     // which keeps the default renderer safe without a global allowHtml mode.
     element.textContent = String(content);
   }
-}
-
-/**
- * Whether `element` or any ancestor is fixed or sticky positioned. A sticky
- * ancestor counts whether or not it is currently stuck: it may stick while
- * the picker is open, and the position mode is frozen per opening, so the
- * conservative branch must win from the start.
- * @param {Element | null} element
- * @returns {boolean}
- */
-function hasFixedOrStickyAncestor(element) {
-  let node = element;
-  while (node instanceof Element) {
-    const position = node.ownerDocument.defaultView?.getComputedStyle(node).position;
-    if (position === "fixed" || position === "sticky") return true;
-    node = node.parentElement;
-  }
-  return false;
 }
 
 /** Stable, font-independent icon for generated remove buttons. */
@@ -373,10 +355,9 @@ const SOURCE_ATTRS = ["aria-hidden", "tabindex", "aria-invalid"];
  * @property {GuardMap} [guards]
  * @property {"source" | "selected"} [selectionOrder]
  * @property {boolean} [observeSource]
- * @property {"auto" | "document" | "viewport"} [coordinateSpace] Picker
- *   coordinate space: "auto" resolves once per opening (document flow →
- *   document + absolute, fixed/sticky/modal/popover anchor → viewport +
- *   fixed), "document"/"viewport" force one space unconditionally
+ * @property {"viewport" | "document"} [coordinateSpace] Picker coordinate
+ *   space: "viewport" uses position: fixed (default), "document" uses
+ *   position: absolute. Read once per opening; no layout inference.
  * @property {RenderMap} [render]
  * @property {HTMLElement} [anchor] Consumer-authored positioning/control region
  * @property {(a: import("./helpers.js").ComboboxItem, b: import("./helpers.js").ComboboxItem, query: string, context: ComboboxContext) => number} [sort]
@@ -407,7 +388,7 @@ const SOURCE_ATTRS = ["aria-hidden", "tabindex", "aria-invalid"];
  *   guards: GuardMap,
  *   selectionOrder: "source" | "selected",
  *   observeSource: boolean,
- *   coordinateSpace: "auto" | "document" | "viewport",
+ *   coordinateSpace: "viewport" | "document",
  *   render: RenderMap,
  *   load: LoadCallback | null,
  *   create: boolean | CreateCallback,
@@ -456,10 +437,10 @@ export class Combobox {
   #suppressReopen = false;
 
   /**
-   * Coordinate space resolved for the current opening ("viewport" until the
-   * first show()). #positionPicker() stays mechanical: it consumes this field
-   * and never re-resolves mid-opening. Distinct from options.coordinateSpace
-   * ("auto" | forced space): this is the resolved "viewport" | "document".
+   * Coordinate space for the current opening ("viewport" until the first
+   * show()). #positionPicker() stays mechanical: it consumes this field and
+   * never re-resolves mid-opening. A change to options.coordinateSpace while
+   * open applies to the next opening.
    * @type {"viewport" | "document"}
    */
   #resolvedCoordinateSpace = "viewport";
@@ -644,10 +625,10 @@ export class Combobox {
         ...(options.render || {}),
       },
     });
-    // this.options.coordinateSpace is guaranteed auto | document | viewport
-    // past this line; nothing downstream reinterprets garbage.
-    if (!["auto", "document", "viewport"].includes(this.options.coordinateSpace)) {
-      this.options.coordinateSpace = "auto";
+    // this.options.coordinateSpace is guaranteed viewport | document past
+    // this line; nothing downstream reinterprets garbage (including "auto").
+    if (!["document", "viewport"].includes(this.options.coordinateSpace)) {
+      this.options.coordinateSpace = "viewport";
     }
 
     this.original = {
@@ -1278,30 +1259,16 @@ export class Combobox {
   }
 
   /**
-   * Resolve the picker position mode. Forced spaces win unconditionally;
-   * "auto" detects once per opening: document flow → document + absolute
-   * (the browser scrolls the surface with the page, no touch lag), while a
-   * modal dialog, an open popover, or a fixed/sticky anchor lineage keeps
-   * viewport + fixed (document coordinates assume an anchor that moves with
-   * the page, which those are not).
+   * Resolve the picker position mode. No layout inference is performed:
+   * "viewport" writes viewport coordinates + fixed, "document" writes
+   * document coordinates + absolute. Called once per opening from show().
    * @returns {{ space: "viewport" | "document", position: "fixed" | "absolute" }}
    */
   #resolvePositionMode() {
     if (this.options.coordinateSpace === "document") {
       return { space: "document", position: "absolute" };
     }
-    if (this.options.coordinateSpace === "viewport") {
-      return { space: "viewport", position: "fixed" };
-    }
-    const anchor = this.#anchorEl();
-    if (
-      anchor.closest("dialog:modal") ||
-      anchor.closest(":popover-open") ||
-      hasFixedOrStickyAncestor(anchor)
-    ) {
-      return { space: "viewport", position: "fixed" };
-    }
-    return { space: "document", position: "absolute" };
+    return { space: "viewport", position: "fixed" };
   }
 
   /**
@@ -3174,8 +3141,8 @@ export class Combobox {
       this.#popoverEl().showPopover();
     }
     // Freeze the coordinate model once per opening: style.position and the
-    // space must agree, and must not drift mid-opening (e.g. a sticky anchor
-    // sticking after the picker opened).
+    // space must agree, and must not drift mid-opening. A change to
+    // options.coordinateSpace while open applies to the next opening.
     const mode = this.#resolvePositionMode();
     this.#resolvedCoordinateSpace = mode.space;
     this.#popoverEl().style.position = mode.position;
