@@ -492,26 +492,109 @@ test("select-based controls show a caret that flips when open; text controls do 
   expect(textContent).toBe("none");
 });
 
-test("caret stays contained and flips in RTL", async ({ page }) => {
+test("caret stays contained, keeps the same shape in RTL, and flips when open", async ({ page }) => {
   await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const state = await page.evaluate(() => {
     const ltr = document.querySelector("#doctor + .cb-control");
     const rtl = document.querySelector("#rtl-tags + .cb-control") || document.querySelector("#rtl-tags");
+    const caret = getComputedStyle(rtl, "::after");
     return {
       ltr: getComputedStyle(ltr, "::after").transform,
       rtl: getComputedStyle(rtl, "::after").transform,
       direction: getComputedStyle(rtl).direction,
-      caret: getComputedStyle(rtl, "::after").content,
+      caret: caret.content,
+      width: caret.width,
+      height: caret.height,
+      // Chromium may round the 1.5px stroke in computed border widths.
+      borderRight: Number.parseFloat(caret.borderRightWidth),
+      borderBottom: Number.parseFloat(caret.borderBottomWidth),
+      borderStyle: caret.borderRightStyle,
       overflow: rtl.scrollWidth - rtl.clientWidth,
     };
   });
 
   expect(state.direction).toBe("rtl");
   expect(state.caret).toBe('""');
-  expect(state.rtl).not.toBe(state.ltr);
+  // Up/down chevrons are not mirrored: only position follows inline-end.
+  expect(state.rtl).toBe(state.ltr);
+  expect(state.width).toBe("6px");
+  expect(state.height).toBe("6px");
+  expect(state.borderStyle).toBe("solid");
+  expect(state.borderRight).toBeGreaterThanOrEqual(1);
+  expect(state.borderRight).toBeLessThanOrEqual(1.5);
+  expect(state.borderBottom).toBeGreaterThanOrEqual(1);
+  expect(state.borderBottom).toBeLessThanOrEqual(1.5);
   expect(state.overflow).toBeLessThanOrEqual(1);
+
+  const closed = state.rtl;
+  await page.locator("#rtl-tags + .cb-control .cb-input").click();
+  await expect(page.locator(".cb-popover:visible")).toHaveCount(1);
+  const open = await page.evaluate(
+    () => getComputedStyle(document.querySelector("#rtl-tags + .cb-control"), "::after").transform,
+  );
+  expect(open).not.toBe(closed);
+});
+
+test("caret is a stable trailing affordance in single and multiple controls", async ({ page }) => {
+  await setup(page, "/");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+  const pins = await page.evaluate(() => {
+    const measure = (selector) => {
+      const control = document.querySelector(selector);
+      const style = getComputedStyle(control);
+      const caret = getComputedStyle(control, "::after");
+      const rect = control.getBoundingClientRect();
+      const rtl = style.direction === "rtl";
+      const border = Number.parseFloat(rtl ? style.borderLeftWidth : style.borderRightWidth);
+      const padding = Number.parseFloat(rtl ? style.paddingLeft : style.paddingRight);
+      const caretWidth = Number.parseFloat(caret.width);
+      const gap = Number.parseFloat(style.columnGap);
+      // The caret is the last flex item with no trailing margin, so its
+      // inline-end edge sits at the padding-box edge; only the flex gap
+      // separates it from the content. margin-inline-start:auto absorbs
+      // any leftover free space instead of offsetting from the content.
+      const controlEnd = rtl ? rect.left + border + padding : rect.right - border - padding;
+      const caretStart = controlEnd + (rtl ? caretWidth : -caretWidth);
+      const items = Array.from(control.querySelectorAll(".cb-chip, .cb-input"));
+      const last = items[items.length - 1].getBoundingClientRect();
+      const contentEnd = rtl ? last.left : last.right;
+      return {
+        autoMargin: Number.parseFloat(rtl ? caret.marginRight : caret.marginLeft),
+        separation: Math.abs(caretStart - contentEnd),
+        gap,
+        // Caret inset from the border-box edge on the trailing side.
+        trailingInset: border + padding,
+        paddingStart: Number.parseFloat(rtl ? style.paddingRight : style.paddingLeft),
+      };
+    };
+    const textPaddingStart = Number.parseFloat(getComputedStyle(document.getElementById("city")).paddingLeft);
+    return {
+      single: measure("#doctor + .cb-control"),
+      multi: measure("#specialties + .cb-control"),
+      rtl: measure("#rtl-tags + .cb-control"),
+      textPaddingStart,
+    };
+  });
+
+  // The auto margin resolves to ~0 when the content fills the row (no .25rem offset).
+  expect(pins.single.autoMargin).toBeLessThanOrEqual(1);
+  // Single, multiple and RTL all share the same trailing logic: exactly one gap.
+  for (const pin of [pins.single, pins.multi, pins.rtl]) {
+    expect(Math.abs(pin.separation - pin.gap)).toBeLessThanOrEqual(2);
+  }
+  expect(Math.abs(pins.single.separation - pins.multi.separation)).toBeLessThanOrEqual(2);
+  // Stacked carets line up: same trailing inset in single and multiple (and RTL).
+  expect(Math.abs(pins.single.trailingInset - pins.multi.trailingInset)).toBeLessThanOrEqual(1);
+  expect(Math.abs(pins.single.trailingInset - pins.rtl.trailingInset)).toBeLessThanOrEqual(1);
+  // The inset matches text inputs and the date-picker field: .75rem + 1px border.
+  for (const pin of [pins.single, pins.multi, pins.rtl]) {
+    expect(Math.abs(pin.trailingInset - 13)).toBeLessThanOrEqual(1.5);
+  }
+  // The single text edge still aligns with text inputs on the start side.
+  expect(Math.abs(pins.single.paddingStart - pins.textPaddingStart)).toBeLessThanOrEqual(1);
 });
 
 test("screenshot catalog for manual review", async ({ page }) => {

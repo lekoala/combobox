@@ -111,6 +111,12 @@ agent's gates are:
 
 - after editing `src/`: `bun run check` + `bun run test:browser`, then `bun run sync`
   followed by `bun run test:dist` so the regenerated bundle is exercised;
+- CSS-only changes (`src/combobox.css` + targeted visual test): `bun run check`, then
+  the layout-sensitive subset only (`css-polish`, `forced-colors`, `rtl`, `layout`),
+  then `bun run sync` + `bun run test:dist`. The full `test:browser` suite is reserved
+  for engine (`src/*.js`) changes and pre-commit runs — CI (`.github/workflows/ci.yml`)
+  runs the full matrix on push/PR anyway, so a full local pass per visual iteration
+  is disproportionate;
 - test-only/doc-only changes: `bun run check` + `bun run test:browser`.
 
 Committing (which makes `verify` green) happens only when the user explicitly asks.

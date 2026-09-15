@@ -77,7 +77,10 @@
   min-inline-size: 0;
   max-inline-size: 100%;
   padding-block: 0.375rem;
-  padding-inline: 0.5rem;
+  /* Chips keep the tighter start breathing; the caret side matches text
+     inputs and the date-picker field (.75rem) so stacked controls line up. */
+  padding-inline-start: 0.5rem;
+  padding-inline-end: 0.75rem;
   cursor: text;
 }
 
@@ -126,33 +129,31 @@
 /* Select-based controls read as a picker, not a free-text field: a decorative
    caret drawn from currentColor. Pure CSS flex item (no injected SVG, no extra
    button), so it flows with the control and survives forced colors. Absent from
-   .cb-text-control (input+datalist stays a real autocomplete). */
+   .cb-text-control (input+datalist stays a real autocomplete). The chevron is
+   deliberately small with an optical vertical correction (the rotated corner's
+   visual mass sits below its box center). Up/down chevrons are not mirrored
+   under RTL: as a flex item after the input, position already follows
+   inline-end via direction, so the shape stays identical. The caret is a
+   stable trailing affordance: margin-inline-start:auto pins it to the
+   inline-end edge in single and multiple controls alike (the control's own
+   padding-inline provides the edge breathing, the flex gap separates it from
+   the content). In a wrapped multiple it lives on the last line: it belongs
+   to the whole control, not to one row. */
 .cb-control::after {
   content: "";
   flex: none;
-  align-self: center;
-  inline-size: 0.5rem;
-  block-size: 0.5rem;
-  margin-inline-start: 0.25rem;
-  border-inline-end: 2px solid currentColor;
-  border-block-end: 2px solid currentColor;
-  transform: rotate(45deg);
-  opacity: 0.55;
+  inline-size: 6px;
+  block-size: 6px;
+  margin-inline-start: auto;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+  opacity: 0.6;
   pointer-events: none;
 }
 
 .cb-control:has([aria-expanded="true"])::after {
-  transform: rotate(225deg);
-}
-
-/* Logical borders put the chevron corner on the inline-end side; flip the
-   rotation under RTL so it still points down (then up when open). */
-.cb-control:dir(rtl)::after {
-  transform: rotate(-45deg);
-}
-
-.cb-control:dir(rtl):has([aria-expanded="true"])::after {
-  transform: rotate(135deg);
+  transform: translateY(1px) rotate(225deg);
 }
 
 .cb-input::placeholder,
