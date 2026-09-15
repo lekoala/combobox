@@ -76,7 +76,10 @@
     }
 
     /* 2. Focus — mirror the .input recipe: border -> focus, soft ring */
-    .actual-combobox :is(.cb-text-control, .cb-control):focus-within {
+    .actual-combobox :is(
+      .cb-text-control:focus-visible,
+      .cb-control:has(.cb-input:focus-visible)
+    ) {
       --cb-border-color: var(--focus);
       outline: 2px solid transparent;
       box-shadow: var(--focus-ring-shadow);
@@ -131,24 +134,6 @@
 
     .cb-option {
       border-radius: var(--radius-sm);
-    }
-
-    .cb-option[aria-selected="true"] {
-      background:
-        color-mix(in oklab, var(--surface) var(--soft-bg-mix), var(--primary));
-      color:
-        color-mix(in oklab, var(--primary) var(--soft-fg-mix), var(--text));
-    }
-
-    .cb-option[aria-selected="true"]::after {
-      color: var(--primary);
-    }
-
-    .cb-option[aria-selected="true"]:is(:hover, [data-active]) {
-      background:
-        color-mix(in oklab, var(--surface) calc(var(--soft-bg-mix) - 12%), var(--primary));
-      color:
-        color-mix(in oklab, var(--primary) var(--soft-fg-mix), var(--text));
     }
 
     .cb-create .cb-option-label {

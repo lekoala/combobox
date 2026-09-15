@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
 function shotsDir() {
-  return path.join(process.cwd(), ".temp", "screens");
+  return path.join(process.cwd(), ".temp", "screens", test.info().project.name);
 }
 
 async function capture(page, name) {
@@ -232,15 +232,18 @@ test("invalid border and focus ring use --cb-error-color", async ({ page }) => {
     const host = source.closest("combo-box");
     const control = source.nextElementSibling;
     const input = control.querySelector(".cb-input");
+    input.focus();
+    const accent = getComputedStyle(control).boxShadow;
+
     host.style.setProperty("--cb-error-color", "rgb(180, 35, 24)");
     input.setAttribute("aria-invalid", "true");
-    input.focus();
-    const computed = getComputedStyle(control);
-    return { border: computed.borderTopColor, outline: computed.outlineColor };
+    const invalid = getComputedStyle(control);
+    return { border: invalid.borderTopColor, shadow: invalid.boxShadow, accent };
   });
 
   expect(style.border).toBe("rgb(180, 35, 24)");
-  expect(style.outline).toBe("rgb(180, 35, 24)");
+  expect(style.shadow).toContain("3px");
+  expect(style.shadow).not.toBe(style.accent);
 });
 
 test("long chip labels truncate instead of widening the control", async ({ page }) => {
@@ -335,7 +338,7 @@ test("rtl mirrors chips and keeps remove at the inline start", async ({ page }) 
   expect(rtl.removeBeforeLabel).toBe(true);
 });
 
-test("selected rows draw a mask checkmark tinted with the row color", async ({ page }) => {
+test("selected rows draw a mask checkmark tinted with the accent color", async ({ page }) => {
   await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
@@ -352,6 +355,7 @@ test("selected rows draw a mask checkmark tinted with the row color", async ({ p
       maskSet: after.maskImage !== "none" || after.webkitMaskImage !== "none",
       size: parseFloat(after.width) || 0,
       tint: after.backgroundColor,
+      checkColor: after.color,
       rowColor: rowStyle.color,
     };
   });
@@ -360,7 +364,154 @@ test("selected rows draw a mask checkmark tinted with the row color", async ({ p
   expect(check.content).toBe('""');
   expect(check.maskSet).toBe(true);
   expect(check.size).toBeGreaterThan(0);
-  expect(check.tint).toBe(check.rowColor);
+  expect(check.tint).toBe(check.checkColor);
+  expect(check.tint).not.toBe(check.rowColor);
+});
+
+test("focus draws an accent border and a 3px halo on fields and controls", async ({ page }) => {
+  await setup(page, "/");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+  const styles = await page.evaluate(() => {
+    const textControl = document.getElementById("city");
+    textControl.focus();
+    const textStyle = getComputedStyle(textControl);
+    const text = { border: textStyle.borderTopColor, shadow: textStyle.boxShadow };
+
+    const control = document.querySelector("#doctor + .cb-control");
+    control.querySelector(".cb-input").focus();
+    const controlStyle = getComputedStyle(control);
+    return {
+      text,
+      control: { border: controlStyle.borderTopColor, shadow: controlStyle.boxShadow },
+    };
+  });
+
+  expect(styles.text.border).toBe("rgb(37, 99, 235)");
+  expect(styles.text.shadow).toContain("3px");
+  expect(styles.control.border).toBe("rgb(37, 99, 235)");
+  expect(styles.control.shadow).toContain("3px");
+});
+
+test("chip and remove focus draw an inner ring without haloing the control", async ({ page }) => {
+  await setup(page, "/");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+  const state = await page.evaluate(() => {
+    const control = document.querySelector("#specialties + .cb-control");
+    const chip = control.querySelector(".cb-chip");
+    chip.focus();
+    const chipStyle = getComputedStyle(chip);
+    const chipRing = { color: chipStyle.outlineColor, offset: chipStyle.outlineOffset };
+    const controlShadow = getComputedStyle(control).boxShadow;
+
+    const remove = chip.querySelector(".cb-chip-remove");
+    remove.focus();
+    const removeStyle = getComputedStyle(remove);
+    return {
+      chipRing,
+      controlShadow,
+      removeRing: { color: removeStyle.outlineColor, offset: removeStyle.outlineOffset },
+    };
+  });
+
+  expect(state.chipRing.color).toBe("rgb(37, 99, 235)");
+  expect(state.chipRing.offset).toBe("-2px");
+  expect(state.controlShadow).toBe("none");
+  expect(state.removeRing.color).toBe("rgb(37, 99, 235)");
+  expect(state.removeRing.offset).toBe("-2px");
+});
+
+test("active rows stay neutral while selected rows keep the soft accent", async ({ page }) => {
+  await setup(page, "/");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+  const state = await page.evaluate(async () => {
+    const wrap = document.createElement("combo-box");
+    wrap.setAttribute("toggle-selected", "");
+    wrap.innerHTML =
+      `<select multiple>` +
+      `<option value="a" selected>Alpha</option>` +
+      `<option value="b">Bravo</option>` +
+      `</select>`;
+    document.body.append(wrap);
+    const combo = await wrap.whenReady();
+    combo.show();
+
+    const rows = [...combo.listbox.querySelectorAll(".cb-option")];
+    const selected = rows.find((row) => row.getAttribute("aria-selected") === "true");
+    const other = rows.find((row) => row.getAttribute("aria-selected") !== "true");
+
+    const normalColor = getComputedStyle(other).color;
+    const normalBg = getComputedStyle(other).backgroundColor;
+    const selectedBg = getComputedStyle(selected).backgroundColor;
+
+    other.setAttribute("data-active", "");
+    const activeColor = getComputedStyle(other).color;
+    const activeBg = getComputedStyle(other).backgroundColor;
+
+    selected.setAttribute("data-active", "");
+    return {
+      normalColor,
+      normalBg,
+      activeColor,
+      activeBg,
+      selectedBg,
+      selectedActiveBg: getComputedStyle(selected).backgroundColor,
+      selectedActiveColor: getComputedStyle(selected).color,
+    };
+  });
+
+  expect(state.activeColor).toBe(state.normalColor);
+  expect(state.activeBg).not.toBe(state.normalBg);
+  expect(state.selectedActiveBg).not.toBe(state.selectedBg);
+  expect(state.selectedActiveColor).not.toBe("rgb(255, 255, 255)");
+});
+
+test("select-based controls show a caret that flips when open; text controls do not", async ({ page }) => {
+  await setup(page, "/");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+  const read = () =>
+    page.evaluate(() => {
+      const control = document.querySelector("#doctor + .cb-control");
+      return getComputedStyle(control, "::after").transform;
+    });
+
+  const closed = await read();
+  await page.locator("#doctor + .cb-control .cb-input").click();
+  await expect(page.locator(".cb-popover:visible")).toHaveCount(1);
+  const open = await read();
+
+  const textContent = await page.evaluate(
+    () => getComputedStyle(document.getElementById("city"), "::after").content,
+  );
+
+  expect(closed).not.toBe("none");
+  expect(open).not.toBe(closed);
+  expect(textContent).toBe("none");
+});
+
+test("caret stays contained and flips in RTL", async ({ page }) => {
+  await setup(page, "/");
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+  const state = await page.evaluate(() => {
+    const ltr = document.querySelector("#doctor + .cb-control");
+    const rtl = document.querySelector("#rtl-tags + .cb-control") || document.querySelector("#rtl-tags");
+    return {
+      ltr: getComputedStyle(ltr, "::after").transform,
+      rtl: getComputedStyle(rtl, "::after").transform,
+      direction: getComputedStyle(rtl).direction,
+      caret: getComputedStyle(rtl, "::after").content,
+      overflow: rtl.scrollWidth - rtl.clientWidth,
+    };
+  });
+
+  expect(state.direction).toBe("rtl");
+  expect(state.caret).toBe('""');
+  expect(state.rtl).not.toBe(state.ltr);
+  expect(state.overflow).toBeLessThanOrEqual(1);
 });
 
 test("screenshot catalog for manual review", async ({ page }) => {

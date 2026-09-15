@@ -446,6 +446,10 @@ The difference is that Combobox can fall back to native controls below the floor
 
 The component ships with a small default stylesheet and is designed to be easy to theme with CSS custom properties.
 
+Defaults are neutral and deterministic: the border, muted and hover colors are derived from `--cb-color`/`--cb-bg`, `--cb-focus-color` is the single interaction accent (`#2563eb`), and the active option is a neutral navigation cursor while the selected option keeps a soft accent plus its check mark.
+
+Select-based controls draw a decorative caret with pure CSS (a `::after` flex item, no injected SVG or extra button) that flips when the picker opens. `input+datalist` stays a real autocomplete and gets no caret.
+
 For example:
 
 ```css
@@ -508,6 +512,11 @@ The main demo covers:
 Standalone recipe pages: `demo/query-builder.html` (scoped search tokens) and
 `demo/service-options.html` (gated single select with rich rows and
 application-owned tooltips).
+
+`demo/date-picker.html` places the combobox next to a CDN-loaded
+`@lekoala/date-picker` (GitHub master build) on their default neutral tokens, to
+check the two components stay visually raccord — same field chrome, focus ring,
+radius and overlay shadow.
 
 Run it locally with:
 

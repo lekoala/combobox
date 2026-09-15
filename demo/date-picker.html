@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>combobox × date-picker — visual match</title>
+  <meta name="description" content="Side-by-side comparison of @lekoala/combobox and @lekoala/date-picker on their default neutral tokens, with the date-picker loaded from a CDN. Same field chrome, focus ring, radius and popover shadow.">
+
+  <!-- combobox: generated classic build so the demo validates dist/. -->
+  <link rel="stylesheet" href="../dist/combobox.css">
+  <script src="../dist/combobox.js"></script>
+
+  <!-- date-picker: self-contained standalone build (CSS inlined, self-registers)
+       straight from the GitHub master CDN, to confirm the two components stay
+       raccord. Pinned to a commit for reproducibility; jsdelivr also accepts
+       @master if you want the moving tip. `defer` is required: it registers
+       after the markup is parsed, so connectedCallback sees its child input. -->
+  <script
+    defer
+    src="https://cdn.jsdelivr.net/gh/lekoala/date-picker@d95f2c8cf8eeeb883d0e2914218388ef6ccdcf9b/dist/date-picker.standalone.min.js"
+  ></script>
+
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      color: #1f2328;
+      background: #f5f7fa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body { margin: 0; }
+
+    main {
+      max-inline-size: 60rem;
+      margin: 0 auto;
+      padding: 3.5rem 1.25rem 5rem;
+    }
+
+    h1 { margin: 0 0 0.5rem; font-size: 1.5rem; }
+
+    h2 { margin: 0; font-size: 1rem; }
+
+    .muted { color: #667085; }
+
+    .lead { margin: 0 0 2rem; max-inline-size: 46rem; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 42rem) {
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      display: grid;
+      gap: 1rem;
+      align-content: start;
+      padding: 1.25rem;
+      border: 1px solid #e4e7eb;
+      border-radius: 0.75rem;
+      background: #fff;
+    }
+
+    .field {
+      display: grid;
+      gap: 0.375rem;
+    }
+
+    .field > label {
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    /* date-picker owns the popup/calendar but leaves the field chrome to the
+       consumer. Apply the same neutral recipe the combobox core ships, so the
+       two columns are directly comparable. */
+    date-picker > input:not([type="hidden"]):not([type="time"]) {
+      min-block-size: 2.375rem;
+      padding-block: 0;
+      padding-inline-start: 0.75rem;
+      border: 1px solid color-mix(in srgb, #1f2328 16%, #fff);
+      border-radius: 0.5rem;
+      background: #fff;
+      color: #1f2328;
+      font: inherit;
+    }
+
+    date-picker:has(> [data-range-start], > [data-range-end]) {
+      gap: 0.375rem;
+    }
+
+    .measure {
+      justify-self: start;
+      padding: 0.5rem 1rem;
+      border: 1px solid #98a2b3;
+      border-radius: 0.5rem;
+      background: #fff;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .measure-out {
+      grid-column: 1 / -1;
+      margin-block-start: 1.5rem;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      background: #101828;
+      color: #e4e7eb;
+      font: 0.8125rem / 1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    .measure-out:empty { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>combobox × date-picker</h1>
+    <p class="lead muted">
+      The same neutral field on both sides: border derived from the ink, an 8px
+      radius, a 3px / 20% focus ring and one overlay shadow. The date-picker is
+      pulled from the CDN to check that its defaults stay aligned with the
+      combobox core rather than with a per-demo theme.
+    </p>
+
+    <div class="grid">
+      <section class="card">
+        <h2>@lekoala/combobox</h2>
+
+        <div class="field">
+          <label for="match-doctor">Single select</label>
+          <combo-box placeholder="Choose a doctor…">
+            <select id="match-doctor" name="doctor">
+              <option value="">Choose a doctor…</option>
+              <option>Alice Martin</option>
+              <option>Bruno Lambert</option>
+              <option>Chloé Bernard</option>
+            </select>
+          </combo-box>
+        </div>
+
+        <div class="field">
+          <label for="match-tags">Multiple with chips</label>
+          <combo-box placeholder="Add a specialty…">
+            <select id="match-tags" name="tags[]" multiple>
+              <option value="cardio" selected>Cardiology</option>
+              <option value="neuro" selected>Neurology</option>
+              <option value="derm">Dermatology</option>
+            </select>
+          </combo-box>
+        </div>
+
+        <div class="field">
+          <label for="match-city">Input + datalist</label>
+          <combo-box search="includes">
+            <input id="match-city" name="city" list="match-cities" placeholder="City">
+            <datalist id="match-cities">
+              <option value="Brussels"></option>
+              <option value="Paris"></option>
+              <option value="Berlin"></option>
+            </datalist>
+          </combo-box>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>@lekoala/date-picker</h2>
+
+        <div class="field">
+          <label for="match-date">Single date</label>
+          <date-picker value="2026-09-15" locale="en-GB">
+            <input id="match-date" name="appointment">
+          </date-picker>
+        </div>
+
+        <div class="field">
+          <label for="match-start">Range</label>
+          <date-picker range>
+            <input id="match-start" data-range-start name="arrival" aria-label="Arrival">
+            <input data-range-end name="departure" aria-label="Departure">
+          </date-picker>
+        </div>
+
+        <p class="muted" style="margin:0;font-size:.875rem">
+          The date field keeps the same radius, ring and overlay as the
+          combobox picker; only the interior differs (a calendar instead of a
+          listbox).
+        </p>
+      </section>
+    </div>
+
+    <button type="button" class="measure">Compare computed field styles</button>
+    <pre class="measure-out" id="measure-out"></pre>
+  </main>
+
+  <script>
+    document.querySelector(".measure").addEventListener("click", () => {
+      const read = (el) => {
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return {
+          height: `${Math.round(rect.height)}px`,
+          radius: cs.borderRadius,
+          border: cs.borderTopColor,
+          bg: cs.backgroundColor,
+        };
+      };
+
+      const samples = {
+        "combobox .cb-text-control": document.querySelector(".cb-text-control"),
+        "combobox .cb-control": document.querySelector(".cb-control"),
+        "date-picker > input": document.querySelector('date-picker > input:not([type="hidden"])'),
+      };
+
+      const lines = Object.entries(samples).map(([name, el]) => {
+        const value = read(el);
+        return `${name}\n  ${value ? JSON.stringify(value) : "(missing)"}`;
+      });
+      lines.push(
+        "\noverlay contract (by design)\n  radius: 8px, border: 16% ink, shadow: 0 .5rem 1.5rem rgb(15 23 42 / .12), ring: 0 0 0 3px accent 20%",
+      );
+      document.getElementById("measure-out").textContent = lines.join("\n");
+    });
+  </script>
+</body>
+</html>
