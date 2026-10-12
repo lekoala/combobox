@@ -1,0 +1,5 @@
+[test]
+# Bare `bun test` must only run the unit suite. Browser and dist suites are
+# Playwright specs (test/browser, test/dist) driven by their own npm scripts;
+# Bun's default discovery would otherwise load them with `bun:test` and fail.
+root = "test/unit"

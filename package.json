@@ -20,7 +20,7 @@
   },
   "homepage": "https://github.com/lekoala/combobox",
   "bugs": "https://github.com/lekoala/combobox/issues",
-  "packageManager": "bun@1.4.2",
+  "packageManager": "bun@1.4.3",
   "customElements": "custom-elements.json",
   "keywords": [
     "combobox",
@@ -89,8 +89,8 @@
     "prepublishOnly": "bun run verify"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.13",
-    "@playwright/test": "1.63.0",
+    "@biomejs/biome": "2.5.15",
+    "@playwright/test": "1.64.0",
     "typescript": "7.0.2"
   },
   "dependencies": {
