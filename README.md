@@ -168,6 +168,8 @@ This also means things such as:
 
 continue to behave like normal form controls.
 
+A `readonly` select gets a declarative interaction lock on top of the native control: the picker never opens and chips/keys cannot mutate the selection, while the programmatic API (`select`/`remove`/`clear`) stays available. See [API](docs/API.md#readonly).
+
 ### Browser autofill is not handled
 
 Enhancement defaults the field you type in to `autocomplete="off"` (restored on `dispose()`), and the input added around a `<select>` carries no `name`. That is the whole of it: the browser's own autofill is out of scope.
@@ -557,6 +559,7 @@ The main API covers:
 * `maxItems` and `maxOptions`;
 * selection order and `move()`;
 * `clear()`;
+* `readonly` interaction lock;
 * form semantics;
 * exact cleanup with `dispose()`.
 
