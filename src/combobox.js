@@ -1438,6 +1438,11 @@ export class Combobox {
           if (form) {
             for (const control of form.elements) {
               if (control === this.source) break;
+              // A <fieldset> is listed before its children and matches
+              // :invalid as soon as a descendant is invalid, yet it is not
+              // itself a validation candidate. Skip non-candidates so the
+              // first real invalid control still claims focus.
+              if (!(/** @type {HTMLElement & { willValidate: boolean }} */ (control).willValidate)) continue;
               if (/** @type {Element} */ (control).matches(":invalid")) return;
             }
           }
@@ -1776,6 +1781,7 @@ export class Combobox {
       event.key === "Backspace" &&
       this.isMultiple &&
       !this.#inputEl().value &&
+      !this.#isReadonly() &&
       this.#selectSource().selectedOptions.length
     ) {
       const selected = this.#selectedOptionsInOrder();

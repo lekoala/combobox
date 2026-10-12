@@ -1419,6 +1419,8 @@
             for (const control of form.elements) {
               if (control === this.source)
                 break;
+              if (!control.willValidate)
+                continue;
               if (control.matches(":invalid"))
                 return;
             }
@@ -1680,7 +1682,7 @@
           return;
         }
       }
-      if (event.key === "Backspace" && this.isMultiple && !this.#inputEl().value && this.#selectSource().selectedOptions.length) {
+      if (event.key === "Backspace" && this.isMultiple && !this.#inputEl().value && !this.#isReadonly() && this.#selectSource().selectedOptions.length) {
         const selected = this.#selectedOptionsInOrder();
         const last = selected[selected.length - 1];
         if (last && !isOptionDisabled(last))

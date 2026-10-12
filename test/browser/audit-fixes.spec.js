@@ -742,6 +742,33 @@ test("form validation focuses the first invalid combobox, not the last", async (
   expect(state.focusedSecond).toBe(false);
 });
 
+test("form validation still focuses the first invalid combobox inside a fieldset", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(() => {
+    const form = document.createElement("form");
+    // The <fieldset> is listed before its child and matches :invalid as soon
+    // as the child is invalid, without being a validation candidate itself.
+    form.innerHTML = `
+      <fieldset>
+        <select id="inv-fs" name="a" required><option value="">Choose</option><option value="1">One</option></select>
+      </fieldset>`;
+    document.body.append(form);
+    const select = form.querySelector("#inv-fs");
+    const combo = Combobox.getOrCreateInstance(select);
+    form.requestSubmit();
+    const result = {
+      focused: document.activeElement === select.nextElementSibling.querySelector(".cb-input"),
+      ariaInvalid: combo.input.getAttribute("aria-invalid"),
+    };
+    combo.dispose();
+    form.remove();
+    return result;
+  });
+
+  expect(state.focused).toBe(true);
+  expect(state.ariaInvalid).toBe("true");
+});
+
 test("a readonly select locks interaction but keeps the programmatic API", async ({ page }) => {
   test.skip(!(await modernSupported(page)), MODERN);
   const state = await page.evaluate(async () => {
@@ -761,17 +788,23 @@ test("a readonly select locks interaction but keeps the programmatic API", async
     await tick(30);
     const openOnFocus = combo.isOpen();
 
+    // Backspace in the empty input must not remove the last selection either.
+    combo.input.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
+    await tick(30);
+    const afterInputBackspace = Array.from(select.selectedOptions, (o) => o.value);
+
     const chip = form.querySelector(".cb-chip");
     chip.focus();
     chip.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
     await tick(30);
-    const afterBackspace = Array.from(select.selectedOptions, (o) => o.value);
+    const afterChipBackspace = Array.from(select.selectedOptions, (o) => o.value);
 
     const removed = await combo.remove("a");
     const result = {
       removeButtons,
       openOnFocus,
-      afterBackspace,
+      afterInputBackspace,
+      afterChipBackspace,
       removed,
       afterRemove: Array.from(select.selectedOptions, (o) => o.value),
     };
@@ -782,7 +815,8 @@ test("a readonly select locks interaction but keeps the programmatic API", async
 
   expect(state.removeButtons).toBe(0);
   expect(state.openOnFocus).toBe(false);
-  expect(state.afterBackspace).toEqual(["a", "b"]);
+  expect(state.afterInputBackspace).toEqual(["a", "b"]);
+  expect(state.afterChipBackspace).toEqual(["a", "b"]);
   expect(state.removed).toBe(true);
   expect(state.afterRemove).toEqual(["b"]);
 });
