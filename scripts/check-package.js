@@ -112,6 +112,35 @@ for (const target of pkg.sideEffects ?? []) {
   }
 }
 
+// The `./locales/*` wildcard maps the documented extensionless specifier
+// (`@lekoala/combobox/locales/fr`) to a real `.js` file. A missing `.js` suffix
+// resolves to a non-existent path and a missing `sideEffects` glob lets
+// bundlers tree-shake the module's `setDefaultMessages` side effect away — both
+// make the documented import silently do nothing.
+const localeImports = pkg.sideEffects ?? [];
+if (localeImports.includes("./src/locales/*.js") === false) {
+  errors.push("sideEffects must list ./src/locales/*.js so locale imports keep their side effect");
+}
+const localeEntry = pkg.exports?.["./locales/*"];
+if (localeEntry) {
+  const importTarget = typeof localeEntry === "string" ? localeEntry : localeEntry.import;
+  const typesTarget = typeof localeEntry === "string" ? null : localeEntry.types;
+  if (!String(importTarget ?? "").endsWith(".js")) {
+    errors.push(`exports["./locales/*"].import must end with .js: ${importTarget}`);
+  }
+  if (typesTarget != null && !String(typesTarget).endsWith(".d.ts")) {
+    errors.push(`exports["./locales/*"].types must end with .d.ts: ${typesTarget}`);
+  }
+  const langs = paths
+    .filter((p) => p.startsWith("src/locales/") && p.endsWith(".js"))
+    .map((p) => p.slice("src/locales/".length, -".js".length));
+  for (const lang of langs) {
+    if (!has(`dist/types/locales/${lang}.d.ts`)) {
+      errors.push(`locale types missing for ${lang}: dist/types/locales/${lang}.d.ts`);
+    }
+  }
+}
+
 if (errors.length) {
   console.error("Package check failed:");
   for (const e of errors) {

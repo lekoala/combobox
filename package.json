@@ -10,7 +10,8 @@
     "./dist/combobox.css",
     "./dist/combobox.min.css",
     "./src/combobox.css",
-    "./src/define.js"
+    "./src/define.js",
+    "./src/locales/*.js"
   ],
   "license": "MIT",
   "repository": {
@@ -50,7 +51,7 @@
     "./standalone": "./dist/combobox.standalone.min.js",
     "./locales/*": {
       "types": "./dist/types/locales/*.d.ts",
-      "import": "./src/locales/*"
+      "import": "./src/locales/*.js"
     },
     "./dist/combobox.js": "./dist/combobox.js",
     "./dist/combobox.min.js": "./dist/combobox.min.js",

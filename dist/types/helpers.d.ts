@@ -189,8 +189,8 @@ export declare function reconcileSelected<T>(values: T[], order: T[]): T[];
 /**
  * Move `identity` within `list` to `index` (clamped to valid bounds). Returns
  * `{ order, from, to }` when a real move happens (a fresh array, the input is
- * never mutated), or `null` when the identity is unknown or already at the
- * target position. `from`/`to` are the pre-move positions.
+ * never mutated), or `null` when the identity is unknown, the index is not a
+ * finite number, or the identity is already at the target position. `from`/`to` are the pre-move positions.
  *
  * Match is strict identity (SameValueZero), so the list may hold strings or
  * option-element references alike — callers never need string coercion.

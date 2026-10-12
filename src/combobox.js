@@ -436,6 +436,12 @@ export class Combobox {
   // reopening and removal focus handoffs.
   #suppressReopen = false;
 
+  // Set only for the synchronous span of #dispatchNativeValueEvents(). In
+  // input+datalist mode the source *is* the interaction input, so the engine's
+  // own synthetic `input` would otherwise be re-read as a user keystroke and
+  // reopen the picker / re-trigger a remote load after a selection.
+  #suppressInputEvent = false;
+
   /**
    * Coordinate space for the current opening ("viewport" until the first
    * show()). #positionPicker() stays mechanical: it consumes this field and
@@ -1424,6 +1430,17 @@ export class Combobox {
         (event) => {
           event.preventDefault();
           this.#inputEl().setAttribute("aria-invalid", "true");
+          // Validation fires `invalid` on every invalid control, so focusing
+          // unconditionally would hand focus to the last field. Native focuses
+          // the first invalid control, so only claim focus when no earlier
+          // control in the form is currently invalid.
+          const form = this.source.form;
+          if (form) {
+            for (const control of form.elements) {
+              if (control === this.source) break;
+              if (/** @type {Element} */ (control).matches(":invalid")) return;
+            }
+          }
           this.#inputEl().focus();
         },
         { signal },
@@ -1473,6 +1490,9 @@ export class Combobox {
         // refreshed, so run nothing (not even a hidden search that could
         // fire beforefilter/filter or a remote load).
         if (this.#suppressReopen) return;
+        // A readonly source is interaction-locked: focus must not open the
+        // picker (the reflected input is still focusable).
+        if (this.#isReadonly()) return;
 
         if (this.isSelect && !this.isMultiple && this.#selectSource().selectedOptions.length)
           this.#inputEl().select();
@@ -1481,6 +1501,10 @@ export class Combobox {
         return;
       }
       case "input": {
+        // In input+datalist mode the source is the interaction input, so the
+        // engine's own value-event dispatch reenters this handler. That
+        // synthetic event is not a search intent.
+        if (this.#suppressInputEvent) return;
         // Separator tokens are consumed as they complete (typing or paste).
         // IME composition feeds search but never tokenizes/creates.
         const inputEvent = /** @type {InputEvent} */ (event);
@@ -1524,6 +1548,7 @@ export class Combobox {
       return;
     }
     if (event.type === "click") {
+      if (this.#isReadonly()) return;
       const option = target.closest(".cb-option");
       if (!option) return;
       if (option.classList.contains("cb-create")) {
@@ -1560,6 +1585,7 @@ export class Combobox {
     if (event.type === "click") {
       const remove = target.closest(".cb-chip-remove");
       if (!remove) return;
+      if (this.#isReadonly()) return;
       const chip = /** @type {HTMLElement} */ (remove.closest(".cb-chip"));
       if (!chip) return;
       // The chip's exact option is authoritative (duplicate values share a
@@ -1599,7 +1625,13 @@ export class Combobox {
       if (this.isOpen() && stillInside) return;
 
       if (this.isOpen() || this.options.createOnBlur) {
-        if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing) {
+        if (
+          this.isSelect &&
+          this.isMultiple &&
+          this.options.createOnBlur &&
+          !this.composing &&
+          !this.#isReadonly()
+        ) {
           const value = this.#inputEl().value;
           this.#suppressReopen = true;
           try {
@@ -1636,21 +1668,24 @@ export class Combobox {
   #onInputKeyDown(event) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      if (!this.isOpen()) this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
+      if (!this.isOpen() && !this.#isReadonly())
+        this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
       this.#moveActive(1);
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      if (!this.isOpen()) this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
+      if (!this.isOpen() && !this.#isReadonly())
+        this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
       this.#moveActive(-1);
       return;
     }
 
     if (event.key === "PageUp" || event.key === "PageDown") {
       event.preventDefault();
-      if (!this.isOpen()) this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
+      if (!this.isOpen() && !this.#isReadonly())
+        this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
       const down = event.key === "PageDown";
       const base = this.activeIndex < 0 ? (down ? -1 : 0) : this.activeIndex;
       const distance = base + (down ? this.#pageSize() : -this.#pageSize());
@@ -2157,7 +2192,7 @@ export class Combobox {
       setContent(label, rendered ?? item.label);
       chip.append(label);
 
-      if (!isOptionDisabled(option) && !this.source.disabled) {
+      if (!isOptionDisabled(option) && !this.source.disabled && !this.#isReadonly()) {
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "cb-chip-remove";
@@ -2259,6 +2294,7 @@ export class Combobox {
 
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
+      if (this.#isReadonly()) return;
       void this.remove(item.option ?? item.value).then(
         (removed) => {
           if (!removed) return;
@@ -2439,7 +2475,8 @@ export class Combobox {
   #toggleSelected(item) {
     if (!this.isMultiple || !this.options.toggleSelected) return false;
     const option = item.option instanceof HTMLOptionElement ? item.option : this.#findOption(item.value);
-    if (!option?.selected || isOptionDisabled(option) || this.source.disabled) return false;
+    if (!option?.selected || isOptionDisabled(option) || this.source.disabled || this.#isReadonly())
+      return false;
     const snapshot = this.#positionSnapshot(item);
     void (async () => {
       let removed = false;
@@ -2515,6 +2552,18 @@ export class Combobox {
    */
   #alive() {
     return instances.get(this.source) === this && !this.abortController.signal.aborted;
+  }
+
+  /**
+   * `readonly` has no native `<select>` meaning, but the engine reflects it
+   * onto the interaction input and observes it on the source. It is honored as
+   * a lock on user interaction (picker opening, chip removal, toggle): the
+   * programmatic API (`select`/`remove`/`clear`) stays available, exactly as it
+   * is for `disabled`.
+   * @returns {boolean}
+   */
+  #isReadonly() {
+    return this.isSelect && this.source.hasAttribute("readonly");
   }
 
   /**
@@ -2906,8 +2955,15 @@ export class Combobox {
   }
 
   #dispatchNativeValueEvents() {
-    this.source.dispatchEvent(new Event("input", { bubbles: true }));
-    this.source.dispatchEvent(new Event("change", { bubbles: true }));
+    // The events must stay trustworthy for native form listeners, so suppress
+    // only our own reentrant handling of them (see #suppressInputEvent).
+    this.#suppressInputEvent = true;
+    try {
+      this.source.dispatchEvent(new Event("input", { bubbles: true }));
+      this.source.dispatchEvent(new Event("change", { bubbles: true }));
+    } finally {
+      this.#suppressInputEvent = false;
+    }
   }
 
   #commit() {

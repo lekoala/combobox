@@ -112,7 +112,7 @@ Prior-art accessibility corpora cover the `aria-activedescendant`/`aria-controls
 - [x] Right from last returns search input.
 - [x] Home/End first/last.
 - [x] Delete/Backspace removes focused removable chip.
-- [x] disabled chip cannot be removed (no remove button is rendered for a selected-disabled option, `features.spec.js`; the source `readonly` mirror is `source-adapters.spec.js`).
+- [x] disabled chip cannot be removed (no remove button is rendered for a selected-disabled option, `features.spec.js`; the source `readonly` mirror and its interaction lock are `source-adapters.spec.js` / `audit-fixes.spec.js`).
 - [x] focus lands predictably after removal.
 - [x] normal Left/Right editing inside non-empty search is untouched (`chips-keyboard.spec.js`).
 

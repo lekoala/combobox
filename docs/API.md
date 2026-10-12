@@ -235,11 +235,11 @@ Shipped base translations live in `src/locales/<lang>.js` and are importable thr
 
 ```js
 import "@lekoala/combobox/locales/fr";       // application-level default becomes French
-// or: await import("data-grid-component/locales/fr");
+// or: await import("@lekoala/combobox/locales/fr");
 ```
 
 ```html
-<script type="module" src="https://unpkg.com/@lekoala/combobox/locales/fr.js"></script>
+<script type="module" src="https://unpkg.com/@lekoala/combobox/src/locales/fr.js"></script>
 ```
 
 Available locales: `en`, `fr`, `nl`, `de`, `es`, `it`, `pt` (European Portuguese), `ru`, `zh-CN`.
@@ -424,6 +424,10 @@ Engine-driven mutations are not observed (the engine drops/reconnects the observ
 
 - `multiple` is deliberately **not** observed — the value model is fixed at init time; toggling it after init requires re-initialization;
 - a programmatic `option.selected = true/false` is a live-property change, not an attribute/structural mutation, so MutationObserver cannot see it — call `sync()` for programmatic selection changes. `observeSource` covers structural changes and attribute-level source state only.
+
+### `readonly`
+
+`readonly` is not a native `<select>` concept, but the engine accepts it as a declarative interaction lock. It is reflected onto the interaction input (`refresh()`/`sync()` keep it current) and observed on the source like `disabled`. On a `readonly` select the **user interaction** is locked: focus and keyboard navigation never open the picker, chips render without a remove button, and `Backspace`/`Delete`, `toggleSelected`, picker clicks and `createOnBlur` never mutate the selection. The **programmatic API is untouched** — `select()`, `remove()` and `clear()` still work exactly as on a `disabled` source, because the lock targets interaction, not the JS surface.
 
 ## Remote
 

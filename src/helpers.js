@@ -282,8 +282,8 @@ export function reconcileSelected(values, order) {
 /**
  * Move `identity` within `list` to `index` (clamped to valid bounds). Returns
  * `{ order, from, to }` when a real move happens (a fresh array, the input is
- * never mutated), or `null` when the identity is unknown or already at the
- * target position. `from`/`to` are the pre-move positions.
+ * never mutated), or `null` when the identity is unknown, the index is not a
+ * finite number, or the identity is already at the target position. `from`/`to` are the pre-move positions.
  *
  * Match is strict identity (SameValueZero), so the list may hold strings or
  * option-element references alike — callers never need string coercion.
@@ -298,7 +298,12 @@ export function moveValueInOrder(list, identity, index) {
   const order = [...list];
   const from = order.indexOf(identity);
   if (from < 0) return null;
-  const to = Math.max(0, Math.min(Number(index), order.length - 1));
+  const target = Number(index);
+  // A non-numeric index (NaN, Infinity) is not a position: `splice(NaN)` would
+  // silently move to the head. Negative and out-of-range finite indexes stay
+  // clamped, which is the documented behavior.
+  if (!Number.isFinite(target)) return null;
+  const to = Math.max(0, Math.min(target, order.length - 1));
   if (from === to) return null;
   order.splice(to, 0, ...order.splice(from, 1));
   return { order, from, to };

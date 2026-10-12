@@ -185,6 +185,14 @@ test("moveValueInOrder clamps to bounds and returns null for no-ops/unknown valu
   expect(moveValueInOrder([], "a", 1)).toBeNull();
 });
 
+test("moveValueInOrder rejects a non-finite index instead of moving to the head", () => {
+  // `splice(NaN)` would silently coerce to 0; a non-position must be refused.
+  expect(moveValueInOrder(["a", "b", "c"], "c", Number.NaN)).toBeNull();
+  expect(moveValueInOrder(["a", "b", "c"], "c", Number("x"))).toBeNull();
+  expect(moveValueInOrder(["a", "b", "c"], "c", Number.POSITIVE_INFINITY)).toBeNull();
+  expect(moveValueInOrder(["a", "b", "c"], "c", Number.NEGATIVE_INFINITY)).toBeNull();
+});
+
 test("fuzzyMatch matches full substrings and order-preserving subsequences", () => {
   expect(fuzzyMatch("banana", "ban")).toBe(true);
   expect(fuzzyMatch("banana", "bnn")).toBe(true);

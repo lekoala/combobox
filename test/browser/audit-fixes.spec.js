@@ -600,3 +600,189 @@ test("native option label wins over text content", async ({ page }) => {
   expect(state.native).toBe("Display label");
   expect(state.display).toBe("Display label");
 });
+
+test("input+datalist selection does not self-trigger a reload or reopen", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(async () => {
+    const tick = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const wrap = document.createElement("div");
+    wrap.innerHTML = '<input id="dl-load" list="dl-load-list"><datalist id="dl-load-list"></datalist>';
+    document.body.append(wrap);
+    const input = wrap.querySelector("input");
+    const loads = [];
+    const combo = Combobox.getOrCreateInstance(input, {
+      load: (query) => {
+        loads.push(query);
+        return [{ value: "Paris", label: "Paris" }];
+      },
+      minChars: 0,
+      debounce: 0,
+    });
+    input.focus();
+    input.value = "Par";
+    input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    await tick(60);
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    await tick(20);
+    input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await tick(60);
+    const loadsAfterSelect = loads.length;
+    await tick(400);
+    const result = {
+      value: input.value,
+      open: combo.isOpen(),
+      loadsAfterSelect,
+      loads: loads.slice(),
+      grew: loads.length > loadsAfterSelect,
+    };
+    combo.dispose();
+    wrap.remove();
+    return result;
+  });
+
+  expect(state.value).toBe("Paris");
+  expect(state.open).toBe(false);
+  expect(state.grew).toBe(false);
+  expect(state.loads).toEqual(["Par"]);
+});
+
+test("upgrade() after a construction failure does not reuse the disposed instance", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(() => {
+    const host = document.createElement("combo-box");
+    const input = document.createElement("input");
+    input.id = "upgrade-stale";
+    input.setAttribute("list", "upgrade-stale-list");
+    host.append(input);
+
+    // First upgrade: the datalist id does not resolve, so the constructor throws.
+    let threw = null;
+    try {
+      host.upgrade();
+    } catch (error) {
+      threw = error.message;
+    }
+    const stale = host.combobox;
+
+    const datalist = document.createElement("datalist");
+    datalist.id = "upgrade-stale-list";
+    datalist.innerHTML = '<option value="a">A</option>';
+    document.body.append(datalist);
+
+    const second = host.upgrade();
+    const result = {
+      threw,
+      staleIsNull: stale === null,
+      secondIsEngine: second instanceof Combobox,
+      registered: Combobox.getInstance(input) === second,
+      engineMatches: host.combobox === second,
+    };
+    host.dispose();
+    datalist.remove();
+    return result;
+  });
+
+  expect(state.threw).toContain("No datalist found");
+  expect(state.staleIsNull).toBe(true);
+  expect(state.secondIsEngine).toBe(true);
+  expect(state.registered).toBe(true);
+  expect(state.engineMatches).toBe(true);
+});
+
+test("move(value, NaN) refuses instead of moving to the head", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(() => {
+    const form = document.createElement("form");
+    form.innerHTML = `<select name="order" multiple>
+      <option value="a" selected>A</option>
+      <option value="b" selected>B</option>
+      <option value="c" selected>C</option>
+    </select>`;
+    document.body.append(form);
+    const select = form.querySelector("select");
+    const combo = Combobox.getOrCreateInstance(select, { selectionOrder: "selected" });
+    let reorderEvents = 0;
+    select.addEventListener("combobox:reorder", () => reorderEvents++);
+    const moved = combo.move("c", Number("x"));
+    const result = { moved, values: combo.getSelectedValues(), reorderEvents };
+    combo.dispose();
+    form.remove();
+    return result;
+  });
+
+  expect(state.moved).toBe(false);
+  expect(state.values).toEqual(["a", "b", "c"]);
+  expect(state.reorderEvents).toBe(0);
+});
+
+test("form validation focuses the first invalid combobox, not the last", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(() => {
+    const form = document.createElement("form");
+    form.innerHTML = `
+      <select id="inv-a" name="a" required><option value="">Choose</option><option value="1">One</option></select>
+      <select id="inv-b" name="b" required><option value="">Choose</option><option value="1">One</option></select>`;
+    document.body.append(form);
+    const a = form.querySelector("#inv-a");
+    const b = form.querySelector("#inv-b");
+    Combobox.getOrCreateInstance(a);
+    Combobox.getOrCreateInstance(b);
+    const inputOf = (select) => select.nextElementSibling.querySelector(".cb-input");
+    form.requestSubmit();
+    const result = {
+      focusedFirst: document.activeElement === inputOf(a),
+      focusedSecond: document.activeElement === inputOf(b),
+    };
+    for (const select of [a, b]) Combobox.getInstance(select).dispose();
+    form.remove();
+    return result;
+  });
+
+  expect(state.focusedFirst).toBe(true);
+  expect(state.focusedSecond).toBe(false);
+});
+
+test("a readonly select locks interaction but keeps the programmatic API", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), MODERN);
+  const state = await page.evaluate(async () => {
+    const tick = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const form = document.createElement("form");
+    form.innerHTML = `<select id="ro-multi" name="ro" multiple readonly>
+      <option value="a" selected>A</option>
+      <option value="b" selected>B</option>
+    </select>`;
+    document.body.append(form);
+    const select = form.querySelector("select");
+    const combo = Combobox.getOrCreateInstance(select);
+
+    const removeButtons = form.querySelectorAll(".cb-chip-remove").length;
+
+    combo.input.focus();
+    await tick(30);
+    const openOnFocus = combo.isOpen();
+
+    const chip = form.querySelector(".cb-chip");
+    chip.focus();
+    chip.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
+    await tick(30);
+    const afterBackspace = Array.from(select.selectedOptions, (o) => o.value);
+
+    const removed = await combo.remove("a");
+    const result = {
+      removeButtons,
+      openOnFocus,
+      afterBackspace,
+      removed,
+      afterRemove: Array.from(select.selectedOptions, (o) => o.value),
+    };
+    combo.dispose();
+    form.remove();
+    return result;
+  });
+
+  expect(state.removeButtons).toBe(0);
+  expect(state.openOnFocus).toBe(false);
+  expect(state.afterBackspace).toEqual(["a", "b"]);
+  expect(state.removed).toBe(true);
+  expect(state.afterRemove).toEqual(["b"]);
+});

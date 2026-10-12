@@ -23,6 +23,18 @@ test("every locale mirrors the canonical key set with non-empty strings and func
   }
 });
 
+test("the documented extensionless locale subpath resolves through exports", async () => {
+  // Regression: `"./locales/*"` must map to a real `*.js` target, or the
+  // documented `@lekoala/combobox/locales/<lang>` import fails to resolve
+  // entirely (the module never loads, so its setDefaultMessages side effect is
+  // silently lost). Compare against the relative import to prove both
+  // specifiers point at the same module.
+  const viaSubpath = await import("@lekoala/combobox/locales/fr");
+  const viaRelative = await import("../../src/locales/fr.js");
+  expect(viaSubpath.default).toBe(viaRelative.default);
+  expect(viaSubpath.default.noResults).toBe("Aucun résultat");
+});
+
 test("setDefaultMessages merges and getDefaultMessages returns a detached copy", () => {
   setDefaultMessages({ noResults: "Aucun résultat" });
 

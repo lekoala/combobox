@@ -183,22 +183,30 @@ export class ComboBoxElement extends HTMLElement {
     this._sourceObserver = null;
 
     if (this._combobox && this._source === source) return this._combobox;
-    if (this._combobox) this._combobox.dispose();
+    // Clear both slots before constructing: if `new Combobox(...)` throws (e.g.
+    // a datalist id that no longer resolves), the element must not keep a
+    // disposed instance paired with the new source, or the next upgrade() would
+    // short-circuit on `_source === source` and hand it back.
+    const previous = this._combobox;
+    this._combobox = null;
+    this._source = null;
+    if (previous) previous.dispose();
 
+    const combobox = new Combobox(source, this.#resolvedOptions());
+    this._combobox = combobox;
     this._source = source;
-    this._combobox = new Combobox(source, this.#resolvedOptions());
 
     const ready = this._readyResolvers.splice(0);
-    for (const resolve of ready) resolve(this._combobox);
+    for (const resolve of ready) resolve(combobox);
 
     this.dispatchEvent(
       new CustomEvent("combobox:ready", {
         bubbles: true,
-        detail: { combobox: this._combobox, source },
+        detail: { combobox, source },
       }),
     );
 
-    return this._combobox;
+    return combobox;
   }
 
   /**

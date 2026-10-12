@@ -461,7 +461,10 @@
     const from = order.indexOf(identity);
     if (from < 0)
       return null;
-    const to = Math.max(0, Math.min(Number(index), order.length - 1));
+    const target = Number(index);
+    if (!Number.isFinite(target))
+      return null;
+    const to = Math.max(0, Math.min(target, order.length - 1));
     if (from === to)
       return null;
     order.splice(to, 0, ...order.splice(from, 1));
@@ -860,6 +863,7 @@
   class Combobox {
     static supported = supportsModernCombobox();
     #suppressReopen = false;
+    #suppressInputEvent = false;
     #resolvedCoordinateSpace = "viewport";
     #tokenQueue = Promise.resolve();
     static getDefaultMessages() {
@@ -1410,6 +1414,15 @@
         this.source.addEventListener("invalid", (event) => {
           event.preventDefault();
           this.#inputEl().setAttribute("aria-invalid", "true");
+          const form = this.source.form;
+          if (form) {
+            for (const control of form.elements) {
+              if (control === this.source)
+                break;
+              if (control.matches(":invalid"))
+                return;
+            }
+          }
           this.#inputEl().focus();
         }, { signal });
       }
@@ -1442,6 +1455,8 @@
         case "focus": {
           if (this.#suppressReopen)
             return;
+          if (this.#isReadonly())
+            return;
           if (this.isSelect && !this.isMultiple && this.#selectSource().selectedOptions.length)
             this.#inputEl().select();
           const query = this.isSelect && !this.isMultiple ? "" : this.#inputEl().value;
@@ -1449,6 +1464,8 @@
           return;
         }
         case "input": {
+          if (this.#suppressInputEvent)
+            return;
           const inputEvent = event;
           if (this.isMultiple && !inputEvent.isComposing && this.#separatorsActive()) {
             this.#handleTokenInput();
@@ -1484,6 +1501,8 @@
         return;
       }
       if (event.type === "click") {
+        if (this.#isReadonly())
+          return;
         const option = target.closest(".cb-option");
         if (!option)
           return;
@@ -1513,6 +1532,8 @@
         const remove = target.closest(".cb-chip-remove");
         if (!remove)
           return;
+        if (this.#isReadonly())
+          return;
         const chip = remove.closest(".cb-chip");
         if (!chip)
           return;
@@ -1539,7 +1560,7 @@
         if (this.isOpen() && stillInside)
           return;
         if (this.isOpen() || this.options.createOnBlur) {
-          if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing) {
+          if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing && !this.#isReadonly()) {
             const value = this.#inputEl().value;
             this.#suppressReopen = true;
             try {
@@ -1570,21 +1591,21 @@
     #onInputKeyDown(event) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        if (!this.isOpen())
+        if (!this.isOpen() && !this.#isReadonly())
           this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
         this.#moveActive(1);
         return;
       }
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        if (!this.isOpen())
+        if (!this.isOpen() && !this.#isReadonly())
           this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
         this.#moveActive(-1);
         return;
       }
       if (event.key === "PageUp" || event.key === "PageDown") {
         event.preventDefault();
-        if (!this.isOpen())
+        if (!this.isOpen() && !this.#isReadonly())
           this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
         const down = event.key === "PageDown";
         const base = this.activeIndex < 0 ? down ? -1 : 0 : this.activeIndex;
@@ -1948,7 +1969,7 @@
         const rendered = this.options.render.item?.(item, { combobox: this });
         setContent(label, rendered ?? item.label);
         chip.append(label);
-        if (!isOptionDisabled(option) && !this.source.disabled) {
+        if (!isOptionDisabled(option) && !this.source.disabled && !this.#isReadonly()) {
           const remove = document.createElement("button");
           remove.type = "button";
           remove.className = "cb-chip-remove";
@@ -2009,6 +2030,8 @@
       }
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
+        if (this.#isReadonly())
+          return;
         this.remove(item.option ?? item.value).then((removed) => {
           if (!removed)
             return;
@@ -2126,7 +2149,7 @@
       if (!this.isMultiple || !this.options.toggleSelected)
         return false;
       const option = item.option instanceof HTMLOptionElement ? item.option : this.#findOption(item.value);
-      if (!option?.selected || isOptionDisabled(option) || this.source.disabled)
+      if (!option?.selected || isOptionDisabled(option) || this.source.disabled || this.#isReadonly())
         return false;
       const snapshot = this.#positionSnapshot(item);
       (async () => {
@@ -2171,6 +2194,9 @@
     }
     #alive() {
       return instances.get(this.source) === this && !this.abortController.signal.aborted;
+    }
+    #isReadonly() {
+      return this.isSelect && this.source.hasAttribute("readonly");
     }
     #commitItemSelection(option, item, { keepQuery = false } = {}) {
       if (this.isSelect && option)
@@ -2432,8 +2458,13 @@
       });
     }
     #dispatchNativeValueEvents() {
-      this.source.dispatchEvent(new Event("input", { bubbles: true }));
-      this.source.dispatchEvent(new Event("change", { bubbles: true }));
+      this.#suppressInputEvent = true;
+      try {
+        this.source.dispatchEvent(new Event("input", { bubbles: true }));
+        this.source.dispatchEvent(new Event("change", { bubbles: true }));
+      } finally {
+        this.#suppressInputEvent = false;
+      }
     }
     #commit() {
       this.source.removeAttribute("aria-invalid");
@@ -2793,18 +2824,22 @@
       this._sourceObserver = null;
       if (this._combobox && this._source === source)
         return this._combobox;
-      if (this._combobox)
-        this._combobox.dispose();
+      const previous = this._combobox;
+      this._combobox = null;
+      this._source = null;
+      if (previous)
+        previous.dispose();
+      const combobox = new Combobox(source, this.#resolvedOptions());
+      this._combobox = combobox;
       this._source = source;
-      this._combobox = new Combobox(source, this.#resolvedOptions());
       const ready = this._readyResolvers.splice(0);
       for (const resolve of ready)
-        resolve(this._combobox);
+        resolve(combobox);
       this.dispatchEvent(new CustomEvent("combobox:ready", {
         bubbles: true,
-        detail: { combobox: this._combobox, source }
+        detail: { combobox, source }
       }));
-      return this._combobox;
+      return combobox;
     }
     whenReady() {
       if (this._combobox)
