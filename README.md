@@ -664,6 +664,8 @@ More detail lives here:
 * [Architecture](docs/ARCHITECTURE.md) — internal model and design decisions
 * [Use cases](docs/USE_CASES.md) — practical examples
 * [Migration](docs/MIGRATION.md) — moving from `bootstrap5-tags` / `bootstrap5-autocomplete`
+* [From Tom Select](docs/MIGRATION_FROM_TOM_SELECT.md) — migrating Tom Select 2.x integrations
+* [From Select2](docs/MIGRATION_FROM_SELECT2.md) — migrating Select2 4.x integrations
 * [Testing](docs/TESTING.md) — browser and behavior coverage
 * [References](docs/REFERENCES.md) — related browser and Open UI work
 

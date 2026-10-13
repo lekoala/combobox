@@ -2,6 +2,8 @@
 
 This guide helps applications move from `bootstrap5-tags` or `bootstrap5-autocomplete` to `@lekoala/combobox`. Combobox is a new API, not a compatibility layer. Preserve use cases, not every historical option name.
 
+For migrations from other libraries, see [Tom Select](MIGRATION_FROM_TOM_SELECT.md) and [Select2](MIGRATION_FROM_SELECT2.md).
+
 ## At a glance
 
 ```html
