@@ -4,7 +4,7 @@ All notable changes to `@lekoala/combobox` are documented here.
 
 The changelog highlights user-facing changes rather than listing every build, dependency, or test commit. Versions and dates follow the GitHub releases.
 
-## [Unreleased]
+## [0.7.0] - 2026-10-17
 
 ### Added
 

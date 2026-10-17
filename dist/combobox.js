@@ -1,4 +1,4 @@
-/*** @lekoala/combobox v0.6.0 - https://github.com/lekoala/combobox ***/
+/*** @lekoala/combobox v0.7.0 - https://github.com/lekoala/combobox ***/
 (() => {
   // node_modules/@lekoala/floating/src/floating.js
   function crossAxisFor(side) {
