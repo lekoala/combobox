@@ -114,40 +114,53 @@ export function normalize(value) {
  * @returns {boolean}
  */
 export function matchesField(value, query, mode) {
-  const normalized = normalize(value);
-  const lookup = normalize(query);
-  switch (String(mode).toLowerCase()) {
-    case "startswith":
-      return normalized.startsWith(lookup);
-    case "fuzzy":
-      return fuzzyMatch(normalized, lookup);
-    case "pattern":
-      return patternMatch(value, query);
-    default:
-      return normalized.includes(lookup);
+  return prepareFieldMatcher(query, mode)(value);
+}
+
+/**
+ * Prepare one query once per filtering pass; no catalogue values are cached.
+ * @param {*} query
+ * @param {*} mode
+ * @returns {(value: any) => boolean}
+ */
+export function prepareFieldMatcher(query, mode) {
+  const strategy = String(mode).toLowerCase();
+  if (strategy === "pattern") {
+    try {
+      const source = String(query ?? "");
+      const pattern = new RegExp(source, "i");
+      const foldedQuery = stripDiacritics(source);
+      const foldedPattern = foldedQuery === source ? pattern : new RegExp(foldedQuery, "i");
+      return (value) => {
+        const raw = String(value ?? "");
+        return pattern.test(raw) || foldedPattern.test(stripDiacritics(raw));
+      };
+    } catch {
+      return () => false;
+    }
   }
+  const lookup = normalize(query);
+  return (value) => {
+    const normalized = normalize(value);
+    switch (strategy) {
+      case "startswith":
+        return normalized.startsWith(lookup);
+      case "fuzzy":
+        return fuzzyMatch(normalized, lookup);
+      default:
+        return normalized.includes(lookup);
+    }
+  };
 }
 
 /**
  * Case- and accent-insensitive regex matching for a single value.
- * See `matchesField` for the contract around the `i`-only flag and the
- * additive accent-fold fallback; an invalid query returns `false`.
- *
  * @param {*} value
  * @param {*} query
  * @returns {boolean}
  */
 export function patternMatch(value, query) {
-  try {
-    const raw = String(value ?? "");
-    const source = String(query ?? "");
-    const pattern = new RegExp(source, "i");
-    const foldedQuery = stripDiacritics(source);
-    const foldedPattern = foldedQuery === source ? pattern : new RegExp(foldedQuery, "i");
-    return pattern.test(raw) || foldedPattern.test(stripDiacritics(raw));
-  } catch {
-    return false;
-  }
+  return prepareFieldMatcher(query, "pattern")(value);
 }
 
 /**
@@ -204,32 +217,27 @@ export function parseSeparators(raw) {
  * @returns {SplitResult}
  */
 export function splitTokens(input, separators) {
-  const result = /** @type {SplitResult} */ ({
-    done: /** @type {Token[]} */ ([]),
-    rest: String(input ?? ""),
-  });
-  if (!result.rest) return result;
+  return prepareTokenSplitter(separators)(input);
+}
 
+/**
+ * Compile separators once; the returned splitter has no mutable input state.
+ * @param {string | string[] | null | undefined} separators
+ * @returns {(input: string | null | undefined) => SplitResult}
+ */
+export function prepareTokenSplitter(separators) {
   const kinds = parseSeparators(separators).sort((a, b) => b.length - a.length);
-  if (!kinds.length) return result;
-
-  const pattern = new RegExp(`(${kinds.map(escapeRegExp).join("|")})`, "g");
-  const parts = result.rest.split(pattern);
-
-  let buffer = "";
-  const done = /** @type {Token[]} */ ([]);
-  for (const part of parts) {
-    if (kinds.includes(part)) {
-      if (buffer) done.push({ text: buffer, sep: part });
-      buffer = "";
-    } else {
-      buffer += part;
+  const pattern = kinds.length ? new RegExp(`(${kinds.map(escapeRegExp).join("|")})`, "g") : null;
+  return (input) => {
+    const text = String(input ?? "");
+    if (!text || !pattern) return { done: [], rest: text };
+    const parts = text.split(pattern);
+    const done = /** @type {Token[]} */ ([]);
+    for (let index = 1; index < parts.length; index += 2) {
+      if (parts[index - 1]) done.push({ text: parts[index - 1], sep: parts[index] });
     }
-  }
-
-  result.done = done;
-  result.rest = buffer;
-  return result;
+    return { done, rest: parts[parts.length - 1] };
+  };
 }
 
 /**

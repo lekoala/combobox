@@ -163,6 +163,9 @@
               "name": "combobox:select"
             },
             {
+              "name": "combobox:tokenerror"
+            },
+            {
               "name": "filter"
             }
           ],

@@ -134,10 +134,15 @@ export function findSelectableOption(combobox, value) {
  */
 export function findCreateMatch(combobox, label) {
   const lookup = normalize(label);
+  let unavailable = null;
   for (const item of readSourceItems(combobox)) {
-    if (normalize(item.value) === lookup || normalize(item.label) === lookup) return item;
+    if (normalize(item.value) !== lookup && normalize(item.label) !== lookup) continue;
+    if (!item.disabled && !(combobox.isMultiple && item.selected)) return item;
+    // Keep a match even when unavailable: never create a duplicate merely
+    // because the existing option is disabled or already selected.
+    if (!unavailable || (unavailable.disabled && !item.disabled)) unavailable = item;
   }
-  return null;
+  return unavailable;
 }
 
 /**

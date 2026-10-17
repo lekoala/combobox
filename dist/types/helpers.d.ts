@@ -122,10 +122,14 @@ export declare function normalize(value: any): string;
  */
 export declare function matchesField(value: any, query: any, mode: any): boolean;
 /**
+ * Prepare one query once per filtering pass; no catalogue values are cached.
+ * @param {*} query
+ * @param {*} mode
+ * @returns {(value: any) => boolean}
+ */
+export declare function prepareFieldMatcher(query: any, mode: any): (value: any) => boolean;
+/**
  * Case- and accent-insensitive regex matching for a single value.
- * See `matchesField` for the contract around the `i`-only flag and the
- * additive accent-fold fallback; an invalid query returns `false`.
- *
  * @param {*} value
  * @param {*} query
  * @returns {boolean}
@@ -158,6 +162,12 @@ export declare function parseSeparators(raw: string | string[] | null | undefine
  * @returns {SplitResult}
  */
 export declare function splitTokens(input: string | null | undefined, separators: string | string[] | null | undefined): SplitResult;
+/**
+ * Compile separators once; the returned splitter has no mutable input state.
+ * @param {string | string[] | null | undefined} separators
+ * @returns {(input: string | null | undefined) => SplitResult}
+ */
+export declare function prepareTokenSplitter(separators: string | string[] | null | undefined): (input: string | null | undefined) => SplitResult;
 /**
  * Rank items by a score function with a stable tiebreak on the original
  * relative order. `score(item, index) => number | false | null`:

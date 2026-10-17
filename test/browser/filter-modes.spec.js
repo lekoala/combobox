@@ -253,3 +253,25 @@ test.describe("pipeline contract", () => {
     expect(state).toEqual(["Strawberry", "Blackberry", "Sómething sour", "Apple pie"]);
   });
 });
+
+test("searchFields ignores inherited item and metadata properties", async ({ page }) => {
+  await setup(page, FUZZY);
+  const state = await page.evaluate(async () => {
+    const select = document.getElementById("plain");
+    const combo = new Combobox(select, { searchFields: ["constructor", "toString", "email"] });
+    combo.setResults([
+      { value: "a", label: "A", data: { email: "own@example.test" } },
+      { value: "b", label: "B", data: Object.create({ email: "inherited@example.test" }) },
+      { value: "c", label: "C", constructor: "authored" },
+    ]);
+    const results = {};
+    const originalValue = select.value;
+    for (const query of ["function", "inherited", "own@", "authored"]) {
+      await combo.search(query);
+      results[query] = combo.filteredItems.map((item) => item.value);
+    }
+    return { results, unchanged: select.value === originalValue };
+  });
+  expect(state.results).toEqual({ function: [], inherited: [], "own@": ["a"], authored: ["c"] });
+  expect(state.unchanged).toBe(true);
+});

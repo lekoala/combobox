@@ -1046,3 +1046,37 @@ test("an external clear button clears through the public API, not DOM hacks", as
   expect(state.chips).toBe(0);
   expect(state.formData).toEqual([]);
 });
+
+test("unexpected token errors are reported and the next batch still runs", async ({ page }) => {
+  await setup(page, "/test/fixtures/features.html");
+  const state = await page.evaluate(async () => {
+    const select = document.createElement("select");
+    select.multiple = true;
+    document.body.append(select);
+    let fail = true;
+    const errors = [];
+    select.addEventListener("combobox:tokenerror", (event) => errors.push(event.detail.error.message));
+    const combo = new Combobox(select, {
+      create: true,
+      separators: [";"],
+      tokenize: (value) => {
+        if (fail) {
+          fail = false;
+          throw new Error("bad tokenizer");
+        }
+        return { tokens: [value.replace(/;$/, "")], rest: "" };
+      },
+    });
+    for (const value of ["first;", "second;"]) {
+      combo.input.value = value;
+      combo.input.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    }
+    return {
+      errors,
+      selected: Array.from(select.selectedOptions, (option) => option.value),
+      values: Array.from(select.options, (option) => option.value),
+    };
+  });
+  expect(state).toEqual({ errors: ["bad tokenizer"], selected: ["second"], values: ["second"] });
+});

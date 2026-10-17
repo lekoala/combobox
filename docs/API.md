@@ -322,6 +322,8 @@ an empty query skips matching entirely (the matcher has nothing to decide) but
 | `pattern` | escape-hatch regex on a field: the query string becomes a `RegExp` with the `i` flag only (never a caller-supplied regex, so no stateful `g`/`y` matcher); case- and accent-insensitive — `liège`, `Liège`, `LIEGE` and `liege` all match each other while regex structure (classes, anchors) is preserved. An invalid regex yields no results, never an error |
 | `function` | `match(item, query, { combobox })` fully owns matching |
 
+`searchFields` reads only own properties on an item or its `data` object; inherited properties are ignored. Built-in matchers prepare the query once per filtering pass, without caching catalogue values.
+
 Multi-token cross-field matching (e.g. `jean paris` matching a name *and* a
 city) is deliberately **out of scope** for the matcher; it belongs to
 application-level query tokenization, not to `match`.
@@ -521,6 +523,8 @@ separators: parseSeparators(",|;"),
 - Separators are **full strings**, matched longest-first (`",|;"` ⇒ `[",", ";"]`); the attribute form is pipe-delimited.
 - Tokens are processed strictly sequentially — `existing → guard → create → select`, never `Promise.all` — and `maxItems` is re-evaluated between tokens (`maxOptions` is unrelated). Batches from successive `input` events are serialized behind the running batch, so typing during a pending async creation cannot overshoot `maxItems`.
 - A refused token (vetoed selection, guard refusal, `maxItems` reached) is **not consumed**: its text stays in the input along with the unprocessed remainder.
+- Existing terms resolve to the first enabled, unselected match in multiple mode; an already-selected match is an idempotent success when no further match is available. A disabled-only match is refused without creating a duplicate, and its text stays editable (including in native fallback).
+- Unexpected token-batch failures (for example a throwing custom tokenizer) emit `combobox:tokenerror` with `{ combobox, error }`. Later input batches still run. Guard and creation failures retain their dedicated `guarderror`/`createerror` events.
 - A trailing incomplete token stays in the input.
 - `tokenize(value, ctx)` replaces the default splitter when the application needs quoting or other rules.
 - IME composition feeds search but never tokenizes or creates.
@@ -752,6 +756,7 @@ combobox:beforecreate  cancellable
 combobox:create
 combobox:createerror
 combobox:guarderror     detail { guard, error }
+combobox:tokenerror     detail { combobox, error }
 ```
 
 ### Ordering

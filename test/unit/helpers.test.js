@@ -9,6 +9,8 @@ import {
   parseList,
   parseSeparators,
   patternMatch,
+  prepareFieldMatcher,
+  prepareTokenSplitter,
   rankByScore,
   reconcileSelected,
   splitTokens,
@@ -298,4 +300,28 @@ test("parseInteger accepts integers and yields undefined for anything else", () 
   expect(parseInteger("2.5")).toBeUndefined();
   expect(parseInteger("3e-1")).toBeUndefined();
   expect(parseInteger(null)).toBeUndefined();
+});
+
+test("prepared field matchers preserve accents, regex structure and repeated-call behavior", () => {
+  const values = ["Liège", "LIEGE", "banana", null, "Liège"];
+  for (const mode of ["includes", "startswith", "pattern"]) {
+    expect(values.map(prepareFieldMatcher("liè", mode))).toEqual([true, true, false, false, true]);
+  }
+  expect(values.map(prepareFieldMatcher("lge", "fuzzy"))).toEqual([true, true, false, false, true]);
+  expect(values.map(prepareFieldMatcher("^[A-Z]+$", "pattern"))).toEqual([true, true, true, false, true]);
+  expect(values.map(prepareFieldMatcher("[", "pattern"))).toEqual([false, false, false, false, false]);
+});
+
+test("prepared separator splitter handles repeated calls, adjacent separators and literal tokens", () => {
+  const split = prepareTokenSplitter([";", ";;", "|", ".*"]);
+  expect(split("a;;b;tail")).toEqual({
+    done: [
+      { text: "a", sep: ";;" },
+      { text: "b", sep: ";" },
+    ],
+    rest: "tail",
+  });
+  expect(split(";|c.*")).toEqual({ done: [{ text: "c", sep: ".*" }], rest: "" });
+  expect(split("again;")).toEqual({ done: [{ text: "again", sep: ";" }], rest: "" });
+  expect(split("rest")).toEqual({ done: [], rest: "rest" });
 });

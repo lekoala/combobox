@@ -482,3 +482,59 @@ test("fallback guards/createFilter receive the Add input on a refused create too
   expect(state.hasPlum).toBe(false);
   expect(state.inputKept).toBe(true);
 });
+
+test("fallback keeps disabled matches editable and selects the first available duplicate", async ({
+  page,
+}) => {
+  await setup(page, ELEMENTS_HTML);
+  const state = await page.evaluate(async () => {
+    const run = async (markup) => {
+      const select = document.createElement("select");
+      select.multiple = true;
+      select.name = "country";
+      select.innerHTML = markup;
+      const form = document.createElement("form");
+      form.append(select);
+      document.body.append(form);
+      const events = [];
+      for (const type of ["input", "change", "combobox:create"]) {
+        select.addEventListener(type, () => events.push(type));
+      }
+      const combo = new Combobox(select, { mode: "fallback", create: true });
+      const input = select.nextElementSibling.querySelector("input");
+      input.value = "Belgium";
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const result = {
+        text: input.value,
+        selected: Array.from(select.options, (option) => option.selected),
+        values: new FormData(form).getAll("country"),
+        count: select.options.length,
+        events,
+      };
+      combo.dispose();
+      form.remove();
+      return result;
+    };
+    return {
+      disabled: await run('<optgroup disabled><option value="be">Belgium</option></optgroup>'),
+      available: await run('<option value="be" disabled>Belgium</option><option value="be">Belgium</option>'),
+      selected: await run('<option value="be" selected>Belgium</option><option value="be">Belgium</option>'),
+    };
+  });
+  expect(state.disabled).toEqual({ text: "Belgium", selected: [false], values: [], count: 1, events: [] });
+  expect(state.available).toEqual({
+    text: "",
+    selected: [false, true],
+    values: ["be"],
+    count: 2,
+    events: ["input", "change"],
+  });
+  expect(state.selected).toEqual({
+    text: "",
+    selected: [true, true],
+    values: ["be", "be"],
+    count: 2,
+    events: ["input", "change"],
+  });
+});

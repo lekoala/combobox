@@ -17,9 +17,10 @@
  * @param {import("./combobox.js").Combobox} combobox
  * @param {import("./helpers.js").ComboboxItem} item
  * @param {string} query
+ * @param {(value: any) => boolean} [matcher]
  * @returns {boolean}
  */
-export declare function matchesItem(combobox: import("./combobox.js").Combobox, item: import("./helpers.js").ComboboxItem, query: string): boolean;
+export declare function matchesItem(combobox: import("./combobox.js").Combobox, item: import("./helpers.js").ComboboxItem, query: string, matcher?: (value: any) => boolean): boolean;
 /**
  * Whether the current query should trigger the remote `load` callback.
  * @param {import("./combobox.js").Combobox} combobox

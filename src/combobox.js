@@ -1,5 +1,5 @@
 import { autoUpdate, reposition } from "@lekoala/floating";
-import { hasOwn, moveValueInOrder, reconcileSelected, splitTokens, toItem } from "./helpers.js";
+import { hasOwn, moveValueInOrder, prepareTokenSplitter, reconcileSelected, toItem } from "./helpers.js";
 import { DEFAULT_MESSAGES, getDefaultMessages, setDefaultMessages } from "./messages.js";
 import { computeFilteredItems, shouldLoadRemote, visibleItemsFor } from "./results.js";
 import {
@@ -454,6 +454,15 @@ export class Combobox {
   /** @type {Promise<void>} Serialized token-batch queue (see #enqueueTokens). */
   #tokenQueue = Promise.resolve();
 
+  #separatorKey = "";
+  #splitTokens = prepareTokenSplitter([]);
+
+  /** @type {HTMLOptionElement | null} */
+  #activeOption = null;
+
+  /** @type {WeakSet<HTMLOptionElement>} */
+  #initializedActiveMarkers = new WeakSet();
+
   /**
    * Read the current default UI messages. Returns a shallow copy; mutating
    * the result does not affect the engine.
@@ -854,7 +863,7 @@ export class Combobox {
           emit(this.source, "combobox:select", { combobox: this, item });
         }
       }
-      return option ?? null;
+      return option && !isOptionDisabled(option) ? option : null;
     }
 
     const item = await this.#materializeCreated(label, input, { fallback: true });
@@ -1053,11 +1062,15 @@ export class Combobox {
 
     if (!this.isSelect) return this.results;
 
+    const byValue = new Map();
+    for (const option of this.#selectSource().options) {
+      if (!byValue.has(option.value)) byValue.set(option.value, option);
+    }
     return this.results.map((item) => {
       // Option identity is the element, never the value string, so transient
       // items resolve their selected state through their exact option. A plain
       // value falls back to the first matching source option.
-      const option = item.option || this.#findOption(item.value);
+      const option = item.option || byValue.get(item.value) || null;
       return { ...item, selected: option?.selected ?? false, option };
     });
   }
@@ -1999,7 +2012,7 @@ export class Combobox {
         active: option.getAttribute("data-active-option"),
       });
     }
-    option.toggleAttribute(attribute, on);
+    if (option.hasAttribute(attribute) !== on) option.toggleAttribute(attribute, on);
   }
 
   /**
@@ -2014,8 +2027,12 @@ export class Combobox {
     // migration path to the platform primitive is explicit.
     const visibleOptions = new Set(visible.map((item) => item.option));
     for (const item of items) {
-      if (item.option)
-        this.#writeOptionMarker(item.option, "data-filtered", !visibleOptions.has(item.option));
+      if (!item.option) continue;
+      this.#writeOptionMarker(item.option, "data-filtered", !visibleOptions.has(item.option));
+      if (!this.#initializedActiveMarkers.has(item.option)) {
+        this.#writeOptionMarker(item.option, "data-active-option", false);
+        this.#initializedActiveMarkers.add(item.option);
+      }
     }
 
     this.#renderList();
@@ -2405,11 +2422,15 @@ export class Combobox {
    * @param {number} index
    */
   #setActive(index) {
-    if (index >= this.visibleItems.length) index = -1;
+    const visible = this.visibleItems;
+    if (index >= visible.length) index = -1;
     this.activeIndex = index;
 
-    for (const item of this.#sourceItems()) {
-      if (item.option) this.#writeOptionMarker(item.option, "data-active-option", false);
+    const activeOption = index >= 0 ? (visible[index]?.option ?? null) : null;
+    if (this.#activeOption !== activeOption) {
+      if (this.#activeOption) this.#writeOptionMarker(this.#activeOption, "data-active-option", false);
+      if (activeOption) this.#writeOptionMarker(activeOption, "data-active-option", true);
+      this.#activeOption = activeOption;
     }
 
     for (const option of this.#listEl().querySelectorAll(".cb-option[data-index]")) {
@@ -2418,8 +2439,6 @@ export class Combobox {
       el.toggleAttribute("data-active", active);
       if (active) {
         this.#inputEl().setAttribute("aria-activedescendant", el.id);
-        const activeOption = this.visibleItems[index]?.option;
-        if (activeOption) this.#writeOptionMarker(activeOption, "data-active-option", true);
         el.scrollIntoView({ block: "nearest" });
       }
     }
@@ -2667,6 +2686,7 @@ export class Combobox {
     if (existing) {
       // An already-selected match is an idempotent success; a refused
       // selection fails the creation so callers keep the text editable.
+      if (existing.disabled) return null;
       if (existing.option?.selected) return existing.option;
       return this.#selectItem(existing) ? (existing.option ?? null) : null;
     }
@@ -2845,7 +2865,12 @@ export class Combobox {
       return { entries, rest: final ? "" : String(result?.rest ?? "") };
     }
 
-    const { done, rest } = splitTokens(value, this.options.separators);
+    const separatorKey = JSON.stringify(this.options.separators);
+    if (separatorKey !== this.#separatorKey) {
+      this.#separatorKey = separatorKey;
+      this.#splitTokens = prepareTokenSplitter(this.options.separators);
+    }
+    const { done, rest } = this.#splitTokens(value);
     const entries = final && rest.trim() ? [...done, { text: rest.trim(), sep: "" }] : done;
     return { entries, rest: final ? "" : rest };
   }
@@ -2906,6 +2931,7 @@ export class Combobox {
 
     const existing = this.#findCreateMatch(term);
     if (existing) {
+      if (existing.disabled) return false;
       if (existing.option?.selected) return true;
       return this.#selectItem(existing);
     }
@@ -2923,7 +2949,11 @@ export class Combobox {
    * @returns {Promise<void>}
    */
   #enqueueTokens(batch) {
-    this.#tokenQueue = this.#tokenQueue.then(batch).catch(() => {});
+    this.#tokenQueue = this.#tokenQueue.then(batch).catch((error) => {
+      // Recover the queue for later input, but surface unexpected callback or
+      // engine failures instead of silently turning them into successful work.
+      emit(this.source, "combobox:tokenerror", { combobox: this, error });
+    });
     return this.#tokenQueue;
   }
 

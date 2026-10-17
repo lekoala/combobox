@@ -364,31 +364,34 @@
   function normalize(value) {
     return stripDiacritics(value).toLocaleLowerCase();
   }
-  function matchesField(value, query, mode) {
-    const normalized = normalize(value);
+  function prepareFieldMatcher(query, mode) {
+    const strategy = String(mode).toLowerCase();
+    if (strategy === "pattern") {
+      try {
+        const source = String(query ?? "");
+        const pattern = new RegExp(source, "i");
+        const foldedQuery = stripDiacritics(source);
+        const foldedPattern = foldedQuery === source ? pattern : new RegExp(foldedQuery, "i");
+        return (value) => {
+          const raw = String(value ?? "");
+          return pattern.test(raw) || foldedPattern.test(stripDiacritics(raw));
+        };
+      } catch {
+        return () => false;
+      }
+    }
     const lookup = normalize(query);
-    switch (String(mode).toLowerCase()) {
-      case "startswith":
-        return normalized.startsWith(lookup);
-      case "fuzzy":
-        return fuzzyMatch(normalized, lookup);
-      case "pattern":
-        return patternMatch(value, query);
-      default:
-        return normalized.includes(lookup);
-    }
-  }
-  function patternMatch(value, query) {
-    try {
-      const raw = String(value ?? "");
-      const source = String(query ?? "");
-      const pattern = new RegExp(source, "i");
-      const foldedQuery = stripDiacritics(source);
-      const foldedPattern = foldedQuery === source ? pattern : new RegExp(foldedQuery, "i");
-      return pattern.test(raw) || foldedPattern.test(stripDiacritics(raw));
-    } catch {
-      return false;
-    }
+    return (value) => {
+      const normalized = normalize(value);
+      switch (strategy) {
+        case "startswith":
+          return normalized.startsWith(lookup);
+        case "fuzzy":
+          return fuzzyMatch(normalized, lookup);
+        default:
+          return normalized.includes(lookup);
+      }
+    };
   }
   function toItem(raw, fields = null) {
     if (raw == null)
@@ -414,32 +417,21 @@
       return [];
     return String(raw).split("|").filter((separator) => separator.length > 0);
   }
-  function splitTokens(input, separators) {
-    const result = {
-      done: [],
-      rest: String(input ?? "")
-    };
-    if (!result.rest)
-      return result;
+  function prepareTokenSplitter(separators) {
     const kinds = parseSeparators(separators).sort((a, b) => b.length - a.length);
-    if (!kinds.length)
-      return result;
-    const pattern = new RegExp(`(${kinds.map(escapeRegExp).join("|")})`, "g");
-    const parts = result.rest.split(pattern);
-    let buffer = "";
-    const done = [];
-    for (const part of parts) {
-      if (kinds.includes(part)) {
-        if (buffer)
-          done.push({ text: buffer, sep: part });
-        buffer = "";
-      } else {
-        buffer += part;
+    const pattern = kinds.length ? new RegExp(`(${kinds.map(escapeRegExp).join("|")})`, "g") : null;
+    return (input) => {
+      const text = String(input ?? "");
+      if (!text || !pattern)
+        return { done: [], rest: text };
+      const parts = text.split(pattern);
+      const done = [];
+      for (let index = 1;index < parts.length; index += 2) {
+        if (parts[index - 1])
+          done.push({ text: parts[index - 1], sep: parts[index] });
       }
-    }
-    result.done = done;
-    result.rest = buffer;
-    return result;
+      return { done, rest: parts[parts.length - 1] };
+    };
   }
   function rankByScore(items, score) {
     return items.map((item, index) => ({ item, index, score: score(item, index) })).filter((entry) => entry.score !== false && entry.score !== null).sort((a, b) => Number(b.score) - Number(a.score) || a.index - b.index).map((entry) => entry.item);
@@ -522,7 +514,7 @@
   }
 
   // src/results.js
-  function matchesItem(combobox, item, query) {
+  function matchesItem(combobox, item, query, matcher = prepareFieldMatcher(query, combobox.options.match)) {
     if (!query)
       return true;
     const input = combobox.input;
@@ -535,11 +527,11 @@
     }
     const fields = Array.isArray(combobox.options.searchFields) ? combobox.options.searchFields : combobox.options.searchFields ? [combobox.options.searchFields] : [];
     const values = fields.map((field) => {
-      if (field in item)
+      if (hasOwn(item, field))
         return String(item[field] ?? "");
-      return String(item.data?.[field] ?? "");
+      return String(item.data && hasOwn(item.data, field) ? item.data[field] ?? "" : "");
     });
-    return values.some((value) => matchesField(value, query, combobox.options.match));
+    return values.some((value) => matcher(value));
   }
   function shouldLoadRemote(combobox, query) {
     const input = combobox.input;
@@ -550,10 +542,11 @@
   }
   function computeFilteredItems(combobox, items, query) {
     const input = combobox.input;
+    const matcher = prepareFieldMatcher(query, combobox.options.match);
     let visible = items.filter((item) => {
       if (combobox.isMultiple && item.selected && !combobox.options.toggleSelected)
         return false;
-      return matchesItem(combobox, item, query);
+      return matchesItem(combobox, item, query, matcher);
     });
     const context = { combobox, source: combobox.source, input };
     if (typeof combobox.options.filter === "function") {
@@ -624,11 +617,16 @@
   }
   function findCreateMatch(combobox, label) {
     const lookup = normalize(label);
+    let unavailable = null;
     for (const item of readSourceItems(combobox)) {
-      if (normalize(item.value) === lookup || normalize(item.label) === lookup)
+      if (normalize(item.value) !== lookup && normalize(item.label) !== lookup)
+        continue;
+      if (!item.disabled && !(combobox.isMultiple && item.selected))
         return item;
+      if (!unavailable || unavailable.disabled && !item.disabled)
+        unavailable = item;
     }
-    return null;
+    return unavailable;
   }
   function fieldsFor(combobox) {
     const { labelField, valueField } = combobox.options;
@@ -866,6 +864,10 @@
     #suppressInputEvent = false;
     #resolvedCoordinateSpace = "viewport";
     #tokenQueue = Promise.resolve();
+    #separatorKey = "";
+    #splitTokens = prepareTokenSplitter([]);
+    #activeOption = null;
+    #initializedActiveMarkers = new WeakSet;
     static getDefaultMessages() {
       return getDefaultMessages();
     }
@@ -1064,7 +1066,7 @@
             emit(this.source, "combobox:select", { combobox: this, item });
           }
         }
-        return option ?? null;
+        return option && !isOptionDisabled(option) ? option : null;
       }
       const item = await this.#materializeCreated(label, input, { fallback: true });
       return item?.option ?? null;
@@ -1191,8 +1193,13 @@
         return this.#sourceItems();
       if (!this.isSelect)
         return this.results;
+      const byValue = new Map;
+      for (const option of this.#selectSource().options) {
+        if (!byValue.has(option.value))
+          byValue.set(option.value, option);
+      }
       return this.results.map((item) => {
-        const option = item.option || this.#findOption(item.value);
+        const option = item.option || byValue.get(item.value) || null;
         return { ...item, selected: option?.selected ?? false, option };
       });
     }
@@ -1821,7 +1828,8 @@
           active: option.getAttribute("data-active-option")
         });
       }
-      option.toggleAttribute(attribute, on);
+      if (option.hasAttribute(attribute) !== on)
+        option.toggleAttribute(attribute, on);
     }
     #applyFilter(query) {
       const items = this.#items();
@@ -1829,8 +1837,13 @@
       this.filteredItems = visible;
       const visibleOptions = new Set(visible.map((item) => item.option));
       for (const item of items) {
-        if (item.option)
-          this.#writeOptionMarker(item.option, "data-filtered", !visibleOptions.has(item.option));
+        if (!item.option)
+          continue;
+        this.#writeOptionMarker(item.option, "data-filtered", !visibleOptions.has(item.option));
+        if (!this.#initializedActiveMarkers.has(item.option)) {
+          this.#writeOptionMarker(item.option, "data-active-option", false);
+          this.#initializedActiveMarkers.add(item.option);
+        }
       }
       this.#renderList();
       this.#setActive(this.options.autoselectFirst ? this.visibleItems.findIndex((item) => !item.disabled) : -1);
@@ -2103,12 +2116,17 @@
       return Math.max(1, Math.floor(view / row));
     }
     #setActive(index) {
-      if (index >= this.visibleItems.length)
+      const visible = this.visibleItems;
+      if (index >= visible.length)
         index = -1;
       this.activeIndex = index;
-      for (const item of this.#sourceItems()) {
-        if (item.option)
-          this.#writeOptionMarker(item.option, "data-active-option", false);
+      const activeOption = index >= 0 ? visible[index]?.option ?? null : null;
+      if (this.#activeOption !== activeOption) {
+        if (this.#activeOption)
+          this.#writeOptionMarker(this.#activeOption, "data-active-option", false);
+        if (activeOption)
+          this.#writeOptionMarker(activeOption, "data-active-option", true);
+        this.#activeOption = activeOption;
       }
       for (const option of this.#listEl().querySelectorAll(".cb-option[data-index]")) {
         const el = option;
@@ -2116,9 +2134,6 @@
         el.toggleAttribute("data-active", active);
         if (active) {
           this.#inputEl().setAttribute("aria-activedescendant", el.id);
-          const activeOption = this.visibleItems[index]?.option;
-          if (activeOption)
-            this.#writeOptionMarker(activeOption, "data-active-option", true);
           el.scrollIntoView({ block: "nearest" });
         }
       }
@@ -2263,6 +2278,8 @@
         return null;
       const existing = this.#findCreateMatch(label);
       if (existing) {
+        if (existing.disabled)
+          return null;
         if (existing.option?.selected)
           return existing.option;
         return this.#selectItem(existing) ? existing.option ?? null : null;
@@ -2378,7 +2395,12 @@
         const entries = tokens.map((text) => ({ text: String(text), sep: "" }));
         return { entries, rest: final ? "" : String(result?.rest ?? "") };
       }
-      const { done, rest } = splitTokens(value, this.options.separators);
+      const separatorKey = JSON.stringify(this.options.separators);
+      if (separatorKey !== this.#separatorKey) {
+        this.#separatorKey = separatorKey;
+        this.#splitTokens = prepareTokenSplitter(this.options.separators);
+      }
+      const { done, rest } = this.#splitTokens(value);
       const entries = final && rest.trim() ? [...done, { text: rest.trim(), sep: "" }] : done;
       return { entries, rest: final ? "" : rest };
     }
@@ -2420,6 +2442,8 @@
         return true;
       const existing = this.#findCreateMatch(term);
       if (existing) {
+        if (existing.disabled)
+          return false;
         if (existing.option?.selected)
           return true;
         return this.#selectItem(existing);
@@ -2430,7 +2454,9 @@
       return created !== null;
     }
     #enqueueTokens(batch) {
-      this.#tokenQueue = this.#tokenQueue.then(batch).catch(() => {});
+      this.#tokenQueue = this.#tokenQueue.then(batch).catch((error) => {
+        emit(this.source, "combobox:tokenerror", { combobox: this, error });
+      });
       return this.#tokenQueue;
     }
     async#handleTokenInput() {

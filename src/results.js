@@ -8,7 +8,7 @@
  * the popover.
  */
 
-import { matchesField, rankByScore } from "./helpers.js";
+import { hasOwn, prepareFieldMatcher, rankByScore } from "./helpers.js";
 
 /**
  * Decision helper: an empty query is "no textual search", so the matcher
@@ -20,9 +20,15 @@ import { matchesField, rankByScore } from "./helpers.js";
  * @param {import("./combobox.js").Combobox} combobox
  * @param {import("./helpers.js").ComboboxItem} item
  * @param {string} query
+ * @param {(value: any) => boolean} [matcher]
  * @returns {boolean}
  */
-export function matchesItem(combobox, item, query) {
+export function matchesItem(
+  combobox,
+  item,
+  query,
+  matcher = prepareFieldMatcher(query, combobox.options.match),
+) {
   if (!query) return true;
 
   const input = /** @type {HTMLInputElement} */ (combobox.input);
@@ -40,10 +46,10 @@ export function matchesItem(combobox, item, query) {
       ? [combobox.options.searchFields]
       : [];
   const values = fields.map((field) => {
-    if (field in item) return String(item[field] ?? "");
-    return String(item.data?.[field] ?? "");
+    if (hasOwn(item, field)) return String(item[field] ?? "");
+    return String(item.data && hasOwn(item.data, field) ? (item.data[field] ?? "") : "");
   });
-  return values.some((value) => matchesField(value, query, combobox.options.match));
+  return values.some((value) => matcher(value));
 }
 
 /**
@@ -78,9 +84,10 @@ export function shouldLoadRemote(combobox, query) {
  */
 export function computeFilteredItems(combobox, items, query) {
   const input = /** @type {HTMLInputElement} */ (combobox.input);
+  const matcher = prepareFieldMatcher(query, combobox.options.match);
   let visible = items.filter((item) => {
     if (combobox.isMultiple && item.selected && !combobox.options.toggleSelected) return false;
-    return matchesItem(combobox, item, query);
+    return matchesItem(combobox, item, query, matcher);
   });
 
   const context = { combobox, source: combobox.source, input };
