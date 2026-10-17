@@ -108,6 +108,11 @@ Real validation example:
 
 ## UC5 — Remote search with dependent fields
 
+Remote searches respect the requested picker visibility during loading and
+completion. Pagination belongs to the current result set: clearing it or changing
+query invalidates the old cursor, and stale pages cannot update the picker after
+a newer search or disposal. Neither loading nor cancellation changes native values.
+
 Real application requirement: a query also depends on values from other form fields.
 
 Do not encode “extra selectors” into the library. Read them in the loader:

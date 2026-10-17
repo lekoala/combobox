@@ -1220,6 +1220,10 @@
       return this;
     }
     clearResults() {
+      this.searchGeneration++;
+      this.loadController?.abort();
+      this.loading = false;
+      this.nextCursor = null;
       this.results = null;
       this.loadError = null;
       return this;
@@ -1570,6 +1574,8 @@
     }
     #onInputBlur() {
       queueMicrotask(async () => {
+        if (!this.#alive())
+          return;
         const active = document.activeElement;
         const stillInside = active === this.#inputEl() || (this.#popoverEl()?.contains(active) ?? false) || this.anchor && active && this.anchor.contains(active) || this.control && active && this.control.contains(active);
         if (this.isOpen() && stillInside)
@@ -1584,17 +1590,19 @@
                   if (!this.#alive())
                     return;
                   const result = await this.#processTokens(this.#inputEl().value, { final: true });
-                  if (result?.consumed)
+                  if (this.#alive() && result)
                     this.#inputEl().value = result.rest;
                 });
               } else if (value.trim()) {
                 const created = await this.#createItem(value.trim());
-                if (created)
+                if (this.#alive() && created)
                   this.#inputEl().value = "";
               }
             } finally {
               this.#suppressReopen = false;
             }
+            if (!this.#alive())
+              return;
             this.refresh();
           }
           if (this.isSelect && !this.isMultiple)
@@ -1703,7 +1711,7 @@
       }
     }
     async search(query = "", { show = false, reason = "api" } = {}) {
-      if (this.mode !== "enhanced")
+      if (this.mode !== "enhanced" || !this.#alive())
         return;
       const generation = ++this.searchGeneration;
       this.query = String(query ?? "");
@@ -1713,11 +1721,11 @@
         source: this.source,
         reason
       }, { cancelable: true });
-      if (before.defaultPrevented)
+      if (before.defaultPrevented || !this.#alive())
         return;
       if (this.#shouldLoad(this.query)) {
-        await this.#load(this.query, { debounce: reason === "input" });
-        if (generation !== this.searchGeneration)
+        await this.#load(this.query, { debounce: reason === "input", show });
+        if (!this.#alive() || generation !== this.searchGeneration)
           return;
       } else {
         this.loadController?.abort();
@@ -1768,16 +1776,21 @@
     #shouldLoad(query) {
       return shouldLoadRemote(this, query);
     }
-    async#load(query, { cursor = null, append = false, debounce = false } = {}) {
+    async#load(query, { cursor = null, append = false, debounce = false, show = false } = {}) {
+      if (!this.#alive())
+        return false;
+      if (!append)
+        this.nextCursor = null;
       this.loadController?.abort();
       this.loadController = new AbortController;
       const signal = this.loadController.signal;
+      this.loading = false;
       this.loadError = null;
       if (debounce && Number(this.options.debounce) > 0) {
         try {
           await wait(Number(this.options.debounce), signal);
         } catch {
-          return;
+          return false;
         }
       }
       const before = emit(this.source, "combobox:beforeload", {
@@ -1786,11 +1799,12 @@
         combobox: this,
         signal
       }, { cancelable: true });
-      if (before.defaultPrevented)
-        return;
+      if (before.defaultPrevented || signal.aborted || !this.#alive())
+        return false;
       this.loading = true;
       this.#renderLoading();
-      this.show();
+      if (show)
+        this.show();
       try {
         const result = await this.options.load(query, {
           signal,
@@ -1800,7 +1814,7 @@
           input: this.#inputEl()
         });
         if (signal.aborted || !this.#alive())
-          return;
+          return false;
         const items = Array.isArray(result) ? result : result?.items;
         if (items) {
           const merged = append && this.results ? [...this.results, ...items] : items;
@@ -1812,16 +1826,18 @@
           combobox: this,
           result
         });
+        return true;
       } catch (error) {
         const caught = error;
-        if (signal.aborted || caught?.name === "AbortError")
-          return;
+        if (signal.aborted || !this.#alive() || caught?.name === "AbortError")
+          return false;
         this.loadError = caught;
         emit(this.source, "combobox:loaderror", {
           query,
           combobox: this,
           error: caught
         });
+        return false;
       } finally {
         if (!signal.aborted)
           this.loading = false;
@@ -2136,16 +2152,16 @@
           this.#writeOptionMarker(activeOption, "data-active-option", true);
         this.#activeOption = activeOption;
       }
-      for (const option of this.#listEl().querySelectorAll(".cb-option[data-index]")) {
-        const el = option;
-        const active = Number(el.dataset.index) === index;
-        el.toggleAttribute("data-active", active);
-        if (active) {
-          this.#inputEl().setAttribute("aria-activedescendant", el.id);
-          el.scrollIntoView({ block: "nearest" });
-        }
+      const previous = this.#listEl().querySelector(".cb-option[data-active]");
+      const next = index >= 0 ? this.#listEl().querySelector(`.cb-option[data-index="${index}"]`) : null;
+      if (previous !== next) {
+        previous?.removeAttribute("data-active");
+        next?.setAttribute("data-active", "");
+        next?.scrollIntoView({ block: "nearest" });
       }
-      if (index < 0)
+      if (next)
+        this.#inputEl().setAttribute("aria-activedescendant", next.id);
+      else
         this.#inputEl().removeAttribute("aria-activedescendant");
     }
     #restorePosition({ option, index, scrollTop }) {
@@ -2254,13 +2270,11 @@
             this.#inputEl().value = "";
           this.#commit();
           if (this.#suppressReopen) {
-            this.refresh();
             if (snapshot)
               this.#restorePosition(snapshot);
           } else if (this.#closeOnSelect())
             this.hide();
           else if (snapshot) {
-            this.refresh();
             this.#restorePosition(snapshot);
           } else
             this.search("", { show: true, reason: "select" });
@@ -2401,7 +2415,7 @@
         const result = custom(value, { combobox: this, source: this.source, input: this.#inputEl() });
         const tokens = result && Array.isArray(result.tokens) ? result.tokens : [];
         const entries = tokens.map((text) => ({ text: String(text), sep: "" }));
-        return { entries, rest: final ? "" : String(result?.rest ?? "") };
+        return { entries, rest: String(result?.rest ?? "") };
       }
       const separatorKey = JSON.stringify(this.options.separators);
       if (separatorKey !== this.#separatorKey) {
@@ -2435,14 +2449,20 @@
       for (let index = 0;index < entries.length; index++) {
         const entry = entries[index];
         if (this.options.maxItems > 0 && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
-          return { consumed: false, rest: value.slice(consumedLength) };
+          return {
+            consumed: false,
+            rest: typeof this.options.tokenize === "function" ? value : value.slice(consumedLength)
+          };
         }
         if (!await this.#applyToken(entry.text)) {
-          return { consumed: false, rest: value.slice(consumedLength) };
+          return {
+            consumed: false,
+            rest: typeof this.options.tokenize === "function" ? value : value.slice(consumedLength)
+          };
         }
         consumedLength += entry.text.length + entry.sep.length;
       }
-      return { consumed: true, rest: final ? "" : rest };
+      return { consumed: true, rest };
     }
     async#applyToken(text) {
       const term = String(text ?? "").trim();
@@ -2481,15 +2501,16 @@
       });
     }
     async#commitEnterTokens(resolved) {
+      const value = this.#inputEl().value;
       return this.#enqueueTokens(async () => {
         if (!this.#alive())
           return;
-        const result = await this.#processTokens(this.#inputEl().value, { final: true, resolved });
+        const result = await this.#processTokens(value, { final: true, resolved });
         if (!this.#alive())
           return;
-        if (result?.consumed) {
+        if (result) {
           this.#inputEl().value = result.rest;
-          this.search("", { show: true, reason: "create" });
+          this.search(result.rest, { show: true, reason: "create" });
         }
       });
     }
@@ -2559,7 +2580,6 @@
       this.#forgetSelection(option);
       this.#commit();
       emit(this.source, "combobox:remove", { combobox: this, item });
-      this.refresh();
       this.#markEngineMutation();
       return true;
     }
@@ -2600,7 +2620,6 @@
       this.selectionOrder = this.selectionOrder.filter((option) => option.selected);
       this.#commit();
       emit(this.source, "combobox:clear", { combobox: this });
-      this.refresh();
       this.#markEngineMutation();
       return true;
     }
@@ -2627,8 +2646,11 @@
       const before = emit(this.source, "combobox:beforereorder", { combobox: this, value: option.value, from, to }, { cancelable: true });
       if (before.defaultPrevented)
         return false;
+      const valueChanged = nextOrder.some((entry, position) => entry.value !== this.selectionOrder[position]?.value);
       this.selectionOrder = nextOrder;
       this.#renderChips();
+      if (valueChanged)
+        this.#dispatchNativeValueEvents();
       emit(this.source, "combobox:reorder", {
         combobox: this,
         value: option.value,
@@ -2639,12 +2661,17 @@
       return true;
     }
     async loadMore() {
-      if (!this.nextCursor || typeof this.options.load !== "function")
+      if (!this.#alive() || !this.nextCursor || typeof this.options.load !== "function")
         return false;
       const cursor = this.nextCursor;
-      await this.#load(this.query, { cursor, append: true, debounce: false });
+      const generation = this.searchGeneration;
+      const pending = this.#load(this.query, { cursor, append: true, debounce: false });
+      const controller = this.loadController;
+      const loaded = await pending;
+      if (!this.#alive() || generation !== this.searchGeneration || controller !== this.loadController || controller?.signal.aborted)
+        return false;
       this.#applyFilter(this.query);
-      return true;
+      return loaded;
     }
     refresh() {
       if (this.mode !== "enhanced")
@@ -2652,8 +2679,13 @@
       if (this.isSelect) {
         this.#inputEl().disabled = this.source.disabled;
         this.#inputEl().readOnly = this.source.hasAttribute("readonly");
-        for (const option of this.#selectSource().selectedOptions)
-          this.#rememberSelection(option);
+        const remembered = new Set(this.selectionOrder);
+        for (const option of this.#selectSource().selectedOptions) {
+          if (!remembered.has(option)) {
+            this.selectionOrder.push(option);
+            remembered.add(option);
+          }
+        }
         if (this.source.required)
           this.#inputEl().setAttribute("aria-required", "true");
         else
@@ -2731,11 +2763,8 @@
         const scope = this.isSelect ? Array.from(this.#selectSource().options) : Array.from(this.datalist.options);
         for (const option of scope) {
           const marker = this.original.optionMarkers.get(option);
-          if (!marker) {
-            option.removeAttribute("data-filtered");
-            option.removeAttribute("data-active-option");
+          if (!marker)
             continue;
-          }
           if (marker.filtered === null)
             option.removeAttribute("data-filtered");
           else

@@ -1115,6 +1115,10 @@ export class Combobox {
   }
 
   clearResults() {
+    this.searchGeneration++;
+    this.loadController?.abort();
+    this.loading = false;
+    this.nextCursor = null;
     this.results = null;
     // A failed load is scoped to the newest search: any later local query,
     // successful load or explicit clear drops the stale error row.
@@ -1648,6 +1652,7 @@ export class Combobox {
 
   #onInputBlur() {
     queueMicrotask(async () => {
+      if (!this.#alive()) return;
       const active = document.activeElement;
       // Blur caused by internal interaction (picker click, adornment,
       // chip removal, clear) never closes and never blur-creates.
@@ -1676,18 +1681,19 @@ export class Combobox {
               await this.#enqueueTokens(async () => {
                 if (!this.#alive()) return;
                 const result = await this.#processTokens(this.#inputEl().value, { final: true });
-                if (result?.consumed) this.#inputEl().value = result.rest;
+                if (this.#alive() && result) this.#inputEl().value = result.rest;
               });
             } else if (value.trim()) {
               // The input clears only once the creation actually landed:
               // a refused guard, a cancelled beforecreate or a vetoed
               // beforeselect leaves the typed text editable.
               const created = await this.#createItem(value.trim());
-              if (created) this.#inputEl().value = "";
+              if (this.#alive() && created) this.#inputEl().value = "";
             }
           } finally {
             this.#suppressReopen = false;
           }
+          if (!this.#alive()) return;
           this.refresh();
         }
         if (this.isSelect && !this.isMultiple) this.#syncSingleLabel();
@@ -1829,7 +1835,7 @@ export class Combobox {
    * @param {{ show?: boolean, reason?: string }} [options]
    */
   async search(query = "", { show = false, reason = "api" } = {}) {
-    if (this.mode !== "enhanced") return;
+    if (this.mode !== "enhanced" || !this.#alive()) return;
 
     const generation = ++this.searchGeneration;
     this.query = String(query ?? "");
@@ -1847,11 +1853,11 @@ export class Combobox {
     );
 
     // Open UI semantics: cancel beforefilter and script fully owns filtering.
-    if (before.defaultPrevented) return;
+    if (before.defaultPrevented || !this.#alive()) return;
 
     if (this.#shouldLoad(this.query)) {
-      await this.#load(this.query, { debounce: reason === "input" });
-      if (generation !== this.searchGeneration) return;
+      await this.#load(this.query, { debounce: reason === "input", show });
+      if (!this.#alive() || generation !== this.searchGeneration) return;
     } else {
       // A local query replaces any pending remote one: abort it so a stale
       // response can neither repopulate results nor leave a stuck Loading row.
@@ -1938,19 +1944,23 @@ export class Combobox {
 
   /**
    * @param {string} query
-   * @param {{ cursor?: string | null, append?: boolean, debounce?: boolean }} [options]
+   * @param {{ cursor?: string | null, append?: boolean, debounce?: boolean, show?: boolean }} [options]
+   * @returns {Promise<boolean>} True only when a response was applied
    */
-  async #load(query, { cursor = null, append = false, debounce = false } = {}) {
+  async #load(query, { cursor = null, append = false, debounce = false, show = false } = {}) {
+    if (!this.#alive()) return false;
+    if (!append) this.nextCursor = null;
     this.loadController?.abort();
     this.loadController = new AbortController();
     const signal = this.loadController.signal;
+    this.loading = false;
     this.loadError = null;
 
     if (debounce && Number(this.options.debounce) > 0) {
       try {
         await wait(Number(this.options.debounce), signal);
       } catch {
-        return;
+        return false;
       }
     }
 
@@ -1965,11 +1975,11 @@ export class Combobox {
       },
       { cancelable: true },
     );
-    if (before.defaultPrevented) return;
+    if (before.defaultPrevented || signal.aborted || !this.#alive()) return false;
 
     this.loading = true;
     this.#renderLoading();
-    this.show();
+    if (show) this.show();
 
     try {
       const result = await this.options.load(query, {
@@ -1979,7 +1989,7 @@ export class Combobox {
         source: this.source,
         input: this.#inputEl(),
       });
-      if (signal.aborted || !this.#alive()) return;
+      if (signal.aborted || !this.#alive()) return false;
 
       const items = Array.isArray(result) ? result : result?.items;
       if (items) {
@@ -1995,9 +2005,10 @@ export class Combobox {
         combobox: this,
         result,
       });
+      return true;
     } catch (error) {
       const caught = /** @type {any} */ (error);
-      if (signal.aborted || caught?.name === "AbortError") return;
+      if (signal.aborted || !this.#alive() || caught?.name === "AbortError") return false;
       // The error row mirrors loading: it replaces the list for this query and
       // is cleared by the next successful load or local search. Long-lived
       // selection lives on the native source and is untouched by a failed load.
@@ -2007,6 +2018,7 @@ export class Combobox {
         combobox: this,
         error: caught,
       });
+      return false;
     } finally {
       if (!signal.aborted) this.loading = false;
     }
@@ -2451,17 +2463,15 @@ export class Combobox {
       this.#activeOption = activeOption;
     }
 
-    for (const option of this.#listEl().querySelectorAll(".cb-option[data-index]")) {
-      const el = /** @type {HTMLElement} */ (option);
-      const active = Number(el.dataset.index) === index;
-      el.toggleAttribute("data-active", active);
-      if (active) {
-        this.#inputEl().setAttribute("aria-activedescendant", el.id);
-        el.scrollIntoView({ block: "nearest" });
-      }
+    const previous = this.#listEl().querySelector(".cb-option[data-active]");
+    const next = index >= 0 ? this.#listEl().querySelector(`.cb-option[data-index="${index}"]`) : null;
+    if (previous !== next) {
+      previous?.removeAttribute("data-active");
+      next?.setAttribute("data-active", "");
+      next?.scrollIntoView({ block: "nearest" });
     }
-
-    if (index < 0) this.#inputEl().removeAttribute("aria-activedescendant");
+    if (next) this.#inputEl().setAttribute("aria-activedescendant", next.id);
+    else this.#inputEl().removeAttribute("aria-activedescendant");
   }
 
   /**
@@ -2666,11 +2676,9 @@ export class Combobox {
         if (!keepQuery) this.#inputEl().value = "";
         this.#commit();
         if (this.#suppressReopen) {
-          this.refresh();
           if (snapshot) this.#restorePosition(snapshot);
         } else if (this.#closeOnSelect()) this.hide();
         else if (snapshot) {
-          this.refresh();
           this.#restorePosition(snapshot);
         } else this.search("", { show: true, reason: "select" });
       } else {
@@ -2880,7 +2888,7 @@ export class Combobox {
       const result = custom(value, { combobox: this, source: this.source, input: this.#inputEl() });
       const tokens = result && Array.isArray(result.tokens) ? result.tokens : [];
       const entries = tokens.map((text) => ({ text: String(text), sep: "" }));
-      return { entries, rest: final ? "" : String(result?.rest ?? "") };
+      return { entries, rest: String(result?.rest ?? "") };
     }
 
     const separatorKey = JSON.stringify(this.options.separators);
@@ -2923,17 +2931,26 @@ export class Combobox {
     if (!entries.length) return { consumed: false, rest };
 
     let consumedLength = 0;
+    // A custom tokenizer may transform or unquote tokens. Without source
+    // offsets, retaining the original batch on refusal is the only lossless
+    // fallback; slicing by transformed token lengths corrupts authored text.
     for (let index = 0; index < entries.length; index++) {
       const entry = entries[index];
       if (this.options.maxItems > 0 && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
-        return { consumed: false, rest: value.slice(consumedLength) };
+        return {
+          consumed: false,
+          rest: typeof this.options.tokenize === "function" ? value : value.slice(consumedLength),
+        };
       }
       if (!(await this.#applyToken(entry.text))) {
-        return { consumed: false, rest: value.slice(consumedLength) };
+        return {
+          consumed: false,
+          rest: typeof this.options.tokenize === "function" ? value : value.slice(consumedLength),
+        };
       }
       consumedLength += entry.text.length + entry.sep.length;
     }
-    return { consumed: true, rest: final ? "" : rest };
+    return { consumed: true, rest };
   }
 
   /** Apply one token: existing option wins, otherwise guarded creation. A
@@ -2997,13 +3014,14 @@ export class Combobox {
 
   /** @param {{ entries: Array<{ text: string, sep: string }>, rest: string }} resolved */
   async #commitEnterTokens(resolved) {
+    const value = this.#inputEl().value;
     return this.#enqueueTokens(async () => {
       if (!this.#alive()) return;
-      const result = await this.#processTokens(this.#inputEl().value, { final: true, resolved });
+      const result = await this.#processTokens(value, { final: true, resolved });
       if (!this.#alive()) return;
-      if (result?.consumed) {
+      if (result) {
         this.#inputEl().value = result.rest;
-        this.search("", { show: true, reason: "create" });
+        this.search(result.rest, { show: true, reason: "create" });
       }
     });
   }
@@ -3112,7 +3130,6 @@ export class Combobox {
     this.#forgetSelection(option);
     this.#commit();
     emit(this.source, "combobox:remove", { combobox: this, item });
-    this.refresh();
     this.#markEngineMutation();
     return true;
   }
@@ -3146,7 +3163,6 @@ export class Combobox {
     this.selectionOrder = this.selectionOrder.filter((option) => option.selected);
     this.#commit();
     emit(this.source, "combobox:clear", { combobox: this });
-    this.refresh();
     this.#markEngineMutation();
     return true;
   }
@@ -3194,8 +3210,12 @@ export class Combobox {
       { cancelable: true },
     );
     if (before.defaultPrevented) return false;
+    const valueChanged = nextOrder.some(
+      (entry, position) => entry.value !== this.selectionOrder[position]?.value,
+    );
     this.selectionOrder = nextOrder;
     this.#renderChips();
+    if (valueChanged) this.#dispatchNativeValueEvents();
     emit(this.source, "combobox:reorder", {
       combobox: this,
       value: option.value,
@@ -3207,11 +3227,21 @@ export class Combobox {
   }
 
   async loadMore() {
-    if (!this.nextCursor || typeof this.options.load !== "function") return false;
+    if (!this.#alive() || !this.nextCursor || typeof this.options.load !== "function") return false;
     const cursor = this.nextCursor;
-    await this.#load(this.query, { cursor, append: true, debounce: false });
+    const generation = this.searchGeneration;
+    const pending = this.#load(this.query, { cursor, append: true, debounce: false });
+    const controller = this.loadController;
+    const loaded = await pending;
+    if (
+      !this.#alive() ||
+      generation !== this.searchGeneration ||
+      controller !== this.loadController ||
+      controller?.signal.aborted
+    )
+      return false;
     this.#applyFilter(this.query);
-    return true;
+    return loaded;
   }
 
   refresh() {
@@ -3220,7 +3250,13 @@ export class Combobox {
     if (this.isSelect) {
       this.#inputEl().disabled = this.source.disabled;
       this.#inputEl().readOnly = this.source.hasAttribute("readonly");
-      for (const option of this.#selectSource().selectedOptions) this.#rememberSelection(option);
+      const remembered = new Set(this.selectionOrder);
+      for (const option of this.#selectSource().selectedOptions) {
+        if (!remembered.has(option)) {
+          this.selectionOrder.push(option);
+          remembered.add(option);
+        }
+      }
       if (this.source.required) this.#inputEl().setAttribute("aria-required", "true");
       else this.#inputEl().removeAttribute("aria-required");
       if (this.isMultiple) this.#renderChips();
@@ -3305,11 +3341,7 @@ export class Combobox {
         : Array.from(/** @type {HTMLDataListElement} */ (this.datalist).options);
       for (const option of scope) {
         const marker = this.original.optionMarkers.get(option);
-        if (!marker) {
-          option.removeAttribute("data-filtered");
-          option.removeAttribute("data-active-option");
-          continue;
-        }
+        if (!marker) continue;
         if (marker.filtered === null) option.removeAttribute("data-filtered");
         else option.setAttribute("data-filtered", marker.filtered);
         if (marker.active === null) option.removeAttribute("data-active-option");

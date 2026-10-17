@@ -693,3 +693,234 @@ test("dependent loader reads a live field and refreshes when the dependency chan
   expect(state.franceRows).toEqual(["Paris"]);
   expect(state.calls).toEqual(["b", "p"]); // the "b" for fr was repurposed; stale be results must not persist
 });
+
+test.describe("Remote request lifecycle", () => {
+  test.beforeEach(async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  });
+
+  test("remote search respects show during loading and after completion", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      let release;
+      const combo = new Combobox(document.getElementById("remote-multi"), {
+        load: () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      });
+      const hidden = combo.search("first");
+      const loadingHidden = combo.loading && !combo.isOpen();
+      release([{ value: "x", label: "First" }]);
+      await hidden;
+      const finishedHidden = !combo.isOpen();
+      const shown = combo.search("second", { show: true });
+      const loadingShown = combo.loading && combo.isOpen();
+      release([{ value: "y", label: "Second" }]);
+      await shown;
+      return {
+        loadingHidden,
+        finishedHidden,
+        loadingShown,
+        finishedShown: combo.isOpen(),
+        nativeCount: combo.source.options.length,
+      };
+    });
+    expect(state).toEqual({
+      loadingHidden: true,
+      finishedHidden: true,
+      loadingShown: true,
+      finishedShown: true,
+      nativeCount: 1,
+    });
+  });
+
+  for (const action of ["clear", "local", "new-query"]) {
+    test(`pagination cursor is invalidated by ${action}`, async ({ page }) => {
+      const state = await page.evaluate(async (action) => {
+        let calls = 0;
+        let release;
+        const source = document.getElementById("remote-multi");
+        const combo = new Combobox(source, {
+          shouldLoad: (query) => query.length > 1,
+          load: async () => {
+            calls++;
+            if (calls === 2)
+              return new Promise((resolve) => {
+                release = resolve;
+              });
+            return { items: [{ value: "remote", label: "Remote" }], cursor: "page2" };
+          },
+        });
+        await combo.search("remote");
+        if (action === "clear") combo.clearResults();
+        if (action === "local") await combo.search("");
+        let pending;
+        if (action === "new-query") pending = combo.search("different");
+        const cursor = combo.nextCursor;
+        const more = await combo.loadMore();
+        if (pending) {
+          release([]);
+          await pending;
+        }
+        return { cursor, more, calls, values: [...source.selectedOptions].map((option) => option.value) };
+      }, action);
+      expect(state).toEqual({
+        cursor: null,
+        more: false,
+        calls: action === "new-query" ? 2 : 1,
+        values: ["mlocal"],
+      });
+    });
+  }
+
+  for (const action of ["clear", "search", "dispose"]) {
+    test(`a pending page cannot refilter or restore results after ${action}`, async ({ page }) => {
+      const state = await page.evaluate(async (action) => {
+        let release;
+        let calls = 0;
+        const source = document.getElementById("remote-multi");
+        const combo = new Combobox(source, {
+          load: async (query, { cursor }) => {
+            calls++;
+            if (cursor)
+              return new Promise((resolve) => {
+                release = resolve;
+              });
+            return { items: [{ value: query, label: query }], cursor: "next" };
+          },
+        });
+        await combo.search("first");
+        const pending = combo.loadMore();
+        if (action === "clear") combo.clearResults();
+        if (action === "search") await combo.search("second");
+        if (action === "dispose") combo.dispose();
+        const html = source.outerHTML;
+        const list = combo.listbox.innerHTML;
+        const results = combo.results?.map((item) => item.value) ?? null;
+        release({ items: [{ value: "stale", label: "Stale" }], cursor: "obsolete" });
+        const more = await pending;
+        const after = {
+          results: combo.results?.map((item) => item.value) ?? null,
+          list: combo.listbox.innerHTML,
+          html: source.outerHTML,
+        };
+        const disposedCall = action === "dispose" ? await combo.loadMore() : false;
+        return {
+          more,
+          unchanged:
+            html === after.html &&
+            list === after.list &&
+            JSON.stringify(results) === JSON.stringify(after.results),
+          disposedCall,
+          calls,
+        };
+      }, action);
+      expect(state).toEqual({
+        more: false,
+        unchanged: true,
+        disposedCall: false,
+        calls: action === "search" ? 3 : 2,
+      });
+    });
+  }
+
+  test("a search finishing after dispose never writes restored option markers", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const source = document.getElementById("remote-multi");
+      let release;
+      const combo = new Combobox(source, {
+        load: () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      });
+      const pending = combo.search("remote", { show: true });
+      combo.dispose();
+      const html = source.outerHTML;
+      const list = combo.listbox.innerHTML;
+      release([]);
+      await pending;
+      return { source: html === source.outerHTML, list: list === combo.listbox.innerHTML };
+    });
+    expect(state).toEqual({ source: true, list: true });
+  });
+
+  for (const outcome of ["error", "cancelled"]) {
+    test(`loadMore returns false on ${outcome} while preserving selection and usable UI`, async ({
+      page,
+    }) => {
+      const state = await page.evaluate(async (outcome) => {
+        const source = document.getElementById("remote-multi");
+        const errors = [];
+        source.addEventListener("combobox:loaderror", (event) => errors.push(event.detail.error.message));
+        const combo = new Combobox(source, {
+          load: async (_query, { cursor }) => {
+            if (cursor) throw new Error("Page unavailable");
+            return { items: [{ value: "remote", label: "Remote" }], cursor: "next" };
+          },
+        });
+        await combo.search("remote");
+        if (outcome === "cancelled")
+          source.addEventListener("combobox:beforeload", (event) => event.preventDefault(), { once: true });
+        const more = await combo.loadMore();
+        return {
+          more,
+          loading: combo.loading,
+          loadingRows: combo.listbox.querySelectorAll(".cb-loading").length,
+          errorRows: combo.listbox.querySelectorAll(".cb-error").length,
+          results: combo.results.map((item) => item.value),
+          values: [...source.selectedOptions].map((option) => option.value),
+          errors,
+        };
+      }, outcome);
+      expect(state).toEqual({
+        more: false,
+        loading: false,
+        loadingRows: 0,
+        errorRows: outcome === "error" ? 1 : 0,
+        results: ["remote"],
+        values: ["mlocal"],
+        errors: outcome === "error" ? ["Page unavailable"] : [],
+      });
+    });
+  }
+
+  test("a superseded pagination request cannot refilter the newer pending page", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const releases = [];
+      const source = document.getElementById("remote-multi");
+      const combo = new Combobox(source, {
+        load: async (_query, { cursor }) => {
+          if (cursor) return new Promise((resolve) => releases.push(resolve));
+          return { items: [{ value: "first", label: "First" }], cursor: "next" };
+        },
+      });
+      await combo.search("remote");
+      const first = combo.loadMore();
+      const second = combo.loadMore();
+      const changes = [];
+      const observer = new MutationObserver((records) => changes.push(...records));
+      observer.observe(combo.listbox, { subtree: true, childList: true, attributes: true });
+      releases[0]({ items: [{ value: "stale", label: "Stale" }], cursor: "obsolete" });
+      const stale = await first;
+      const staleChanges = changes.length;
+      observer.disconnect();
+      releases[1]({ items: [{ value: "fresh", label: "Fresh" }], cursor: null });
+      const fresh = await second;
+      return {
+        stale,
+        fresh,
+        staleChanges,
+        results: combo.results.map((item) => item.value),
+        values: [...source.selectedOptions].map((option) => option.value),
+      };
+    });
+    expect(state).toEqual({
+      stale: false,
+      fresh: true,
+      staleChanges: 0,
+      results: ["first", "fresh"],
+      values: ["mlocal"],
+    });
+  });
+});

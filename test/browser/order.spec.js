@@ -291,3 +291,62 @@ test("remove then re-add appends at the end of the selection sequence", async ({
   expect(state.chips).toEqual(["a", "c", "b"]);
   expect(state.catalogue).toEqual(["a", "b", "c", "d"]);
 });
+
+test.describe("Native value events on reorder", () => {
+  test.beforeEach(async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  });
+
+  test("move emits native value events for changed submission order, with veto and no-op silence", async ({
+    page,
+  }) => {
+    const state = await page.evaluate(() => {
+      const source = document.getElementById("sourceordered");
+      const combo = new Combobox(source, { selectionOrder: "selected" });
+      const events = [];
+      for (const type of ["input", "change"])
+        source.addEventListener(type, () =>
+          events.push([type, new FormData(source.form).getAll(source.name)]),
+        );
+      combo.move("2", 0);
+      const noop = combo.move("2", 0);
+      source.addEventListener("combobox:beforereorder", (event) => event.preventDefault(), { once: true });
+      const veto = combo.move("1", 0);
+      return {
+        events,
+        noop,
+        veto,
+        values: combo.getSelectedValues(),
+        nativeOrder: [...source.options].map((option) => option.value),
+      };
+    });
+    expect(state).toEqual({
+      events: [
+        ["input", ["2", "1", "3"]],
+        ["change", ["2", "1", "3"]],
+      ],
+      noop: false,
+      veto: false,
+      values: ["2", "1", "3"],
+      nativeOrder: ["1", "2", "3", "4"],
+    });
+  });
+
+  test("moving equal-valued choices preserves identity without emitting unchanged value events", async ({
+    page,
+  }) => {
+    const state = await page.evaluate(() => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      source.append(new Option("First", "same", true, true), new Option("Second", "same", true, true));
+      document.body.append(source);
+      const second = source.options[1];
+      const combo = new Combobox(source, { selectionOrder: "selected" });
+      const events = [];
+      for (const type of ["input", "change"]) source.addEventListener(type, () => events.push(type));
+      const moved = combo.move(second, 0);
+      return { moved, events, labels: combo.getSelectedItems().map((item) => item.label) };
+    });
+    expect(state).toEqual({ moved: true, events: [], labels: ["Second", "First"] });
+  });
+});

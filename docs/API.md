@@ -360,6 +360,8 @@ temporary `:filtered` while the native primitive is not yet interoperable.
 
 Runs the full `beforefilter → optional load → filter → render` pipeline.
 It deliberately does not assign the interaction input's visible value.
+`show` defaults to `false`, including during a remote load: a closed picker
+stays closed. Pass `{ show: true }` to show both loading and results.
 
 ### `setQuery(value, { show = true, reason = "api" })`
 
@@ -391,7 +393,8 @@ Sets transient picker results. Does not rewrite the native select catalogue.
 
 ### `clearResults()`
 
-Returns to source-backed results.
+Returns to source-backed results, aborts any pending load and invalidates its
+pagination cursor. It never mutates the native source or selection.
 
 ### `setOptions(items, { preserveSelected })`
 
@@ -466,6 +469,11 @@ load: async (query, {
 `shouldLoad(query, context)` is the cheap business guard. Example: do not hit an endpoint while a date-shaped query is incomplete.
 
 `loadMore()` is a cursor seam, not an infinite-scroll implementation.
+It returns `true` only when a page was applied to the current live instance;
+missing cursors, cancelled/failed loads and superseded requests return `false`.
+Starting another remote query or clearing results (including a local query
+below the loading threshold or `sync()`) invalidates the previous cursor.
+Pending searches and pages cannot restore results or render after `dispose()`.
 
 Remote/transient results never rewrite the native catalogue. Selecting a remote result materializes **that one** native option (`addOption`); unpublished results are dropped by `clearResults()`, a below-threshold local query, or `sync()`.
 
@@ -540,6 +548,10 @@ separators: parseSeparators(",|;"),
 - Separators are **full strings**, matched longest-first (`",|;"` ⇒ `[",", ";"]`); the attribute form is pipe-delimited.
 - Tokens are processed strictly sequentially — `existing → guard → create → select`, never `Promise.all` — and `maxItems` is re-evaluated between tokens (`maxOptions` is unrelated). Batches from successive `input` events are serialized behind the running batch, so typing during a pending async creation cannot overshoot `maxItems`.
 - A refused token (vetoed selection, guard refusal, `maxItems` reached) is **not consumed**: its text stays in the input along with the unprocessed remainder.
+- With a custom `tokenize`, a partial refusal preserves the **entire original batch**,
+  including already-accepted tokens: the callback may transform tokens and supplies
+  no source offsets for a lossless partial cut. Accepted choices remain selected.
+  On success, `rest` stays in the input even after Enter, Tab or blur finalization.
 - Existing terms resolve to the first enabled, unselected match in multiple mode; an already-selected match is an idempotent success when no further match is available. A disabled-only match is refused without creating a duplicate, and its text stays editable (including in native fallback).
 - Unexpected token-batch failures (for example a throwing custom tokenizer) emit `combobox:tokenerror` with `{ combobox, error }`. Later input batches still run. Guard and creation failures retain their dedicated `guarderror`/`createerror` events.
 - A trailing incomplete token stays in the input.
@@ -695,6 +707,9 @@ In ordered mode, a focused chip supports a keyboard reorder gesture:
 - `Alt+Home` / `Alt+End` — jump to first/last position;
 - the moved chip keeps focus, and the live status region announces its new position (`"<label> position N of M"`);
 - reordering emits `combobox:beforereorder` (cancellable) then `combobox:reorder`, and never mutates catalogue order.
+- When reordering changes the submitted value sequence, native `input` then
+  `change` fire before `combobox:reorder`. Vetoes, no-ops and moves between equal
+  values emit no native value events; equal-valued choices still reorder by identity.
 
 ## Picker/lifecycle
 

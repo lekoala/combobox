@@ -102,3 +102,33 @@ test("removal runs no search: no beforefilter, filter or load", async ({ page })
   expect(state.open).toBe(false);
   expect(state.focused).toBe(true);
 });
+
+test("removal renders remaining chips once while external changes still refresh the selection", async ({
+  page,
+}) => {
+  const state = await page.evaluate(async () => {
+    const source = document.getElementById("tags");
+    source.options[1].selected = true;
+    const renders = [];
+    const combo = new Combobox(source, {
+      render: {
+        item: (item) => {
+          renders.push(item.value);
+          return item.label;
+        },
+      },
+    });
+    renders.length = 0;
+    await combo.remove("1");
+    const removed = renders.splice(0);
+    source.options[2].selected = true;
+    source.dispatchEvent(new Event("change", { bubbles: true }));
+    return {
+      removed,
+      external: renders,
+      chips: [...combo.chips.children].map((chip) => chip.dataset.value),
+      values: [...source.selectedOptions].map((option) => option.value),
+    };
+  });
+  expect(state).toEqual({ removed: ["2"], external: ["2", "3"], chips: ["2", "3"], values: ["2", "3"] });
+});
