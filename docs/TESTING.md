@@ -38,6 +38,28 @@ Use Bun test after extracting pure functions:
 
 Do not use happy-dom/jsdom as a substitute for browser interaction tests.
 
+### Suite organization
+
+Name suites for the behavior or public contract they exercise. Regressions belong
+beside the corresponding normal behavior; their audit, review or issue of origin
+does not define a suite. Keep the source-browser, distributable and pure-unit test
+levels separate. Fixture pages may serve several suites.
+
+The main browser topics are:
+
+| Topic | Suites |
+|---|---|
+| Creation and token input | `creation`, `guards`, `tokenization` |
+| Native values and forms | `selection`, `identity`, `order`, `forms`, `limits` |
+| Catalogue and data | `catalogue`, `item-mapping`, `sync`, `remote`, `groups` |
+| Enhancement lifecycle | `init`, `lifecycle`, `combobox-element`, `fallback` |
+| Native controls and accessibility | `input-datalist`, `disabled`, `readonly`, `autofill`, `accessibility`, `aria` |
+| Interaction and presentation | keyboard/chip suites, `events`, layout/CSS suites, `forced-colors`, `reduced-motion` |
+
+Pure helper tests follow the same topics: matching, tokenization, ordering,
+item mapping and attribute conversion. Preserve test cases, fixture setup and
+browser support/skip conditions when reorganizing a suite.
+
 ---
 
 # Coverage matrix
@@ -61,7 +83,9 @@ Prior-art lessons this pan closes: source-mutation updates, label focus and orig
 
 Run on every browser with fallback forced even when modern APIs exist.
 
-Coverage: `test/browser/matrix.spec.js` (auto enhanced/fallback per engine, forced-fallback contract, native submission), `combobox-element.spec.js` (fallback create parity incl. async create/createFilter/guards/dispose) and `test/dist/smoke.spec.js` (`?native=1`).
+Coverage: `test/browser/fallback.spec.js` (auto enhanced/fallback per engine,
+forced fallback and creation/guard parity), `forms.spec.js` (native submission)
+and `test/dist/smoke.spec.js` (`?native=1`).
 
 - [x] input+datalist remains native and named (untouched fallback path).
 - [x] single select remains native (untouched fallback path).
@@ -69,7 +93,7 @@ Coverage: `test/browser/matrix.spec.js` (auto enhanced/fallback per engine, forc
 - [x] no `.cb-popover` custom picker is created.
 - [x] creatable select gets unnamed fallback input and Add button only.
 - [x] fallback create selects existing option rather than duplicating it (value **or** label, matching the enhanced picker).
-- [x] fallback create/createFilter/guards receive the real Add input on their context (`combobox-element.spec.js`), never a null input.
+- [x] fallback create/createFilter/guards receive the real Add input on their context (`fallback.spec.js`), never a null input.
 - [x] fallback create can materialize async `{value,label}`.
 - [x] fallback create respects createFilter/maxItems.
 - [x] fallback `dispose()` removes only fallback enhancement.
@@ -112,7 +136,7 @@ Prior-art accessibility corpora cover the `aria-activedescendant`/`aria-controls
 - [x] Right from last returns search input.
 - [x] Home/End first/last.
 - [x] Delete/Backspace removes focused removable chip.
-- [x] disabled chip cannot be removed (no remove button is rendered for a selected-disabled option, `features.spec.js`; the source `readonly` mirror and its interaction lock are `source-adapters.spec.js` / `audit-fixes.spec.js`).
+- [x] disabled chip cannot be removed (no remove button is rendered for a selected-disabled option, `disabled.spec.js`; the source `readonly` mirror and its interaction lock are `readonly.spec.js` / `disabled.spec.js`).
 - [x] focus lands predictably after removal.
 - [x] normal Left/Right editing inside non-empty search is untouched (`chips-keyboard.spec.js`).
 
@@ -134,13 +158,13 @@ Prior-art regressions cover preserving original option elements and disabled opt
 
 ## G. Native event semantics
 
-- [x] value change emits native `input` then `change`, once each (asserted by the async-create event sequence `["input","change","create"]`, `features.spec.js`).
+- [x] value change emits native `input` then `change`, once each (asserted by the async-create event sequence `["input","change","create"]`, `creation.spec.js`).
 - [x] no value change emits neither (`events.spec.js`: no-op remove, empty clear, single reselect).
 - [x] programmatic `select/remove/clear` follows same contract (`events.spec.js`: each emits exactly one `input` then one `change`).
-- [x] custom `before*` events are cancellable (`picker-keyboard.spec.js` beforeopen/beforeclose, `features.spec.js` beforecreate/beforeremove/beforeclear, `filter-modes.spec.js`/`beforefilter.spec.js`).
+- [x] custom `before*` events are cancellable (`picker-keyboard.spec.js` beforeopen/beforeclose, `creation.spec.js`/`events.spec.js` beforecreate/beforeremove/beforeclear, `filter-modes.spec.js`/`beforefilter.spec.js`).
 - [x] after events do not fire when cancelled (asserted in the same `before*` cancel tests).
-- [x] event detail contains item/query/context expected (`order.spec.js` reorder payload, `beforefilter.spec.js` query/context, `features.spec.js` guarderror/createerror payloads).
-- [x] create/load error events expose error without unhandled state corruption (`combobox:createerror`, `combobox:loaderror`, `combobox:guarderror` in `features.spec.js`/`remote.spec.js`).
+- [x] event detail contains item/query/context expected (`order.spec.js` reorder payload, `beforefilter.spec.js` query/context, `guards.spec.js`/`creation.spec.js` guarderror/createerror payloads).
+- [x] create/load error events expose error without unhandled state corruption (`combobox:createerror`, `combobox:loaderror`, `combobox:guarderror` in `creation.spec.js`/`guards.spec.js`/`remote.spec.js`).
 
 The event suite verifies `input` before `change`, single firing, disabled values and no event when the value is unchanged.
 
@@ -161,7 +185,7 @@ The event suite verifies `input` before `change`, single firing, disabled values
 - [x] invalid pattern query fails safely (`filter-modes.spec.js`: malformed `"("` → no options, no page error).
 - [x] backspacing from no-results restores options (`filter-modes.spec.js`).
 - [x] no-results state is visually stable and never horizontally scrolls (`css-polish.spec.js`; long-message containment in `layout.spec.js`).
-- [x] selected multiple values are excluded from results (asserted by the `source-adapters.spec.js` sync test).
+- [x] selected multiple values are excluded from results (asserted by the `sync.spec.js` sync test).
 - [x] data-filtered mirror state correct for local source options (`filter-modes.spec.js`).
 
 ## H2. Declarative configuration policy
@@ -170,7 +194,7 @@ The event suite verifies `input` before `change`, single firing, disabled values
 - [x] `tab-select` and `search-fields` attributes map (`declarative.spec.js`, `combobox-element.spec.js`).
 - [x] JS options win over wrapper attributes (`declarative.spec.js`).
 - [x] source `data-*` attributes are application metadata, never configuration — no third way (`declarative.spec.js`).
-- [x] item `data-*` is application metadata consumed by `searchFields` (`fuzzy.spec.js`); an explicit filter input uses the structural `data-filter-for="select-id"` link (`source-adapters.spec.js`).
+- [x] item `data-*` is application metadata consumed by `searchFields` (`fuzzy.spec.js`); an explicit filter input uses the structural `data-filter-for="select-id"` link (`selection.spec.js`).
 
 ## I. `beforefilter` / app-owned filtering
 
@@ -208,43 +232,43 @@ Prior-art load coverage addresses preload/loading/no-results and query churn; ou
 
 ## K. Creation / tags
 
-- [x] blank/whitespace does not create (`features.spec.js`).
-- [x] createFilter false hides/prevents create (covered by `features.spec.js` "createFilter returning false").
-- [x] case-insensitive existing label does not accidentally duplicate when policy says existing result wins (`features.spec.js`).
-- [x] same label/different existing values remain selectable as separate identities (`features.spec.js`).
-- [x] `create: true` creates `{value:text,label:text}` (covered by the `features.spec.js` create suite).
+- [x] blank/whitespace does not create (`creation.spec.js`).
+- [x] createFilter false hides/prevents create (covered by `creation.spec.js` "createFilter returning false").
+- [x] case-insensitive existing label does not accidentally duplicate when policy says existing result wins (`creation.spec.js`).
+- [x] same label/different existing values remain selectable as separate identities (`identity.spec.js`).
+- [x] `create: true` creates `{value:text,label:text}` (covered by the `creation.spec.js` create suite).
 - [x] async create can return different server ID/label (covered by the async-create parity tests).
 - [x] async create abort/error behavior (covered by the `createerror` tests).
-- [x] beforecreate cancellation (covered by `features.spec.js`).
-- [x] maxItems blocks new selection/create but still allows removal (covered by `features.spec.js`).
+- [x] beforecreate cancellation (covered by `creation.spec.js`).
+- [x] maxItems blocks new selection/create but still allows removal (covered by `limits.spec.js`).
 - [x] created item updates native select and native events (covered by the async-create event sequence).
-- [x] selected created item survives `sync()` (`features.spec.js` "created options survive sync() and form.reset()").
+- [x] selected created item survives `sync()` (`forms.spec.js` "created options survive sync() and form.reset()").
 - [x] persistence policy decided: created/materialized options are native; `setOptions()` preserves *selected* options and drops unselected ones (contract in API.md; `remote.spec.js` setOptions/clearResults tests).
 
 Prior-art tag coverage addresses trim/null, duplicate matching, tag insertion and cleanup, and created-option persistence behavior.
 
 ## L. Tokenization / paste (P0 parity)
 
-- [x] one separator (`features.spec.js` separator consumption + `splitTokens` unit tests).
+- [x] one separator (`tokenization.spec.js` separator consumption + `splitTokens` unit tests).
 - [x] multiple separators (`splitTokens` longest-match unit tests).
-- [x] paste multiple tokens creates/selects each valid token (sequential separator paste, `features.spec.js`).
-- [x] invalid token/createFilter false does not corrupt remaining term (`features.spec.js`; source fix: `#handleTokenInput` now always writes the computed `rest` back so a mid-batch refusal keeps the unconsumed tail editable).
-- [x] duplicate token handled once according to value policy (`features.spec.js`).
-- [x] maxItems stops at limit cleanly (`features.spec.js` re-evaluates `maxItems` between tokens).
-- [x] custom tokenizer can preserve quoted separator text (`tokenize` seam + `rest` handling, `features.spec.js`).
-- [x] composition/IME input is not tokenized mid-composition (`features.spec.js`).
+- [x] paste multiple tokens creates/selects each valid token (sequential separator paste, `tokenization.spec.js`).
+- [x] invalid token/createFilter false does not corrupt remaining term (`tokenization.spec.js`; source fix: `#handleTokenInput` now always writes the computed `rest` back so a mid-batch refusal keeps the unconsumed tail editable).
+- [x] duplicate token handled once according to value policy (`tokenization.spec.js`).
+- [x] maxItems stops at limit cleanly (`tokenization.spec.js` re-evaluates `maxItems` between tokens).
+- [x] custom tokenizer can preserve quoted separator text (`tokenize` seam + `rest` handling, `tokenization.spec.js`).
+- [x] composition/IME input is not tokenized mid-composition (`tokenization.spec.js`).
 
 Tokenizer coverage must include the “a refused token must not cut the remaining term” and quoted-token cases.
 
 ## M. Clear / remove / guards
 
-- [x] clear single (covered by the `source-adapters.spec.js` required-validity clear test).
-- [x] clear multiple (`guards.clear` confirmation path, `features.spec.js`).
-- [x] beforeclear cancellation (`features.spec.js`).
-- [x] beforeremove cancellation (`features.spec.js`).
-- [x] clear does not remove disabled selections unless policy explicitly allows it (`features.spec.js` `mixedclear` case).
-- [x] external clear button can call API without DOM hacks (`features.spec.js`, fixture-bound `#ext-clear`).
-- [x] async confirmation design gets dedicated tests (guards `add`/`remove`/`clear` refusals and rejections, `features.spec.js`).
+- [x] clear single (covered by the `forms.spec.js` required-validity clear test).
+- [x] clear multiple (`guards.clear` confirmation path, `guards.spec.js`).
+- [x] beforeclear cancellation (`events.spec.js`).
+- [x] beforeremove cancellation (`events.spec.js`).
+- [x] clear does not remove disabled selections unless policy explicitly allows it (`selection.spec.js` `mixedclear` case).
+- [x] external clear button can call API without DOM hacks (`selection.spec.js`, fixture-bound `#ext-clear`).
+- [x] async confirmation design gets dedicated tests (guards `add`/`remove`/`clear` refusals and rejections, `guards.spec.js`).
 
 ## N. Selection order
 
@@ -255,7 +279,7 @@ Tokenizer coverage must include the “a refused token must not cut the remainin
 - [x] `move(value,index)` updates chips/order and emits reorder only (`order.spec.js` covers the `{value,from,to,values}` payload and `move()` no-ops).
 - [x] before reorder cancellation (`combobox:beforereorder` preventDefault pins the order, `order.spec.js`).
 - [x] remove then re-add gives defined position (append-at-end, `order.spec.js`).
-- [x] external DOM selected option is reconciled predictably by sync (`source-adapters.spec.js`).
+- [x] external DOM selected option is reconciled predictably by sync (`sync.spec.js`).
 - [x] FormData repeated entries follow explicit ordered mode (`order.spec.js`; native order asserted in source mode).
 - [x] keyboard reorder behavior and live announcement (`Alt+Arrow/Home/End` keeps focus and announces via `messages.position`, `order.spec.js`; physical-in-RTL proof in `rtl.spec.js`).
 
@@ -270,14 +294,14 @@ A prior-art regression physically reorders selected `<option>`s; our tests delib
 - [x] headers appear only when group has visible results.
 - [x] disabled optgroup makes descendants unselectable.
 - [x] filtering removes empty headers.
-- [x] remote group values render in labelled ARIA group containers without requiring native optgroups until selected (`group-transient.spec.js`: transient `group` owns its option rows and selecting materializes the native optgroup).
-- [x] group renderer is safe (`group-transient.spec.js`: a Node return is used, a string return stays text — hostile strings covered by `xss.spec.js`).
+- [x] remote group values render in labelled ARIA group containers without requiring native optgroups until selected (`groups.spec.js`: transient `group` owns its option rows and selecting materializes the native optgroup).
+- [x] group renderer is safe (`groups.spec.js`: a Node return is used, a string return stays text — hostile strings covered by `xss.spec.js`).
 
 ## P. DOM sync / dynamic updates
 
 - [x] add unselected native option → selection unchanged.
 - [x] add selected native option → enhanced selection updates.
-- [x] remove unselected option → selection unchanged (`source-adapters.spec.js` external-sync sibling).
+- [x] remove unselected option → selection unchanged (`sync.spec.js` external-sync sibling).
 - [x] remove selected option → selection updates according to native browser behavior.
 - [x] replace many options → one batched UI refresh (`observeSource` debounce).
 - [x] update disabled/required/read-only after init → refresh/sync reflects it.
@@ -293,9 +317,9 @@ These mirror the concrete DOM-change regression scenarios captured in REFERENCES
 - [x] form `checkValidity()` tracks source, not generated input fiction.
 - [x] invalid directs focus to interaction input.
 - [x] form reset restores initial selections, input/query/filter state and chips.
-- [x] source input `pattern` remains authoritative for free-form mode (`source-adapters.spec.js` `#pat` case).
+- [x] source input `pattern` remains authoritative for free-form mode (`forms.spec.js` `#pat` case).
 - [x] FormData contains source `name` once/multiple as expected (source-order assertion in `order.spec.js`).
-- [x] generated search inputs never appear in FormData (`source-adapters.spec.js`: literal `FormData` enumeration matches the form's named controls, and every `.cb-input` is nameless).
+- [x] generated search inputs never appear in FormData (`forms.spec.js`: literal `FormData` enumeration matches the form's named controls, and every `.cb-input` is nameless).
 - [x] ordered mode serializes intended order (`order.spec.js` ordered FormData with repeated entries).
 
 Prior-art validation coverage: required-state transitions and input-pattern validation.
@@ -310,7 +334,7 @@ Automated browser assertions (`test/browser/aria.spec.js` for the role/attribute
 - [x] aria-controls lifecycle is valid.
 - [x] aria-activedescendant references existing active option and is removed when closed.
 - [x] aria-activedescendant is never left pointing at a row removed by a rerender (`aria.spec.js` direct regression test).
-- [x] accessible name comes from label/aria-label, with a source `aria-labelledby` winning verbatim (`source-adapters.spec.js` regression tests cover the generated and authored-filter-input paths).
+- [x] accessible name comes from label/aria-label, with a source `aria-labelledby` winning verbatim (`accessibility.spec.js` regression tests cover the generated and authored-filter-input paths).
 - [x] aria-describedby propagated.
 - [x] required/invalid/disabled state represented.
 - [x] status live region announces loading/no-results/reorder. **Decision:** `select`/`remove` are intentionally *not* announced — chips removal is visible and focus-managed, and announcing every token of a separator paste batch would be noise; documented API choice.
@@ -352,8 +376,8 @@ Prior-art security corpora cover original values, group labels, option labels/va
 - [x] multiple chips wrap/grow without changing picker anchor width incorrectly (`layout.spec.js` wrapped-chips case).
 - [x] RTL logical placement/text (`rtl.spec.js` + RTL chip/remove layout in `css-polish.spec.js`).
 - [x] RTL: chips flow right-to-left, picker flips and has no horizontal overflow, physical keyboard navigation is stable.
-- [x] reduced motion: no transition/animation runs in the picker (CSS has none; asserted under `prefers-reduced-motion: reduce` in `visual.spec.js`).
-- [x] forced-colors/high contrast: picker rows and chips stay distinguishable and visible (`visual.spec.js`; engines without the `forced-colors` media query are skipped).
+- [x] reduced motion: no transition/animation runs in the picker (CSS has none; asserted under `prefers-reduced-motion: reduce` in `reduced-motion.spec.js`).
+- [x] forced-colors/high contrast: picker rows and chips stay distinguishable and visible (`forced-colors.spec.js`; engines without the `forced-colors` media query are skipped).
 - CSS `zoom` is outside the supported geometry contract of `@lekoala/floating`; narrow-viewport containment remains covered above.
 
 These scenarios ensure top-layer + floating placement handles difficult layout contexts without container-specific positioning code.

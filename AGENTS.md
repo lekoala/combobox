@@ -75,6 +75,13 @@ Lifecycle: `init`, `getInstance`, `getOrCreateInstance`, `show`, `hide`, `dispos
 - Do not add aliases or compatibility options without a concrete current use case.
 - When behavior changes, update the relevant docs and add/adjust a browser test in the same change.
 - Test the native source state, not only generated DOM.
+- Organize test files and `describe` groups semantically, by behavior or public
+  contract (for example tokenization, forms, lifecycle or ordering), within each
+  test level. Add regression tests to the relevant suite; split mixed suites
+  when needed. Do not group or name tests by their origin (audit, review, model,
+  issue or implementation batch), or use catch-all files such as `features` or
+  `fixes`. Preserve coverage, fixtures and browser support/skip conditions when
+  moving tests.
 - Any bug involving focus, keyboard, popover state, forms, validation, browser layout, IME, or ARIA needs a real-browser regression test.
 - Unit-test pure matching/tokenization/order helpers after extraction; do not use a DOM shim as a substitute for browser interaction tests.
 - Work inside the project directory. Use the gitignored `.temp/` folder for throwaway artifacts (screenshots, ad-hoc scripts); never write outside the workspace.

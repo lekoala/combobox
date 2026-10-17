@@ -298,8 +298,8 @@ and the same `combobox:beforeselect` gate on selection.
 
 ### Tests
 
-- guard semantics (`add`, `remove`, `clear`, rejections → `combobox:guarderror`): `test/browser/features.spec.js`;
-- fallback create/guard parity: `test/browser/combobox-element.spec.js`.
+- guard semantics (`add`, `remove`, `clear`, rejections → `combobox:guarderror`): `test/browser/guards.spec.js`;
+- fallback create/guard parity: `test/browser/fallback.spec.js`.
 
 ## UC9 — Explicit selection order
 
