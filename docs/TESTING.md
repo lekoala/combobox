@@ -50,11 +50,16 @@ The main browser topics are:
 | Topic | Suites |
 |---|---|
 | Creation and token input | `creation`, `guards`, `tokenization` |
-| Native values and forms | `selection`, `identity`, `order`, `forms`, `limits` |
+| Native values and forms | `selection`, `identity`, `order`, `forms`, `limits`, `events` |
 | Catalogue and data | `catalogue`, `item-mapping`, `sync`, `remote`, `groups` |
-| Enhancement lifecycle | `init`, `lifecycle`, `combobox-element`, `fallback` |
-| Native controls and accessibility | `input-datalist`, `disabled`, `readonly`, `autofill`, `accessibility`, `aria` |
-| Interaction and presentation | keyboard/chip suites, `events`, layout/CSS suites, `forced-colors`, `reduced-motion` |
+| Public API and enhancement | `api-contract`, `init`, `lifecycle`, `combobox-element`, `declarative`, `fallback` |
+| Native controls and browser integration | `input-datalist`, `disabled`, `readonly`, `autofill` |
+| Accessibility and language | `accessibility`, `aria`, `i18n`, `forced-colors`, `reduced-motion` |
+| Filtering and search | `beforefilter`, `filter-modes`, `fuzzy` |
+| Picker interaction | `picker-keyboard`, `keyboard-tab`, `touch`, `popover-dialog`, `toggle-selected` |
+| Chips | `chips-keyboard`, `chips-remove`, `chip-class` |
+| Placement and presentation | `coordinate-space`, `layout`, `css-polish`, `rtl`, `placeholder`, `titles` |
+| Documentation and security | `docs-recipe`, `xss` |
 
 Pure helper tests follow the same topics: matching, tokenization, ordering,
 item mapping and attribute conversion. Preserve test cases, fixture setup and
@@ -191,7 +196,7 @@ The event suite verifies `input` before `change`, single firing, disabled values
 ## H2. Declarative configuration policy
 
 - [x] `<combo-box>` attributes are the canonical declarative surface (booleans honor `="false"`, numbers/enums/short lists, `declarative.spec.js`).
-- [x] `tab-select` and `search-fields` attributes map (`declarative.spec.js`, `combobox-element.spec.js`).
+- [x] `tab-select` and `search-fields` attributes map (`declarative.spec.js`).
 - [x] JS options win over wrapper attributes (`declarative.spec.js`).
 - [x] source `data-*` attributes are application metadata, never configuration — no third way (`declarative.spec.js`).
 - [x] item `data-*` is application metadata consumed by `searchFields` (`fuzzy.spec.js`); an explicit filter input uses the structural `data-filter-for="select-id"` link (`selection.spec.js`).
@@ -233,7 +238,7 @@ Prior-art load coverage addresses preload/loading/no-results and query churn; ou
 ## K. Creation / tags
 
 - [x] blank/whitespace does not create (`creation.spec.js`).
-- [x] createFilter false hides/prevents create (covered by `creation.spec.js` "createFilter returning false").
+- [x] createFilter false hides/prevents create (`creation.spec.js`: "createFilter refusal hides create and leaves Enter to the form").
 - [x] case-insensitive existing label does not accidentally duplicate when policy says existing result wins (`creation.spec.js`).
 - [x] same label/different existing values remain selectable as separate identities (`identity.spec.js`).
 - [x] `create: true` creates `{value:text,label:text}` (covered by the `creation.spec.js` create suite).
@@ -368,7 +373,7 @@ Prior-art security corpora cover original values, group labels, option labels/va
 - [x] picker flips when viewport lacks block-end space (`layout.spec.js` bottom-anchored control).
 - [x] input group/floating label/table/modal/overflow containers do not clip picker (`layout.spec.js` + `popover-dialog.spec.js` for modal/overflow).
 - [x] open pickers follow scroll/resize updates through `@lekoala/floating` (`layout.spec.js`: the picker stays attached to its reference after a page scroll).
-- [x] coordinate space resolves once per opening (`coordinate-space.spec.js`): normal flow → document + absolute with `rect + scroll` coordinates, sticky/fixed/modal → viewport + fixed, `document`/`viewport` overrides win, garbage normalizes to `auto`.
+- [x] coordinate space resolves once per opening (`coordinate-space.spec.js`): the default is viewport + fixed, explicit `document` uses document + absolute, invalid values fall back to `viewport`. Layout is never inferred; a change while open applies on the next opening.
 - [x] forced-document-in-sticky mismatch is measured, not asserted blind (`demo/position-modes.html` + `demo.spec.js`: sequential protocol, one open picker at a time, immediate gap vs settled gap).
 - [x] chip removal never changes picker visibility and never searches (`chips-remove.spec.js`: closed stays closed on × and last-chip Delete, open stays open, `beforefilter`/`filter`/`load` counters stay at zero).
 - [x] sub-threshold queries name the wait instead of reporting a miss (`demo.spec.js`: `render.noResults` hints on directory/place demos, genuine misses reported above the threshold).

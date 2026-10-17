@@ -1,6 +1,41 @@
 import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
+test.describe("Empty separator segments", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/features.html");
+    test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  });
+
+  for (const refusal of ["maxItems", "guard", "veto", "none"]) {
+    test(`empty segments preserve exact remaining text on ${refusal}`, async ({ page }) => {
+      const state = await page.evaluate(async (refusal) => {
+        const source = document.getElementById("tags");
+        for (const option of source.options) option.selected = false;
+        if (refusal === "veto")
+          source.addEventListener("combobox:beforeselect", (event) => {
+            if (event.detail.item.value === "beta") event.preventDefault();
+          });
+        const combo = new Combobox(source, {
+          create: true,
+          separators: [","],
+          maxItems: refusal === "maxItems" || refusal === "none" ? 1 : 0,
+          guards: { add: ({ label }) => refusal !== "guard" || label !== "beta" },
+        });
+        combo.input.value = refusal === "none" ? ",,alpha,,," : ",,alpha,,beta,";
+        combo.input.dispatchEvent(new Event("input", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return {
+          input: combo.input.value,
+          values: [...source.selectedOptions].map((option) => option.value),
+          beta: [...source.options].some((option) => option.value === "beta"),
+        };
+      }, refusal);
+      expect(state).toEqual({ input: refusal === "none" ? "" : "beta,", values: ["alpha"], beta: false });
+    });
+  }
+});
+
 test.describe("Custom tokens and queued commits", () => {
   test.beforeEach(async ({ page }) => {
     await setup(page, "/test/fixtures/features.html");

@@ -427,8 +427,7 @@
       const parts = text.split(pattern);
       const done = [];
       for (let index = 1;index < parts.length; index += 2) {
-        if (parts[index - 1])
-          done.push({ text: parts[index - 1], sep: parts[index] });
+        done.push({ text: parts[index - 1], sep: parts[index] });
       }
       return { done, rest: parts[parts.length - 1] };
     };
@@ -877,7 +876,7 @@
       setDefaultMessages(messages);
     }
     static setDefaultChipClass(value) {
-      defaultChipClass = value;
+      defaultChipClass = String(value ?? "");
     }
     static init(rootOrSelector = document, selectorOrOptions = null, maybeOptions = {}) {
       const targets = [];
@@ -953,6 +952,7 @@
           ...options.render || {}
         }
       };
+      this.options.chipClass = String(this.options.chipClass ?? "");
       if (!["document", "viewport"].includes(this.options.coordinateSpace)) {
         this.options.coordinateSpace = "viewport";
       }
@@ -992,6 +992,7 @@
           this.popover = picker.popover;
           this.listbox = picker.listbox;
           this.status = picker.status;
+          instances.set(element, this);
           this.#bind();
           this.refresh();
           this.#watchSource();
@@ -1030,7 +1031,7 @@
       input.className = "cb-fallback-input";
       input.placeholder = this.options.placeholder ?? "";
       input.autocomplete = "off";
-      input.setAttribute("aria-label", this.options.placeholder ?? "");
+      input.setAttribute("aria-label", this.options.placeholder?.trim() || this.options.messages.add?.trim() || DEFAULT_MESSAGES.add);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "cb-fallback-add";
@@ -1445,16 +1446,18 @@
           this.#inputEl().focus();
         }, { signal });
       }
-      this.source.form?.addEventListener("reset", () => setTimeout(() => {
-        if (instances.get(this.source) !== this)
+      this.source.form?.addEventListener("reset", (event) => setTimeout(() => {
+        if (event.defaultPrevented || !this.#alive())
           return;
         this.searchGeneration++;
         this.loadController?.abort();
         this.loading = false;
         this.nextCursor = null;
         this.clearResults();
-        if (this.isSelect)
+        if (this.isSelect) {
+          this.selectionOrder = Array.from(this.#selectSource().selectedOptions);
           this.#inputEl().value = "";
+        }
         this.query = this.isSelect ? "" : this.source.value;
         this.refresh();
       }), { signal });
@@ -1578,7 +1581,7 @@
           return;
         const active = document.activeElement;
         const stillInside = active === this.#inputEl() || (this.#popoverEl()?.contains(active) ?? false) || this.anchor && active && this.anchor.contains(active) || this.control && active && this.control.contains(active);
-        if (this.isOpen() && stillInside)
+        if (stillInside)
           return;
         if (this.isOpen() || this.options.createOnBlur) {
           if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing && !this.#isReadonly()) {
@@ -1758,7 +1761,7 @@
       return this.setQuery("", { show, reason });
     }
     applyFilter(query = "", { show = false } = {}) {
-      if (this.mode !== "enhanced")
+      if (this.mode !== "enhanced" || !this.#alive())
         return this;
       this.query = String(query ?? "");
       this.#applyFilter(this.query);
@@ -2307,7 +2310,7 @@
         return this.#selectItem(existing) ? existing.option ?? null : null;
       }
       const item = await this.#materializeCreated(label, this.#inputEl());
-      if (!item)
+      if (!item || !this.#alive())
         return null;
       this.#inputEl().value = "";
       if (this.isMultiple) {
@@ -2333,7 +2336,7 @@
         combobox: this,
         label
       }, { cancelable: true });
-      if (before.defaultPrevented)
+      if (before.defaultPrevented || !this.#alive())
         return null;
       let created = { value: label, label };
       if (typeof this.options.create === "function") {
@@ -2357,6 +2360,8 @@
           return null;
         } finally {
           this.loading = false;
+          if (!fallback && this.#alive())
+            this.#applyFilter(this.query);
         }
       }
       if (!this.#alive())
@@ -2448,7 +2453,7 @@
       let consumedLength = 0;
       for (let index = 0;index < entries.length; index++) {
         const entry = entries[index];
-        if (this.options.maxItems > 0 && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
+        if (entry.text.trim() && this.options.maxItems > 0 && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
           return {
             consumed: false,
             rest: typeof this.options.tokenize === "function" ? value : value.slice(consumedLength)
@@ -2674,7 +2679,7 @@
       return loaded;
     }
     refresh() {
-      if (this.mode !== "enhanced")
+      if (this.mode !== "enhanced" || !this.#alive())
         return this;
       if (this.isSelect) {
         this.#inputEl().disabled = this.source.disabled;
@@ -2703,7 +2708,7 @@
       this.#inputEl().value = selected?.value ? selected.label : "";
     }
     show() {
-      if (this.mode !== "enhanced" || this.isOpen())
+      if (this.mode !== "enhanced" || !this.#alive() || this.isOpen())
         return false;
       if (openCombobox && openCombobox !== this) {
         openCombobox.hide();
@@ -2711,7 +2716,7 @@
           return false;
       }
       const before = emit(this.source, "combobox:beforeopen", { combobox: this }, { cancelable: true });
-      if (before.defaultPrevented)
+      if (before.defaultPrevented || !this.#alive())
         return false;
       try {
         this.#popoverEl().showPopover({ source: this.#inputEl() });
@@ -2741,7 +2746,10 @@
       return this.mode === "enhanced" && this.#popoverEl().matches(":popover-open");
     }
     dispose() {
-      instances.delete(this.source);
+      if (this.abortController.signal.aborted)
+        return;
+      if (instances.get(this.source) === this)
+        instances.delete(this.source);
       this.loadController?.abort();
       this.abortController.abort();
       this._sourceObserver?.disconnect();

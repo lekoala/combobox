@@ -1,6 +1,183 @@
 import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
+test.describe("Internal blur and async creation completion", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/features.html");
+    test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  });
+
+  test("a refused async creation clears loading without reopening a picker closed while pending", async ({
+    page,
+  }) => {
+    const state = await page.evaluate(async () => {
+      const source = document.getElementById("tags");
+      let release;
+      let started;
+      const ready = new Promise((resolve) => {
+        started = resolve;
+      });
+      const combo = new Combobox(source, {
+        create: () =>
+          new Promise((resolve) => {
+            release = () => resolve(null);
+            started();
+          }),
+      });
+      combo.input.value = "New";
+      await combo.search("New", { show: true });
+      combo.input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+      await ready;
+      combo.hide();
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return {
+        open: combo.isOpen(),
+        loadingRows: combo.listbox.querySelectorAll(".cb-loading").length,
+        input: combo.input.value,
+        values: [...source.selectedOptions].map((option) => option.value),
+      };
+    });
+    expect(state).toEqual({ open: false, loadingRows: 0, input: "New", values: ["1"] });
+  });
+
+  for (const target of ["chip", "remove", "button"]) {
+    test(`closed picker internal blur to ${target} keeps uncreated text`, async ({ page }) => {
+      await page.evaluate(() => {
+        const combo = new Combobox(document.getElementById("tags"), { create: true, createOnBlur: true });
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "internal-action";
+        button.textContent = "Action";
+        combo.control.append(button);
+      });
+      const input = page.locator("#tags + .cb-control .cb-input");
+      await input.fill("ghost");
+      await input.press("Escape");
+      const selectors = { chip: ".cb-chip", remove: ".cb-chip-remove", button: ".internal-action" };
+      const internal = page.locator(`#tags + .cb-control ${selectors[target]}`);
+      await internal.focus();
+      await expect(internal).toBeFocused();
+      await expect(input).toHaveValue("ghost");
+      await expect(page.locator('#tags option[value="ghost"]')).toHaveCount(0);
+      await expect(page.locator("#tags option:checked")).toHaveAttribute("value", "1");
+      await expect(page.locator(".cb-popover:visible")).toHaveCount(0);
+    });
+  }
+
+  test("ArrowLeft from a closed picker keeps chip focus with createOnBlur", async ({ page }) => {
+    await page.evaluate(
+      () => new Combobox(document.getElementById("tags"), { create: true, createOnBlur: true }),
+    );
+    const input = page.locator("#tags + .cb-control .cb-input");
+    await input.focus();
+    await input.press("Escape");
+    await input.press("ArrowLeft");
+    await expect(page.locator("#tags + .cb-control .cb-chip")).toBeFocused();
+    await expect(page.locator("#tags option:checked")).toHaveAttribute("value", "1");
+  });
+
+  for (const outcome of ["null", "reject", "abort", "veto", "invalid"]) {
+    test(`async creation ${outcome} restores normal rows and preserves native selection`, async ({
+      page,
+    }) => {
+      const state = await page.evaluate(async (outcome) => {
+        const source = document.getElementById("tags");
+        let release;
+        let started;
+        const ready = new Promise((resolve) => {
+          started = resolve;
+        });
+        const errors = [];
+        const native = [];
+        source.addEventListener("combobox:createerror", (event) => errors.push(event.detail.error.message));
+        for (const type of ["input", "change"]) source.addEventListener(type, () => native.push(type));
+        if (outcome === "veto")
+          source.addEventListener("combobox:beforeselect", (event) => event.preventDefault());
+        const combo = new Combobox(source, {
+          create: async () => {
+            await new Promise((resolve) => {
+              release = resolve;
+              started();
+            });
+            if (outcome === "reject") throw new Error("Creation failed");
+            if (outcome === "abort") throw new DOMException("Cancelled", "AbortError");
+            if (outcome === "null") return null;
+            return { value: outcome === "invalid" ? "" : "new", label: "New" };
+          },
+        });
+        combo.input.value = "New";
+        await combo.search("New", { show: true });
+        combo.input.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+        );
+        await ready;
+        const loadingDuring = !!combo.listbox.querySelector(".cb-loading");
+        release();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return {
+          loadingDuring,
+          loading: combo.loading,
+          open: combo.isOpen(),
+          loadingRows: combo.listbox.querySelectorAll(".cb-loading").length,
+          rows: combo.listbox.children.length,
+          input: combo.input.value,
+          count: source.options.length,
+          values: [...source.selectedOptions].map((option) => option.value),
+          errors: errors.length,
+          native,
+        };
+      }, outcome);
+      expect(state).toEqual({
+        loadingDuring: true,
+        loading: false,
+        open: true,
+        loadingRows: 0,
+        rows: 1,
+        input: "New",
+        count: 3,
+        values: ["1"],
+        errors: ["reject", "invalid"].includes(outcome) ? 1 : 0,
+        native: [],
+      });
+    });
+  }
+
+  test("disposing in combobox:create stops the final input write", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const source = document.getElementById("tags");
+      const combo = new Combobox(source, { create: async (label) => ({ value: label, label }) });
+      const input = combo.input;
+      let writes = 0;
+      source.addEventListener("combobox:create", () => {
+        combo.dispose();
+        const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+        Object.defineProperty(input, "value", {
+          get() {
+            return descriptor.get.call(this);
+          },
+          set(value) {
+            writes++;
+            descriptor.set.call(this, value);
+          },
+        });
+      });
+      input.value = "New";
+      await combo.search("New", { show: true });
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return {
+        writes,
+        disposed: Combobox.getInstance(source) === null,
+        values: [...source.selectedOptions].map((option) => option.value),
+      };
+    });
+    expect(state).toEqual({ writes: 0, disposed: true, values: ["1", "New"] });
+  });
+});
+
 test.describe("Creation decisions and interaction", () => {
   const FEATURES = "/test/fixtures/features.html";
 

@@ -234,7 +234,9 @@ export function prepareTokenSplitter(separators) {
     const parts = text.split(pattern);
     const done = /** @type {Token[]} */ ([]);
     for (let index = 1; index < parts.length; index += 2) {
-      if (parts[index - 1]) done.push({ text: parts[index - 1], sep: parts[index] });
+      // Empty segments still consume their separator; callers need exact
+      // lengths to preserve the unprocessed tail when a later token is refused.
+      done.push({ text: parts[index - 1], sep: parts[index] });
     }
     return { done, rest: parts[parts.length - 1] };
   };

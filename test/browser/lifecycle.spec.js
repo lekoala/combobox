@@ -1,6 +1,81 @@
 import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
+test.describe("Disposed instances and source ownership", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/features.html");
+    test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  });
+
+  for (const mode of ["enhanced", "fallback"]) {
+    test(`repeated dispose never unregisters or restores over a newer ${mode} instance`, async ({ page }) => {
+      const state = await page.evaluate((mode) => {
+        const source = document.getElementById("tags");
+        const first = new Combobox(source, { mode, create: true });
+        first.dispose();
+        const second = new Combobox(source, { mode, create: true });
+        const html = source.outerHTML;
+        const control = mode === "enhanced" ? second.control : second.fallbackControl;
+        first.dispose();
+        first.dispose();
+        return {
+          registered: Combobox.getInstance(source) === second,
+          unchanged: html === source.outerHTML,
+          connected: control.isConnected,
+          chips: second.chips?.children.length ?? 0,
+        };
+      }, mode);
+      expect(state).toEqual({
+        registered: true,
+        unchanged: true,
+        connected: true,
+        chips: mode === "enhanced" ? 1 : 0,
+      });
+    });
+  }
+
+  for (const replacement of [false, true]) {
+    test(`disposed rendering methods are harmless ${replacement ? "after replacement" : "after teardown"}`, async ({
+      page,
+    }) => {
+      const state = await page.evaluate((replacement) => {
+        const source = document.getElementById("tags");
+        source.options[0].setAttribute("data-filtered", "authored");
+        const old = new Combobox(source);
+        old.dispose();
+        const current = replacement ? new Combobox(source) : null;
+        const html = source.outerHTML;
+        const changes = [];
+        const observer = new MutationObserver((records) => changes.push(...records));
+        observer.observe(source, { subtree: true, attributes: true, childList: true });
+        observer.observe(old.listbox, { subtree: true, attributes: true, childList: true });
+        if (current) observer.observe(current.control, { subtree: true, attributes: true, childList: true });
+        const refreshed = old.refresh() === old;
+        const filtered = old.applyFilter("unmatched", { show: true }) === old;
+        const shown = old.show();
+        changes.push(...observer.takeRecords());
+        observer.disconnect();
+        return {
+          refreshed,
+          filtered,
+          shown,
+          changes: changes.length,
+          unchanged: source.outerHTML === html,
+          registered: Combobox.getInstance(source) === current,
+        };
+      }, replacement);
+      expect(state).toEqual({
+        refreshed: true,
+        filtered: true,
+        shown: false,
+        changes: 0,
+        unchanged: true,
+        registered: true,
+      });
+    });
+  }
+});
+
 test.describe("Creation lifecycle and restored state", () => {
   test.beforeEach(async ({ page }) => {
     await setup(page, "/test/fixtures/features.html");

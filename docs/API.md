@@ -265,7 +265,8 @@ Combobox.setDefaultMessages({ noResults: "Custom" }); // merge; missing keys kee
 `Combobox.setDefaultChipClass("badge primary")` sets the chip classes for future
 instances. Each instance takes a snapshot at construction; its explicit `chipClass`
 option (including `""`) wins. Call `Combobox.setDefaultChipClass("")` to reset the
-global default. `<combo-box chip-class="badge primary">` supplies the declarative
+global default. JavaScript nullish class values normalize to `""` (the library
+skin). `<combo-box chip-class="badge primary">` supplies the declarative
 equivalent; changing the attribute follows the usual full-rebuild lifecycle.
 
 Classes are split on whitespace. Empty or whitespace-only classes use the default
@@ -479,7 +480,19 @@ Remote/transient results never rewrite the native catalogue. Selecting a remote 
 
 A failed `load` (non-abort rejection) shows the same `.cb-empty` family as loading with a `cb-error` modifier (text from `messages.loadError`, overridable via `render.error(query, { error, combobox })`), keeps the selection intact, and emits `combobox:loaderror`. The error row is cleared by the next `load()` that runs or by a local query that clears the result store. There is deliberately no built-in retry affordance — retry/pagination is application-owned. Returns are `[item…]` or `{ items, cursor }`; `cursor` is stored in `combobox.nextCursor` and fed back into `load(query, { cursor })` by `loadMore()`, which appends results and never bypasses `maxOptions`.
 
+`render.error` controls the visible DOM; the live status announcement comes from
+`messages.loadError`. When a custom error renderer changes the meaning of the
+error, configure `messages.loadError` as its accessible text equivalent too.
+
 ## Creation
+
+When async creation returns no item, rejects, produces an invalid item or is
+vetoed by `combobox:beforeselect`, the loading row is replaced with the normal
+search rows. Input text and native selection remain editable and unchanged by
+the refused creation. Errors emit `combobox:createerror`; an `AbortError` is
+silent. Completion never opens a closed picker merely to clear loading state.
+The native fallback has no picker or loading row; its Add input uses the
+placeholder as its accessible name, or `messages.add` when the placeholder is blank.
 
 ### `createFilter(value, context)`
 
@@ -555,6 +568,8 @@ separators: parseSeparators(",|;"),
 - Existing terms resolve to the first enabled, unselected match in multiple mode; an already-selected match is an idempotent success when no further match is available. A disabled-only match is refused without creating a duplicate, and its text stays editable (including in native fallback).
 - Unexpected token-batch failures (for example a throwing custom tokenizer) emit `combobox:tokenerror` with `{ combobox, error }`. Later input batches still run. Guard and creation failures retain their dedicated `guarderror`/`createerror` events.
 - A trailing incomplete token stays in the input.
+- Empty separator segments consume their separators without creating options,
+  including at `maxItems`; a refusal keeps the exact unprocessed tail.
 - `tokenize(value, ctx)` replaces the default splitter when the application needs quoting or other rules.
 - IME composition feeds search but never tokenizes or creates.
 
@@ -711,6 +726,12 @@ In ordered mode, a focused chip supports a keyboard reorder gesture:
   `change` fire before `combobox:reorder`. Vetoes, no-ops and moves between equal
   values emit no native value events; equal-valued choices still reorder by identity.
 
+`form.reset()` restores native default selections in native catalogue order,
+including the submitted and chip order in `selectionOrder: "selected"` mode.
+It never rewrites the catalogue or dispatches value/reorder events, and it keeps
+pre-existing defaults above `maxItems`. A cancelled reset preserves the current
+selection, query and order.
+
 ## Picker/lifecycle
 
 ```js
@@ -722,6 +743,10 @@ combo.dispose();
 ```
 
 `dispose()` must restore everything the enhancer changed, including datalist linkage and explicit sibling filter-input placement/visibility. That covers `disabled`/`readonly` driven onto an authored filter input, `aria-invalid` cleared by value commits, and preexisting `data-filtered`/`data-active-option` markers on native options. Operations still pending at dispose time (guard, create, load) resolve without mutating the source.
+
+Disposal is idempotent: a stale reference cannot unregister or restore over a
+newer instance. On a disposed instance, `refresh()` and `applyFilter()` return the
+instance without rendering or mutating the source; `show()` returns `false`.
 
 ## Events
 

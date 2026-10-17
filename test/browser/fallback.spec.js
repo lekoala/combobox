@@ -1,6 +1,22 @@
 import { expect, test } from "@playwright/test";
 import { setup } from "./helpers.js";
 
+test("fallback creation with an empty placeholder keeps a nonempty accessible name", async ({ page }) => {
+  await setup(page, "/test/fixtures/features.html");
+  await page.evaluate(
+    () =>
+      new Combobox(document.getElementById("tags"), {
+        mode: "fallback",
+        create: true,
+        placeholder: "",
+        messages: { add: "Ajouter" },
+      }),
+  );
+  await expect(page.locator("#tags + .cb-fallback-create input")).toHaveAccessibleName("Ajouter");
+  await expect(page.locator("#tags + .cb-fallback-create input")).not.toHaveAttribute("name");
+  await expect(page.locator("#tags option:checked")).toHaveAttribute("value", "1");
+});
+
 test.describe("Native selection gates", () => {
   const IDENTITY_HTML = "/test/fixtures/identity.html";
 

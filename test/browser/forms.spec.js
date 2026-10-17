@@ -1,6 +1,50 @@
 import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
+test.describe("Reset of selected order", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/features.html");
+    test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  });
+
+  for (const cancelled of [false, true]) {
+    test(`form reset ${cancelled ? "cancellation preserves user order" : "restores native default order without rewriting the catalogue"}`, async ({
+      page,
+    }) => {
+      const state = await page.evaluate(async (cancelled) => {
+        const source = document.getElementById("overlimit");
+        const options = [...source.options];
+        const combo = new Combobox(source, { selectionOrder: "selected", maxItems: 2 });
+        combo.move("1", 2);
+        const events = [];
+        for (const type of ["input", "change", "combobox:reorder"])
+          source.addEventListener(type, () => events.push(type));
+        if (cancelled)
+          source.form.addEventListener("reset", (event) => event.preventDefault(), { once: true });
+        source.form.reset();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        return {
+          values: combo.getSelectedValues(),
+          submitted: new FormData(source.form).getAll(source.name),
+          chips: [...combo.chips.children].map((chip) => chip.dataset.value),
+          native: [...source.selectedOptions].map((option) => option.value),
+          catalogue: options.every((option, index) => source.options[index] === option),
+          events,
+        };
+      }, cancelled);
+      const values = cancelled ? ["2", "3", "1"] : ["1", "2", "3"];
+      expect(state).toEqual({
+        values,
+        submitted: values,
+        chips: values,
+        native: ["1", "2", "3"],
+        catalogue: true,
+        events: [],
+      });
+    });
+  }
+});
+
 test.describe("Reset and durable selections", () => {
   const FEATURES = "/test/fixtures/features.html";
 

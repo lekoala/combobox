@@ -1,6 +1,37 @@
 import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
+test("rich error rendering keeps the explicitly configured accessible message", async ({ page }) => {
+  await setup(page, "/test/fixtures/features.html");
+  test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  const state = await page.evaluate(async () => {
+    const combo = new Combobox(document.getElementById("tags"), {
+      load: async () => {
+        throw new Error("Offline");
+      },
+      messages: { loadError: "Service unavailable. Try again later." },
+      render: {
+        error: () => {
+          const node = document.createElement("strong");
+          node.textContent = "Offline — retry later";
+          return node;
+        },
+      },
+    });
+    await combo.search("remote", { show: true });
+    return {
+      visual: combo.listbox.querySelector(".cb-error strong").textContent,
+      announced: combo.status.textContent,
+      values: [...combo.source.selectedOptions].map((option) => option.value),
+    };
+  });
+  expect(state).toEqual({
+    visual: "Offline — retry later",
+    announced: "Service unavailable. Try again later.",
+    values: ["1"],
+  });
+});
+
 test.describe("Remote loading", () => {
   const REMOTE = "/test/fixtures/remote.html";
 

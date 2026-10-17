@@ -499,7 +499,7 @@ export class Combobox {
    * @returns {void}
    */
   static setDefaultChipClass(value) {
-    defaultChipClass = value;
+    defaultChipClass = String(value ?? "");
   }
 
   /**
@@ -656,6 +656,7 @@ export class Combobox {
         ...(options.render || {}),
       },
     });
+    this.options.chipClass = String(this.options.chipClass ?? "");
     // this.options.coordinateSpace is guaranteed viewport | document past
     // this line; nothing downstream reinterprets garbage (including "auto").
     if (!["document", "viewport"].includes(this.options.coordinateSpace)) {
@@ -727,6 +728,9 @@ export class Combobox {
         this.listbox = picker.listbox;
         this.status = picker.status;
 
+        // Public rendering methods require ownership, including this first
+        // refresh. Failed setup still rolls registration back in dispose().
+        instances.set(element, this);
         this.#bind();
         this.refresh();
         this.#watchSource();
@@ -810,7 +814,12 @@ export class Combobox {
     input.className = "cb-fallback-input";
     input.placeholder = this.options.placeholder ?? "";
     input.autocomplete = "off";
-    input.setAttribute("aria-label", this.options.placeholder ?? "");
+    input.setAttribute(
+      "aria-label",
+      this.options.placeholder?.trim() ||
+        this.options.messages.add?.trim() ||
+        /** @type {string} */ (DEFAULT_MESSAGES.add),
+    );
     // Deliberately no name: the select remains the only successful control.
 
     const button = document.createElement("button");
@@ -1487,18 +1496,21 @@ export class Combobox {
 
     this.source.form?.addEventListener(
       "reset",
-      () =>
+      (event) =>
         // A real task, not a microtask: when the reset event returns to the
         // button's native activation code the JS stack is empty, so a
         // microtask would run *before* the browser restores defaultSelected.
         setTimeout(() => {
-          if (instances.get(this.source) !== this) return;
+          if (event.defaultPrevented || !this.#alive()) return;
           this.searchGeneration++;
           this.loadController?.abort();
           this.loading = false;
           this.nextCursor = null;
           this.clearResults();
-          if (this.isSelect) this.#inputEl().value = "";
+          if (this.isSelect) {
+            this.selectionOrder = Array.from(this.#selectSource().selectedOptions);
+            this.#inputEl().value = "";
+          }
           this.query = this.isSelect ? "" : this.source.value;
           this.refresh();
         }),
@@ -1661,7 +1673,7 @@ export class Combobox {
         (this.#popoverEl()?.contains(active) ?? false) ||
         (this.anchor && active && this.anchor.contains(active)) ||
         (this.control && active && this.control.contains(active));
-      if (this.isOpen() && stillInside) return;
+      if (stillInside) return;
 
       if (this.isOpen() || this.options.createOnBlur) {
         if (
@@ -1920,7 +1932,7 @@ export class Combobox {
    * @returns {this | undefined}
    */
   applyFilter(query = "", { show = false } = {}) {
-    if (this.mode !== "enhanced") return this;
+    if (this.mode !== "enhanced" || !this.#alive()) return this;
     this.query = String(query ?? "");
     this.#applyFilter(this.query);
     emit(this.#inputEl(), "filter", {
@@ -2720,7 +2732,7 @@ export class Combobox {
     // guards.add is about creating a brand-new item; existing matches are
     // selected above without running it.
     const item = await this.#materializeCreated(label, this.#inputEl());
-    if (!item) return null;
+    if (!item || !this.#alive()) return null;
 
     this.#inputEl().value = "";
     if (this.isMultiple) {
@@ -2764,7 +2776,7 @@ export class Combobox {
       },
       { cancelable: true },
     );
-    if (before.defaultPrevented) return null;
+    if (before.defaultPrevented || !this.#alive()) return null;
 
     /** @type {import("./helpers.js").ComboboxItem} */
     let created = { value: label, label };
@@ -2788,6 +2800,9 @@ export class Combobox {
         return null;
       } finally {
         this.loading = false;
+        // A refusal, rejection or later selection veto must not leave the
+        // loading row behind. Repaint without opening or refocusing anything.
+        if (!fallback && this.#alive()) this.#applyFilter(this.query);
       }
     }
     // Revalidate after the awaits: a concurrent batch may have filled
@@ -2936,7 +2951,11 @@ export class Combobox {
     // fallback; slicing by transformed token lengths corrupts authored text.
     for (let index = 0; index < entries.length; index++) {
       const entry = entries[index];
-      if (this.options.maxItems > 0 && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
+      if (
+        entry.text.trim() &&
+        this.options.maxItems > 0 &&
+        this.#selectSource().selectedOptions.length >= this.options.maxItems
+      ) {
         return {
           consumed: false,
           rest: typeof this.options.tokenize === "function" ? value : value.slice(consumedLength),
@@ -3245,7 +3264,7 @@ export class Combobox {
   }
 
   refresh() {
-    if (this.mode !== "enhanced") return this;
+    if (this.mode !== "enhanced" || !this.#alive()) return this;
 
     if (this.isSelect) {
       this.#inputEl().disabled = this.source.disabled;
@@ -3273,13 +3292,13 @@ export class Combobox {
   }
 
   show() {
-    if (this.mode !== "enhanced" || this.isOpen()) return false;
+    if (this.mode !== "enhanced" || !this.#alive() || this.isOpen()) return false;
     if (openCombobox && openCombobox !== this) {
       openCombobox.hide();
       if (openCombobox?.isOpen()) return false;
     }
     const before = emit(this.source, "combobox:beforeopen", { combobox: this }, { cancelable: true });
-    if (before.defaultPrevented) return false;
+    if (before.defaultPrevented || !this.#alive()) return false;
 
     try {
       this.#popoverEl().showPopover({ source: this.#inputEl() });
@@ -3312,7 +3331,8 @@ export class Combobox {
   }
 
   dispose() {
-    instances.delete(this.source);
+    if (this.abortController.signal.aborted) return;
+    if (instances.get(this.source) === this) instances.delete(this.source);
     this.loadController?.abort();
     this.abortController.abort();
     this._sourceObserver?.disconnect();

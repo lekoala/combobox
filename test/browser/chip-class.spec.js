@@ -1,6 +1,26 @@
 import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
+test("nullish chip classes normalize to the library skin", async ({ page }) => {
+  const classes = await page.evaluate(() => {
+    const make = (options = {}) => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      source.append(new Option("Alpha", "a", true, true));
+      document.body.append(source);
+      return new Combobox(source, options).chips.firstElementChild.className;
+    };
+    Combobox.setDefaultChipClass(undefined);
+    const unset = make();
+    Combobox.setDefaultChipClass("badge");
+    const explicitNull = make({ chipClass: null });
+    const explicitUndefined = make({ chipClass: undefined });
+    Combobox.setDefaultChipClass(null);
+    return [unset, explicitNull, explicitUndefined, make()];
+  });
+  expect(classes).toEqual(Array(4).fill("cb-chip cb-chip-skin"));
+});
+
 test.beforeEach(async ({ page }) => {
   await setup(page, "/test/fixtures/features.html");
   test.skip(!(await modernSupported(page)), "Modern Popover support is required");

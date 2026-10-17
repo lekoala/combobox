@@ -66,7 +66,32 @@ test("prepared separator splitter handles repeated calls, adjacent separators an
     ],
     rest: "tail",
   });
-  expect(split(";|c.*")).toEqual({ done: [{ text: "c", sep: ".*" }], rest: "" });
+  expect(split(";|c.*")).toEqual({
+    done: [
+      { text: "", sep: ";" },
+      { text: "", sep: "|" },
+      { text: "c", sep: ".*" },
+    ],
+    rest: "",
+  });
   expect(split("again;")).toEqual({ done: [{ text: "again", sep: ";" }], rest: "" });
   expect(split("rest")).toEqual({ done: [], rest: "rest" });
+});
+
+test("empty segments retain every separator and exact consumed offsets", () => {
+  const split = prepareTokenSplitter([",", "~~"]);
+  const value = ",,alpha~~,beta,,tail";
+  const result = split(value);
+  expect(result).toEqual({
+    done: [
+      { text: "", sep: "," },
+      { text: "", sep: "," },
+      { text: "alpha", sep: "~~" },
+      { text: "", sep: "," },
+      { text: "beta", sep: "," },
+      { text: "", sep: "," },
+    ],
+    rest: "tail",
+  });
+  expect(result.done.map(({ text, sep }) => text + sep).join("") + result.rest).toBe(value);
 });
