@@ -494,6 +494,11 @@ silent. Completion never opens a closed picker merely to clear loading state.
 The native fallback has no picker or loading row; its Add input uses the
 placeholder as its accessible name, or `messages.add` when the placeholder is blank.
 
+Creation and remote loads currently share a loading indicator. If they overlap,
+creation completion can hide the indicator while the remote request is still
+pending. Remote requests still follow their normal cancellation and stale-response
+checks; the limitation concerns the loading indicator.
+
 ### `createFilter(value, context)`
 
 Returns false when typed text must not be offered/accepted as a new option.
@@ -544,6 +549,8 @@ Contract:
 - Guards run on both user and programmatic paths. `before` events still fire (synchronously, cancellable) only after a guard has passed.
 - `guards.add` applies to brand-new items only: an existing match is selected without running it.
 - `createOnBlur` means genuinely leaving the combobox. Blur caused by internal interaction (picker click, adornment, chip removal, clear) never creates, and IME composition also blocks it.
+- Switching tabs or windows does not count as leaving when `document.activeElement`
+  remains inside the combobox, whether the picker is open or closed.
 
 ## Separators / tokenization
 
@@ -572,6 +579,11 @@ separators: parseSeparators(",|;"),
   including at `maxItems`; a refusal keeps the exact unprocessed tail.
 - `tokenize(value, ctx)` replaces the default splitter when the application needs quoting or other rules.
 - IME composition feeds search but never tokenizes or creates.
+
+The exported `splitTokens(value, separators)` helper returns `{ done, rest }`.
+`done` includes empty segments such as `{ text: "", sep: "," }` for leading or
+adjacent separators. This preserves exact consumed offsets. Direct consumers
+that only need nonempty tokens can use `done.filter(({ text }) => text.trim())`.
 
 ## Item field mapping
 

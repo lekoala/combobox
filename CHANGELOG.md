@@ -12,6 +12,10 @@ The changelog highlights user-facing changes rather than listing every build, de
 - Added migration guides for [Tom Select](docs/MIGRATION_FROM_TOM_SELECT.md) and [Select2](docs/MIGRATION_FROM_SELECT2.md).
 - Added `combobox:tokenerror` to report unexpected token-processing errors without blocking subsequent input batches.
 
+### Changed
+
+- `splitTokens()` now includes empty segments in `done` so separator offsets stay exact. Direct consumers that only need nonempty tokens should filter entries with `text.trim()`.
+
 ### Fixed
 
 - Prevented `createOnBlur` from creating text or losing chip focus during internal interactions, including when the picker is closed.
