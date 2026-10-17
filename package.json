@@ -94,6 +94,6 @@
     "typescript": "7.0.2"
   },
   "dependencies": {
-    "@lekoala/floating": "^0.2.0"
+    "@lekoala/floating": "^0.3.1"
   }
 }
