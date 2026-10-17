@@ -19,6 +19,9 @@
               "name": "placeholder"
             },
             {
+              "name": "chip-class"
+            },
+            {
               "name": "search"
             },
             {

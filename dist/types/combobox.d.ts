@@ -75,6 +75,10 @@ export type ComboboxOptions = {
     minChars?: number;
     allowEmptyOption?: boolean;
     placeholder?: string;
+    /**
+     * Space-separated author classes for chips; replaces the default skin
+     */
+    chipClass?: string;
     messages?: Messages;
     load?: LoadCallback;
     loadOnEmpty?: boolean;
@@ -117,6 +121,7 @@ export type ResolvedOptions = ComboboxOptions & {
     minChars: number;
     allowEmptyOption: boolean;
     placeholder: string;
+    chipClass: string;
     messages: Messages;
     loadOnEmpty: boolean;
     debounce: number;
@@ -204,6 +209,7 @@ export type ViewState = {
  * @property {number} [minChars]
  * @property {boolean} [allowEmptyOption]
  * @property {string} [placeholder]
+ * @property {string} [chipClass] Space-separated author classes for chips; replaces the default skin
  * @property {Messages} [messages]
  * @property {LoadCallback} [load]
  * @property {boolean} [loadOnEmpty]
@@ -244,6 +250,7 @@ export type ViewState = {
  *   minChars: number,
  *   allowEmptyOption: boolean,
  *   placeholder: string,
+ *   chipClass: string,
  *   messages: Messages,
  *   loadOnEmpty: boolean,
  *   debounce: number,
@@ -391,6 +398,14 @@ export declare class Combobox {
      * @returns {void}
      */
     static setDefaultMessages(messages: Partial<Messages>): void;
+    /**
+     * Set author classes for chips in future instances. Existing instances keep
+     * their construction-time snapshot; per-instance chipClass takes precedence.
+     * Pass an empty string to restore the library skin for future instances.
+     * @param {string} value
+     * @returns {void}
+     */
+    static setDefaultChipClass(value: string): void;
     /**
      * Discover and enhance combobox sources. This is a discovery/creation API
      * only: an element that already has an instance is returned as-is and never

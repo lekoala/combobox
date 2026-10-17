@@ -3,6 +3,26 @@ import { modernSupported, setup } from "./helpers.js";
 
 const FEATURES = "/test/fixtures/features.html";
 
+test("author-classed chips keep a visible keyboard focus ring", async ({ page }) => {
+  await page.addStyleTag({ path: "src/combobox.css" });
+  await page.evaluate(() => {
+    new Combobox(document.getElementById("tags"), { chipClass: "badge primary" });
+  });
+  await page.locator(inputLocator("tags")).focus();
+  await page.keyboard.press("ArrowLeft");
+  const chip = page.locator("#tags + .cb-control .cb-chip");
+  await expect(chip).toBeFocused();
+  const ring = await chip.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return {
+      style: cs.outlineStyle,
+      width: parseFloat(cs.outlineWidth),
+      visible: el.matches(":focus-visible"),
+    };
+  });
+  expect(ring).toEqual({ style: "solid", width: 2, visible: true });
+});
+
 function inputLocator(selectId) {
   return `#${selectId} + .cb-control .cb-input`;
 }

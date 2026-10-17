@@ -739,11 +739,13 @@
   // src/combobox.js
   var instances = new WeakMap;
   var uid = 0;
+  var defaultChipClass = "";
   var openCombobox = null;
   var DEFAULTS = {
     create: false,
     allowEmptyOption: false,
     placeholder: "Search…",
+    chipClass: "",
     messages: DEFAULT_MESSAGES,
     match: "includes",
     searchFields: ["label"],
@@ -874,6 +876,9 @@
     static setDefaultMessages(messages) {
       setDefaultMessages(messages);
     }
+    static setDefaultChipClass(value) {
+      defaultChipClass = value;
+    }
     static init(rootOrSelector = document, selectorOrOptions = null, maybeOptions = {}) {
       const targets = [];
       let options = {};
@@ -937,6 +942,7 @@
       this.explicitOptions = options;
       this.options = {
         ...DEFAULTS,
+        chipClass: defaultChipClass,
         ...options,
         messages: {
           ...DEFAULT_MESSAGES,
@@ -1967,6 +1973,7 @@
       if (!chips)
         return;
       chips.replaceChildren();
+      const classes = this.options.chipClass.split(/\s+/).filter(Boolean);
       for (const option of this.#selectedOptionsInOrder()) {
         const placeholder = option.disabled && option.hidden;
         if (!option.value && (!this.options.allowEmptyOption || placeholder))
@@ -1974,6 +1981,7 @@
         const item = optionToItem(option);
         const chip = document.createElement("span");
         chip.className = "cb-chip";
+        chip.classList.add(...classes.length ? classes : ["cb-chip-skin"]);
         chip.tabIndex = -1;
         chip.dataset.value = item.value;
         this._chipOptions.set(chip, option);
@@ -2762,6 +2770,7 @@
   var OPTION_ATTRIBUTES = {
     create: { type: "boolean" },
     placeholder: {},
+    "chip-class": {},
     search: { option: "match" },
     "min-chars": { type: "integer" },
     "max-items": { type: "integer" },

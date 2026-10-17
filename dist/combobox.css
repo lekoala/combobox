@@ -174,11 +174,16 @@
   gap: 0.2857em;
   flex: 0 1 auto;
   min-inline-size: 0;
-  min-block-size: 1.7143em;
   max-inline-size: 100%;
+  padding-inline-end: 0.1429em;
+}
+
+/* Author-classed chips keep the layout above and receive their skin from
+   the host design system, independent of stylesheet load order. */
+.cb-chip-skin {
+  min-block-size: 1.7143em;
   padding-block: 0;
   padding-inline-start: 0.5714em;
-  padding-inline-end: 0.1429em;
   border: var(--cb-chip-border-width) solid var(--cb-chip-border-color);
   border-radius: var(--cb-chip-border-radius);
   background: var(--cb-chip-bg);

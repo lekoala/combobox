@@ -102,6 +102,7 @@ leaking into the engine.
 |---|---|
 | `create` | `create: true` |
 | `placeholder` | `placeholder` |
+| `chip-class` | `chipClass` |
 | `search` | `match` |
 | `min-chars` | `minChars` |
 | `max-items` | `maxItems` |
@@ -163,6 +164,7 @@ configuration, not application metadata.
 ```js
 {
   placeholder: "Search…",
+  chipClass: "",            // space-separated author classes; replaces the default chip skin
   messages: {
     noResults: "No results",
     loading: "Loading…",
@@ -259,6 +261,21 @@ Combobox.setDefaultMessages({ noResults: "Custom" }); // merge; missing keys kee
 ```
 
 `setDefaultMessages` merges (partial objects are fine) and never replaces the producer functions unless a replacement is provided. It does not refresh already-created instances — same contract as the locale imports.
+
+`Combobox.setDefaultChipClass("badge primary")` sets the chip classes for future
+instances. Each instance takes a snapshot at construction; its explicit `chipClass`
+option (including `""`) wins. Call `Combobox.setDefaultChipClass("")` to reset the
+global default. `<combo-box chip-class="badge primary">` supplies the declarative
+equivalent; changing the attribute follows the usual full-rebuild lifecycle.
+
+Classes are split on whitespace. Empty or whitespace-only classes use the default
+library skin (`cb-chip-skin`). With author classes, the host stylesheet owns chip
+colors, border, radius, typography, height and start padding. The library keeps
+layout, label truncation, end padding for the remove button, remove-button styling
+and the keyboard focus ring. `cb-chip`, `cb-chip-label` and `cb-chip-remove` remain
+available. Classes are reapplied on every render, including `sync()`, `setOptions()`
+and form reset. Native fallback creates no chips; source values, events, guards
+and disabled behavior are unchanged, and `dispose()` removes the generated chips.
 
 ### Deliberately not config options
 

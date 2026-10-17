@@ -61,23 +61,28 @@ test("selected, active, check and caret keep an essential signal under forced co
   expect(state.controlBorder).toBeTruthy();
 });
 
-test("focused chip keeps a perceptible focus ring under forced colors", async ({ page }) => {
-  const state = await page.evaluate(async () => {
-    const wrap = document.createElement("combo-box");
-    wrap.innerHTML = `<select multiple><option value="a" selected>Alpha</option></select>`;
-    document.body.append(wrap);
-    await wrap.whenReady();
-    const chip = wrap.querySelector(".cb-chip");
-    chip.focus();
-    const cs = getComputedStyle(chip);
-    return {
-      focused: document.activeElement === chip,
-      outlineStyle: cs.outlineStyle,
-      outlineWidth: cs.outlineWidth,
-    };
-  });
+for (const chipClass of ["", "badge primary"]) {
+  test(`focused chip (${chipClass || "default"}) keeps a perceptible focus ring under forced colors`, async ({
+    page,
+  }) => {
+    const state = await page.evaluate(async (chipClass) => {
+      const wrap = document.createElement("combo-box");
+      wrap.setAttribute("chip-class", chipClass);
+      wrap.innerHTML = `<select multiple><option value="a" selected>Alpha</option></select>`;
+      document.body.append(wrap);
+      await wrap.whenReady();
+      const chip = wrap.querySelector(".cb-chip");
+      chip.focus();
+      const cs = getComputedStyle(chip);
+      return {
+        focused: document.activeElement === chip,
+        outlineStyle: cs.outlineStyle,
+        outlineWidth: cs.outlineWidth,
+      };
+    }, chipClass);
 
-  expect(state.focused).toBe(true);
-  expect(state.outlineStyle).not.toBe("none");
-  expect(parseFloat(state.outlineWidth)).toBeGreaterThan(0);
-});
+    expect(state.focused).toBe(true);
+    expect(state.outlineStyle).not.toBe("none");
+    expect(parseFloat(state.outlineWidth)).toBeGreaterThan(0);
+  });
+}

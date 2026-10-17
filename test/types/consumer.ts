@@ -10,6 +10,7 @@ const item: ComboboxItem = { value: "react", label: "React" };
 void frMessages;
 
 const options: ComboboxOptions = {
+  chipClass: "badge primary",
   match: "fuzzy",
   maxItems: 3,
   create: true,
@@ -24,6 +25,7 @@ const options: ComboboxOptions = {
 };
 
 const select = document.querySelector("select") as HTMLSelectElement;
+Combobox.setDefaultChipClass("badge primary");
 const combo = new Combobox(select, options);
 void combo.setQuery("doctor", { show: true });
 void combo.clearQuery();

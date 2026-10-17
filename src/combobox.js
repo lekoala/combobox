@@ -109,6 +109,7 @@ import {
 /** @type {WeakMap<ComboboxSource, Combobox>} */
 const instances = new WeakMap();
 let uid = 0;
+let defaultChipClass = "";
 /** @type {Combobox | null} */
 let openCombobox = null;
 
@@ -118,6 +119,7 @@ const DEFAULTS = {
   create: false,
   allowEmptyOption: false,
   placeholder: "Search…",
+  chipClass: "",
   messages: DEFAULT_MESSAGES,
   match: "includes", // Open UI-aligned: includes | startswith | fuzzy | pattern | function
   searchFields: ["label"],
@@ -334,6 +336,7 @@ const SOURCE_ATTRS = ["aria-hidden", "tabindex", "aria-invalid"];
  * @property {number} [minChars]
  * @property {boolean} [allowEmptyOption]
  * @property {string} [placeholder]
+ * @property {string} [chipClass] Space-separated author classes for chips; replaces the default skin
  * @property {Messages} [messages]
  * @property {LoadCallback} [load]
  * @property {boolean} [loadOnEmpty]
@@ -375,6 +378,7 @@ const SOURCE_ATTRS = ["aria-hidden", "tabindex", "aria-invalid"];
  *   minChars: number,
  *   allowEmptyOption: boolean,
  *   placeholder: string,
+ *   chipClass: string,
  *   messages: Messages,
  *   loadOnEmpty: boolean,
  *   debounce: number,
@@ -485,6 +489,17 @@ export class Combobox {
    */
   static setDefaultMessages(messages) {
     setDefaultMessages(messages);
+  }
+
+  /**
+   * Set author classes for chips in future instances. Existing instances keep
+   * their construction-time snapshot; per-instance chipClass takes precedence.
+   * Pass an empty string to restore the library skin for future instances.
+   * @param {string} value
+   * @returns {void}
+   */
+  static setDefaultChipClass(value) {
+    defaultChipClass = value;
   }
 
   /**
@@ -630,6 +645,7 @@ export class Combobox {
     /** @type {ResolvedOptions} */
     this.options = /** @type {ResolvedOptions} */ ({
       ...DEFAULTS,
+      chipClass: defaultChipClass,
       ...options,
       messages: {
         ...DEFAULT_MESSAGES,
@@ -2190,6 +2206,7 @@ export class Combobox {
     const chips = this.#chipsEl();
     if (!chips) return;
     chips.replaceChildren();
+    const classes = this.options.chipClass.split(/\s+/).filter(Boolean);
 
     for (const option of this.#selectedOptionsInOrder()) {
       // An empty value is not a real selection unless allowEmptyOption is on;
@@ -2202,6 +2219,7 @@ export class Combobox {
 
       const chip = document.createElement("span");
       chip.className = "cb-chip";
+      chip.classList.add(...(classes.length ? classes : ["cb-chip-skin"]));
       chip.tabIndex = -1;
       chip.dataset.value = item.value;
       // data-value is for inspection/debug only; the authoritative identity is

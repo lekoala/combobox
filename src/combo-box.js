@@ -26,6 +26,7 @@ import { booleanAttribute, hasOwn, parseInteger, parseList, parseSeparators } fr
 const OPTION_ATTRIBUTES = {
   create: { type: "boolean" },
   placeholder: {},
+  "chip-class": {},
   search: { option: "match" },
   "min-chars": { type: "integer" },
   "max-items": { type: "integer" },

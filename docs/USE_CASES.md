@@ -53,6 +53,18 @@ Requirements:
   text and reflects state with `refresh()`; the manipulated row keeps active by
   exact `<option>` identity.
 
+### Chips styled by the host design system
+
+`<combo-box chip-class="badge primary">` or the application-wide
+`Combobox.setDefaultChipClass("badge primary")` makes chips follow the host badge
+rules, including theme-specific typography and borders.
+
+- author classes survive additions, removals, `sync()`, `setOptions()` and form reset;
+- classed chips receive no library skin, regardless of stylesheet load order;
+- keyboard navigation keeps a visible focus ring, including forced colors;
+- without author classes, default chip appearance stays unchanged;
+- fallback keeps the native select and disposal removes the generated chips.
+
 ## UC4 — Creatable tags
 
 GitHub-topics recipe (demo 20):

@@ -216,6 +216,18 @@ Multiple selects are rendered as removable chips:
 </combo-box>
 ```
 
+To use your design system's badge rules, set `chip-class="badge primary"`
+(Actual CSS) or `chip-class="badge text-bg-secondary"` (Bootstrap) on the wrapper.
+The host classes supply the chip skin; layout, removal and keyboard focus remain
+handled by the library. Or set a default once before creating instances:
+
+```js
+Combobox.setDefaultChipClass("badge primary");
+```
+
+The JavaScript option `chipClass` overrides that default per instance; `""` uses
+the library skin.
+
 Enable creation when users may enter new values:
 
 ```html

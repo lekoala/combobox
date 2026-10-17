@@ -3,6 +3,27 @@ import { modernSupported, setup } from "./helpers.js";
 
 const HTML = "/test/fixtures/declarative.html";
 
+test("chip-class applies on every declarative rebuild and JS options take precedence", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  await page.evaluate(async () => {
+    const wrap = document.createElement("combo-box");
+    wrap.id = "classed";
+    wrap.setAttribute("chip-class", "badge primary");
+    wrap.innerHTML = '<select multiple name="tags"><option value="a" selected>Alpha</option></select>';
+    document.body.append(wrap);
+    await wrap.whenReady();
+  });
+  const chip = page.locator("#classed .cb-chip");
+  await expect(chip).toHaveClass("cb-chip badge primary");
+  await page.locator("#classed").evaluate((wrap) => wrap.setAttribute("chip-class", "updated"));
+  await expect(chip).toHaveClass("cb-chip updated");
+  await page.locator("#classed").evaluate((wrap) => wrap.configure({ chipClass: "override" }));
+  await expect(chip).toHaveClass("cb-chip override");
+  await page.locator("#classed").evaluate((wrap) => wrap.removeAttribute("chip-class"));
+  await expect(chip).toHaveClass("cb-chip override");
+  await expect(page.locator("#classed select")).toHaveValues(["a"]);
+});
+
 test.beforeEach(async ({ page }) => {
   await setup(page, HTML);
 });
