@@ -167,7 +167,8 @@
 /* Chips                                                                    */
 /* ------------------------------------------------------------------------- */
 
-.cb-chip {
+/* Structure takes precedence over a single author class in either load order. */
+.cb-chips > .cb-chip {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -202,7 +203,7 @@
 
 /* Without a remove button (locked/disabled selection) the end padding
    otherwise reserved for the button must fall back to the symmetric value. */
-.cb-chip:not(:has(.cb-chip-remove)) {
+.cb-chips > .cb-chip:not(:has(.cb-chip-remove)) {
   padding-inline-end: 0.5714em;
 }
 
@@ -244,7 +245,7 @@
   }
 }
 
-.cb-chip:focus-visible {
+.cb-chips > .cb-chip:focus-visible {
   outline: 2px solid var(--cb-focus-color);
   outline-offset: -2px;
 }

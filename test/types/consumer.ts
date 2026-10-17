@@ -8,6 +8,10 @@ import frMessages from "@lekoala/combobox/locales/fr";
 
 const item: ComboboxItem = { value: "react", label: "React" };
 void frMessages;
+ComboBoxElement.setDefaultChipClass("badge primary");
+ComboBoxElement.setDefaultMessages({ noResults: "Custom" });
+const defaultMessages = ComboBoxElement.getDefaultMessages();
+void defaultMessages;
 
 const options: ComboboxOptions = {
   chipClass: "badge primary",

@@ -225,6 +225,13 @@ handled by the library. Or set a default once before creating instances:
 Combobox.setDefaultChipClass("badge primary");
 ```
 
+With the classic script, use the registered element constructor after the script
+loads and before creating instances:
+
+```js
+customElements.get("combo-box").setDefaultChipClass("badge primary");
+```
+
 The JavaScript option `chipClass` overrides that default per instance; `""` uses
 the library skin.
 

@@ -39,6 +39,22 @@ export declare class ComboBoxElement extends HTMLElement {
     _rebuildQueued: boolean;
     /** @type {Array<(combobox: Combobox) => void>} */
     _readyResolvers: Array<(combobox: Combobox) => void>;
+    /**
+     * Read a copy of the shared default UI messages.
+     * @returns {import("./messages.js").Messages}
+     */
+    static getDefaultMessages(): import("./messages.js").Messages;
+    /**
+     * Merge shared UI defaults for future instances; instance messages take precedence.
+     * @param {Partial<import("./messages.js").Messages>} messages
+     */
+    static setDefaultMessages(messages: Partial<import("./messages.js").Messages>): void;
+    /**
+     * Set shared author chip classes for future instances; instance chipClass takes precedence.
+     * Pass an empty string to restore the library skin.
+     * @param {string} value
+     */
+    static setDefaultChipClass(value: string): void;
     static get observedAttributes(): string[];
     constructor();
     connectedCallback(): void;

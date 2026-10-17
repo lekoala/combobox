@@ -65,6 +65,31 @@ function camelCase(name) {
  * - JS options may be assigned before custom-element registration
  */
 export class ComboBoxElement extends HTMLElement {
+  /**
+   * Read a copy of the shared default UI messages.
+   * @returns {import("./messages.js").Messages}
+   */
+  static getDefaultMessages() {
+    return Combobox.getDefaultMessages();
+  }
+
+  /**
+   * Merge shared UI defaults for future instances; instance messages take precedence.
+   * @param {Partial<import("./messages.js").Messages>} messages
+   */
+  static setDefaultMessages(messages) {
+    Combobox.setDefaultMessages(messages);
+  }
+
+  /**
+   * Set shared author chip classes for future instances; instance chipClass takes precedence.
+   * Pass an empty string to restore the library skin.
+   * @param {string} value
+   */
+  static setDefaultChipClass(value) {
+    Combobox.setDefaultChipClass(value);
+  }
+
   static get observedAttributes() {
     return Object.keys(OPTION_ATTRIBUTES);
   }

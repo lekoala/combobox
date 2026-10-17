@@ -2850,6 +2850,15 @@
   }
 
   class ComboBoxElement extends HTMLElement {
+    static getDefaultMessages() {
+      return Combobox.getDefaultMessages();
+    }
+    static setDefaultMessages(messages) {
+      Combobox.setDefaultMessages(messages);
+    }
+    static setDefaultChipClass(value) {
+      Combobox.setDefaultChipClass(value);
+    }
     static get observedAttributes() {
       return Object.keys(OPTION_ATTRIBUTES);
     }

@@ -1,6 +1,31 @@
 import { expect, test } from "@playwright/test";
 import { modernSupported, setup } from "./helpers.js";
 
+test("element and engine statics share defaults for future instances", async ({ page }) => {
+  const state = await page.evaluate(() => {
+    const original = Combobox.getDefaultMessages();
+    ComboBoxElement.setDefaultMessages({ noResults: "From element" });
+    const fromElement = Combobox.getDefaultMessages().noResults;
+    Combobox.setDefaultMessages({ noResults: "From engine" });
+    const fromEngine = ComboBoxElement.getDefaultMessages().noResults;
+    ComboBoxElement.setDefaultChipClass("badge primary");
+    const source = document.createElement("select");
+    source.multiple = true;
+    source.append(new Option("Alpha", "a", true, true));
+    document.body.append(source);
+    const combo = new Combobox(source);
+    Combobox.setDefaultChipClass("");
+    ComboBoxElement.setDefaultMessages(original);
+    combo.sync();
+    return { fromElement, fromEngine, classes: combo.chips.firstElementChild.className };
+  });
+  expect(state).toEqual({
+    fromElement: "From element",
+    fromEngine: "From engine",
+    classes: "cb-chip badge primary",
+  });
+});
+
 test("nullish chip classes normalize to the library skin", async ({ page }) => {
   const classes = await page.evaluate(() => {
     const make = (options = {}) => {
