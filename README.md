@@ -557,6 +557,10 @@ Then open:
 http://127.0.0.1:4173/
 ```
 
+If the port is already in use, run `bun run dev:kill` to stop its listener,
+then `bun run dev` again. `dev:kill` uses `PORT` when set, otherwise `4173`,
+and succeeds when the port is already free.
+
 The main demo uses the generated distribution build, not a special development-only
 version. `demo/dist-standalone.html` is the equivalent smoke page for the all-in-one
 artifact.

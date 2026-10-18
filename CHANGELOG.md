@@ -4,6 +4,12 @@ All notable changes to `@lekoala/combobox` are documented here.
 
 The changelog highlights user-facing changes rather than listing every build, dependency, or test commit. Versions and dates follow the GitHub releases.
 
+## [0.7.1] - 2026-10-18
+
+### Fixed
+
+- Kept equal spacing around chip remove-button backgrounds inside the chip border. Added `--cb-chip-remove-size` and `--cb-chip-remove-inset` for host badge geometry, and extended the invisible click target to at least 24 × 24px without enlarging the visible background.
+
 ## [0.7.0] - 2026-10-17
 
 ### Added

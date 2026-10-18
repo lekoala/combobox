@@ -64,6 +64,7 @@
   },
   "scripts": {
     "dev": "bun run sync && node test/server.js",
+    "dev:kill": "node scripts/kill-port.mjs",
     "build:bundle": "bun scripts/build.js",
     "build:types": "bun run types",
     "build:manifest": "bun scripts/custom-elements.js",
