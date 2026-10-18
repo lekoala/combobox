@@ -15,6 +15,8 @@
   --cb-chip-border-width: 0px;
   --cb-chip-font-size: 0.875em;
   --cb-chip-border-radius: 0.4286em;
+  --cb-chip-remove-size: 1.4286em;
+  --cb-chip-remove-inset: 0.1429em;
   --cb-picker-bg: var(--cb-bg);
   --cb-option-active-bg: color-mix(in srgb, var(--cb-color) 5%, var(--cb-picker-bg));
   --cb-option-active-color: var(--cb-color);
@@ -176,14 +178,14 @@
   flex: 0 1 auto;
   min-inline-size: 0;
   max-inline-size: 100%;
-  padding-inline-end: 0.1429em;
+  padding-block: var(--cb-chip-remove-inset);
+  padding-inline-end: var(--cb-chip-remove-inset);
 }
 
 /* Author-classed chips keep the layout above and receive their skin from
    the host design system, independent of stylesheet load order. */
 .cb-chip-skin {
   min-block-size: 1.7143em;
-  padding-block: 0;
   padding-inline-start: 0.5714em;
   border: var(--cb-chip-border-width) solid var(--cb-chip-border-color);
   border-radius: var(--cb-chip-border-radius);
@@ -209,11 +211,12 @@
 
 .cb-chip .cb-chip-remove {
   appearance: none;
+  position: relative;
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
-  inline-size: 1.4286em;
-  block-size: 1.4286em;
+  inline-size: var(--cb-chip-remove-size);
+  block-size: var(--cb-chip-remove-size);
   margin-inline-start: 0;
   padding: 0;
   border: 0;
@@ -222,6 +225,13 @@
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+
+/* Enlarge only the hit area; the visible disc keeps its inset in the chip. */
+.cb-chip .cb-chip-remove::after {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((var(--cb-chip-remove-size) - 24px) / 2));
 }
 
 .cb-chip .cb-chip-remove > svg {

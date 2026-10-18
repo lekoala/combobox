@@ -285,13 +285,32 @@ equivalent; changing the attribute follows the usual full-rebuild lifecycle.
 Classes are split on whitespace. Empty or whitespace-only classes use the default
 library skin (`cb-chip-skin`). With author classes, the host stylesheet owns chip
 colors, border, radius, typography, height and start padding. The library keeps
-layout, label truncation, end padding for the remove button, remove-button styling
+layout, label truncation, block/end padding for the remove button, remove-button styling
 and the keyboard focus ring. Structural rules use `.cb-chips > .cb-chip` so they
 win over a single author class in either stylesheet order; the skin remains
 author-controlled. `cb-chip`, `cb-chip-label` and `cb-chip-remove` remain
 available. Classes are reapplied on every render, including `sync()`, `setOptions()`
 and form reset. Native fallback creates no chips; source values, events, guards
 and disabled behavior are unchanged, and `dispose()` removes the generated chips.
+
+### Chip remove geometry
+
+Remove-button geometry uses `--cb-chip-remove-size` (default `1.4286em`) and
+`--cb-chip-remove-inset` (default `0.1429em`). The inset is padding inside the
+chip border, shared by the block edges and inline end. The default chip grows
+with its button, inset and border. For a host badge with a fixed height, map
+both variables to its slot geometry: button size + twice the inset + twice the
+border width must equal the badge height; its label must also fit that height.
+The invisible hit area extends to at least a 24px square without painting a
+larger background. Removal, focus, events and native selection behavior stay
+the same.
+
+```css
+.badge {
+  --cb-chip-remove-size: var(--badge-slot-size);
+  --cb-chip-remove-inset: var(--badge-slot-inset);
+}
+```
 
 ### Deliberately not config options
 

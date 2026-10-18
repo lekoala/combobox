@@ -235,6 +235,11 @@ customElements.get("combo-box").setDefaultChipClass("badge primary");
 The JavaScript option `chipClass` overrides that default per instance; `""` uses
 the library skin.
 
+Use `--cb-chip-remove-size` and `--cb-chip-remove-inset` to map a badge's
+close-button geometry. The inset is the space inside the chip border, shared
+by the top, bottom and trailing edge; the invisible click target is at least
+24px square. See [chip geometry](docs/API.md#chip-remove-geometry) for the sizing contract.
+
 Enable creation when users may enter new values:
 
 ```html

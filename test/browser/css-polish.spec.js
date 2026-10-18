@@ -148,6 +148,50 @@ test("chips stay compact and remove is a real hit target", async ({ page }) => {
   expect(geometry.chipRadius).not.toBe("999px");
 });
 
+for (const direction of ["ltr", "rtl"]) {
+  test(`chip remove keeps equal inner gaps and a 24px hit area in ${direction}`, async ({ page }) => {
+    await setup(page, "/test/fixtures/features.html");
+    test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+    await page.addStyleTag({ path: "src/combobox.css" });
+    const states = await page.evaluate((direction) => {
+      const source = document.getElementById("tags");
+      const combo = new Combobox(source);
+      combo.control.style.direction = direction;
+      const chip = combo.chips.firstElementChild;
+      const button = chip.querySelector(".cb-chip-remove");
+      const states = [];
+      for (const border of [0, 1, 3]) {
+        chip.style.setProperty("--cb-chip-border-width", `${border}px`);
+        const outer = chip.getBoundingClientRect();
+        const disc = button.getBoundingClientRect();
+        const half = Math.max(24, disc.width) / 2 - 0.25;
+        const cx = disc.x + disc.width / 2;
+        const cy = disc.y + disc.height / 2;
+        states.push({
+          top: disc.top - outer.top - border,
+          bottom: outer.bottom - disc.bottom - border,
+          end: (direction === "rtl" ? disc.left - outer.left : outer.right - disc.right) - border,
+          cornersHit: [-1, 1].every((x) =>
+            [-1, 1].every((y) => document.elementFromPoint(cx + x * half, cy + y * half) === button),
+          ),
+        });
+      }
+      return states;
+    }, direction);
+    for (const state of states) {
+      expect(state.top).toBeGreaterThan(0);
+      expect(Math.abs(state.top - state.bottom)).toBeLessThan(0.1);
+      expect(Math.abs(state.top - state.end)).toBeLessThan(0.1);
+      expect(state.cornersHit).toBe(true);
+    }
+    // Click the extended square outside the painted disc and check the value owner.
+    const button = page.locator("#tags + .cb-control .cb-chip-remove");
+    const disc = await button.boundingBox();
+    await page.mouse.click(disc.x + disc.width / 2 + 11.5, disc.y + disc.height / 2 - 11.5);
+    await expect(page.locator("#tags")).toHaveValues([]);
+  });
+}
+
 test("chip metrics scale together through --cb-chip-font-size", async ({ page }) => {
   await setup(page, "/");
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
@@ -177,6 +221,48 @@ test("chip metrics scale together through --cb-chip-font-size", async ({ page })
   expect(geometry.large.icon).toBeGreaterThan(geometry.small.icon);
   expect(geometry.small.remove).toBeLessThanOrEqual(geometry.small.chip);
   expect(geometry.large.remove).toBeLessThanOrEqual(geometry.large.chip);
+});
+
+test("author badge sizes map remove geometry without changing their outer height", async ({ page }) => {
+  await setup(page, "/test/fixtures/features.html");
+  test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  await page.addStyleTag({
+    content: `
+    .badge {
+      --badge-size: 24px;
+      --badge-slot-inset: 2px;
+      --badge-slot-size: calc(var(--badge-size) - 2px - 2 * var(--badge-slot-inset));
+      --cb-chip-remove-size: var(--badge-slot-size);
+      --cb-chip-remove-inset: var(--badge-slot-inset);
+      height: var(--badge-size);
+      border: 1px solid;
+      border-radius: 999px;
+      padding: 6px;
+      font: 12px/1 sans-serif;
+    }
+  `,
+  });
+  await page.addStyleTag({ path: "src/combobox.css" });
+  const sizes = await page.evaluate(() => {
+    const combo = new Combobox(document.getElementById("tags"), { chipClass: "badge" });
+    const chip = combo.chips.firstElementChild;
+    const button = chip.querySelector(".cb-chip-remove");
+    return [18, 24, 32].map((height) => {
+      chip.style.setProperty("--badge-size", `${height}px`);
+      const outer = chip.getBoundingClientRect();
+      const disc = button.getBoundingClientRect();
+      return {
+        height: outer.height,
+        size: disc.width,
+        gaps: [disc.top - outer.top - 1, outer.bottom - disc.bottom - 1, outer.right - disc.right - 1],
+      };
+    });
+  });
+  for (const [index, height] of [18, 24, 32].entries()) {
+    expect(sizes[index].height).toBe(height);
+    expect(sizes[index].size).toBe(height - 6);
+    for (const gap of sizes[index].gaps) expect(gap).toBeCloseTo(2, 1);
+  }
 });
 
 test("chip appearance variables support solid and outline themes", async ({ page }) => {

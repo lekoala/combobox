@@ -207,6 +207,12 @@
               "name": "--cb-chip-border-radius"
             },
             {
+              "name": "--cb-chip-remove-size"
+            },
+            {
+              "name": "--cb-chip-remove-inset"
+            },
+            {
               "name": "--cb-picker-bg"
             },
             {
