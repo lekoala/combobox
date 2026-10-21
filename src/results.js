@@ -110,11 +110,13 @@ export function computeFilteredItems(combobox, items, query) {
 /**
  * `maxOptions` is a rendering cap only: the result store (`filteredItems`) may
  * be large, but at most `maxOptions` options are ever rendered/navigated.
- * `0` means no cap.
+ * `0` means no cap. A loading or error row replaces the list, so nothing is
+ * navigable then: the active index must designate an option actually rendered.
  * @param {import("./combobox.js").Combobox} combobox
  * @returns {import("./helpers.js").ComboboxItem[]}
  */
 export function visibleItemsFor(combobox) {
+  if (combobox.loading || combobox.loadError) return [];
   return combobox.options.maxOptions > 0
     ? combobox.filteredItems.slice(0, combobox.options.maxOptions)
     : combobox.filteredItems;

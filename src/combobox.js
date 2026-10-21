@@ -458,6 +458,13 @@ export class Combobox {
   /** @type {Promise<void>} Serialized token-batch queue (see #enqueueTokens). */
   #tokenQueue = Promise.resolve();
 
+  /** @type {Promise<unknown> | null} The creation in flight (see #createItem). */
+  #pendingCreation = null;
+
+  // Bumped by every effective hide(): a pending search whose `show` intent
+  // predates a close must not reopen the picker when its response lands.
+  #hideGeneration = 0;
+
   #separatorKey = "";
   #splitTokens = prepareTokenSplitter([]);
 
@@ -828,8 +835,10 @@ export class Combobox {
     button.textContent = this.options.messages.add ?? "Add";
 
     const add = async () => {
+      // A disabled select is locked for user interaction, whatever the Add
+      // control currently reflects.
       const label = input.value.trim();
-      if (!label) return;
+      if (!label || this.source.matches(":disabled")) return;
       // The input is cleared only on a real selection or creation (an existing
       // native match by normalized value or label now selects instead of
       // creating a duplicate native option). On refusal the text stays editable.
@@ -852,6 +861,16 @@ export class Combobox {
     control.append(input, button);
     this.source.after(control);
     this.fallbackControl = control;
+    this.#syncFallbackDisabled();
+  }
+
+  /** Mirror the native disabled state onto the fallback Add control (init, refresh/sync). */
+  #syncFallbackDisabled() {
+    if (!this.fallbackControl) return;
+    const disabled = this.source.matches(":disabled");
+    for (const control of this.fallbackControl.querySelectorAll("input, button")) {
+      /** @type {HTMLInputElement | HTMLButtonElement} */ (control).disabled = disabled;
+    }
   }
 
   /**
@@ -864,6 +883,7 @@ export class Combobox {
    * @returns {Promise<HTMLOptionElement | null>}
    */
   async #createFallbackOption(label, input) {
+    if (this.#pendingCreation && !(await this.#creationSettled())) return null;
     if (!this.#canCreate(label, input)) return null;
 
     const existing = this.#findCreateMatch(label);
@@ -1851,6 +1871,13 @@ export class Combobox {
 
     const generation = ++this.searchGeneration;
     this.query = String(query ?? "");
+    const hideGeneration = this.#hideGeneration;
+    const canShow = () => show && hideGeneration === this.#hideGeneration;
+    // A new search intent supersedes any pending remote one, even when
+    // beforefilter is cancelled below: a stale response must never overwrite
+    // results the application supplies from its handler.
+    this.loadController?.abort();
+    this.loading = false;
 
     const before = emit(
       this.#inputEl(),
@@ -1868,13 +1895,9 @@ export class Combobox {
     if (before.defaultPrevented || !this.#alive()) return;
 
     if (this.#shouldLoad(this.query)) {
-      await this.#load(this.query, { debounce: reason === "input", show });
+      await this.#load(this.query, { debounce: reason === "input", show: canShow });
       if (!this.#alive() || generation !== this.searchGeneration) return;
     } else {
-      // A local query replaces any pending remote one: abort it so a stale
-      // response can neither repopulate results nor leave a stuck Loading row.
-      this.loadController?.abort();
-      this.loading = false;
       // A local query should not keep stale remote results around.
       if (typeof this.options.load === "function") this.clearResults();
     }
@@ -1887,7 +1910,7 @@ export class Combobox {
       source: this.source,
     });
 
-    if (show) this.show();
+    if (canShow()) this.show();
   }
 
   /**
@@ -1956,10 +1979,12 @@ export class Combobox {
 
   /**
    * @param {string} query
-   * @param {{ cursor?: string | null, append?: boolean, debounce?: boolean, show?: boolean }} [options]
+   * @param {{ cursor?: string | null, append?: boolean, debounce?: boolean, show?: () => boolean }} [options]
+   *   `show` is re-evaluated when the loading row paints, so a close during
+   *   the debounce cancels the opening intent.
    * @returns {Promise<boolean>} True only when a response was applied
    */
-  async #load(query, { cursor = null, append = false, debounce = false, show = false } = {}) {
+  async #load(query, { cursor = null, append = false, debounce = false, show = () => false } = {}) {
     if (!this.#alive()) return false;
     if (!append) this.nextCursor = null;
     this.loadController?.abort();
@@ -1991,7 +2016,7 @@ export class Combobox {
 
     this.loading = true;
     this.#renderLoading();
-    if (show) this.show();
+    if (show()) this.show();
 
     try {
       const result = await this.options.load(query, {
@@ -2628,7 +2653,8 @@ export class Combobox {
    * @returns {boolean}
    */
   #isReadonly() {
-    return this.isSelect && this.source.hasAttribute("readonly");
+    if (!this.isSelect) return /** @type {HTMLInputElement} */ (this.source).readOnly;
+    return this.source.hasAttribute("readonly");
   }
 
   /**
@@ -2718,6 +2744,7 @@ export class Combobox {
    * @returns {Promise<HTMLOptionElement | null>}
    */
   async #createItem(label) {
+    if (this.#pendingCreation && !(await this.#creationSettled())) return null;
     if (!this.#canCreate(label, this.#inputEl())) return null;
 
     const existing = this.#findCreateMatch(label);
@@ -2762,7 +2789,38 @@ export class Combobox {
    * @param {{ fallback?: boolean }} [options]
    * @returns {Promise<import("./helpers.js").ComboboxItem & { option: HTMLOptionElement } | null>}
    */
-  async #materializeCreated(label, input, { fallback = false } = {}) {
+  async #materializeCreated(label, input, options = {}) {
+    const pending = this.#runCreation(label, input, options);
+    this.#pendingCreation = pending.catch(() => {});
+    try {
+      return await pending;
+    } finally {
+      this.#pendingCreation = null;
+    }
+  }
+
+  /**
+   * One creation at a time: a repeated Enter/Tab/blur/Add while a creation is
+   * pending waits for it, so the caller's match lookup then selects (or
+   * idempotently accepts) the option just created instead of creating a twin.
+   * Intentional catalogue duplicates are untouched.
+   * @returns {Promise<boolean>} False when the instance died meanwhile.
+   */
+  async #creationSettled() {
+    while (this.#pendingCreation) {
+      await this.#pendingCreation;
+      if (!this.#alive()) return false;
+    }
+    return true;
+  }
+
+  /**
+   * @param {string} label
+   * @param {HTMLInputElement} input
+   * @param {{ fallback?: boolean }} [options]
+   * @returns {Promise<import("./helpers.js").ComboboxItem & { option: HTMLOptionElement } | null>}
+   */
+  async #runCreation(label, input, { fallback = false } = {}) {
     const guard = await this.#runGuard("add", { label }, input);
     if (!guard.ok) return null;
     if (!this.#alive()) return null;
@@ -3132,19 +3190,17 @@ export class Combobox {
       valueOrOption instanceof HTMLOptionElement
         ? valueOrOption
         : this.#selectedOptionsInOrder().find((entry) => entry.value === String(valueOrOption));
-    // The option must belong to this select and be removable: an option in a
-    // disabled optgroup is ineligible exactly like a natively disabled one,
-    // and a node from another select is never ours to mutate.
-    if (!option?.selected || option.closest("select") !== this.#selectSource() || isOptionDisabled(option)) {
-      return false;
-    }
+    if (!option || !this.#isRemovable(option)) return false;
     const item = optionToItem(option);
     const guard = await this.#runGuard("remove", { item });
     if (guard.error) throw guard.error;
     if (!guard.ok) return false;
-    if (!this.#alive()) return false;
+    // Revalidate after the await: the option may have moved, been deselected
+    // (a concurrent remove()) or disabled meanwhile.
+    if (!this.#alive() || !this.#isRemovable(option)) return false;
     const before = emit(this.source, "combobox:beforeremove", { combobox: this, item }, { cancelable: true });
-    if (before.defaultPrevented) return false;
+    // A synchronous beforeremove handler may have disposed the instance.
+    if (before.defaultPrevented || !this.#alive() || !this.#isRemovable(option)) return false;
     option.selected = false;
     this.#forgetSelection(option);
     this.#commit();
@@ -3153,31 +3209,45 @@ export class Combobox {
     return true;
   }
 
+  /**
+   * The option must belong to this select and be removable: an option in a
+   * disabled optgroup is ineligible exactly like a natively disabled one, and a
+   * node from another select is never ours to mutate.
+   * @param {HTMLOptionElement} option
+   * @returns {boolean}
+   */
+  #isRemovable(option) {
+    return option.selected && option.closest("select") === this.#selectSource() && !isOptionDisabled(option);
+  }
+
   async clear() {
     if (!this.isSelect) {
       if (!this.source.value) return false;
       const inputGuard = await this.#runGuard("clear", {});
       if (inputGuard.error) throw inputGuard.error;
       if (!inputGuard.ok) return false;
-      if (!this.#alive()) return false;
+      if (!this.#alive() || !this.source.value) return false;
       const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
-      if (before.defaultPrevented) return false;
+      if (before.defaultPrevented || !this.#alive()) return false;
       this.source.value = "";
       this.#dispatchNativeValueEvents();
       emit(this.source, "combobox:clear", { combobox: this });
       return true;
     }
 
-    const selected = Array.from(this.#selectSource().selectedOptions).filter(
-      (option) => !isOptionDisabled(option),
-    );
-    if (!selected.length) return false;
+    const clearable = () =>
+      Array.from(this.#selectSource().selectedOptions).filter((option) => !isOptionDisabled(option));
+    if (!clearable().length) return false;
     const guard = await this.#runGuard("clear", {});
     if (guard.error) throw guard.error;
     if (!guard.ok) return false;
-    if (!this.#alive()) return false;
+    if (!this.#alive() || !clearable().length) return false;
     const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
-    if (before.defaultPrevented) return false;
+    if (before.defaultPrevented || !this.#alive()) return false;
+    // Re-read at commit time: the selection may have changed during the guard
+    // or the beforeclear handler, and only a real change fires value events.
+    const selected = clearable();
+    if (!selected.length) return false;
     for (const option of selected) option.selected = false;
     this.selectionOrder = this.selectionOrder.filter((option) => option.selected);
     this.#commit();
@@ -3264,7 +3334,11 @@ export class Combobox {
   }
 
   refresh() {
-    if (this.mode !== "enhanced" || !this.#alive()) return this;
+    if (!this.#alive()) return this;
+    if (this.mode !== "enhanced") {
+      this.#syncFallbackDisabled();
+      return this;
+    }
 
     if (this.isSelect) {
       this.#inputEl().disabled = this.source.disabled;
@@ -3322,6 +3396,7 @@ export class Combobox {
     const before = emit(this.source, "combobox:beforeclose", { combobox: this }, { cancelable: true });
     if (before.defaultPrevented) return false;
     this.#popoverEl().hidePopover();
+    this.#hideGeneration++;
     if (openCombobox === this) openCombobox = null;
     return true;
   }

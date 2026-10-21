@@ -546,3 +546,40 @@ test.describe("Creation vetoes", () => {
     expect(state.selected).toEqual([]);
   });
 });
+
+test.describe("Concurrent creation intents", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/identity.html");
+    test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  });
+
+  test("a repeated Enter while create() is pending creates one option", async ({ page }) => {
+    await page.evaluate(() => {
+      const source = document.createElement("select");
+      source.id = "twice";
+      source.multiple = true;
+      document.body.append(source);
+      window.creates = [];
+      new Combobox(source, {
+        create: (label) =>
+          new Promise((resolve) => window.creates.push(() => resolve({ value: label, label }))),
+      });
+    });
+    const input = page.locator("#twice + .cb-control .cb-input");
+    await input.pressSequentially("new");
+    await input.press("Enter");
+    await input.press("Enter");
+    const state = await page.evaluate(async () => {
+      const calls = window.creates.length;
+      for (const finish of window.creates) finish();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const source = document.getElementById("twice");
+      return {
+        calls,
+        options: source.options.length,
+        selected: [...source.selectedOptions].map((option) => option.value),
+      };
+    });
+    expect(state).toEqual({ calls: 1, options: 1, selected: ["new"] });
+  });
+});

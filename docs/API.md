@@ -396,7 +396,13 @@ temporary `:filtered` while the native primitive is not yet interoperable.
 Runs the full `beforefilter → optional load → filter → render` pipeline.
 It deliberately does not assign the interaction input's visible value.
 `show` defaults to `false`, including during a remote load: a closed picker
-stays closed. Pass `{ show: true }` to show both loading and results.
+stays closed. Pass `{ show: true }` to show both loading and results. A later
+`hide()` (blur, Escape, outside click) cancels that opening intent: a response
+landing afterwards updates the results without reopening the picker. Every
+search supersedes any pending load, including one whose `beforefilter` is
+cancelled, so a stale response never overwrites application-supplied results.
+While the loading or error row is shown, no result row is navigable or
+selectable.
 
 ### `setQuery(value, { show = true, reason = "api" })`
 
@@ -484,7 +490,7 @@ Engine-driven mutations are not observed (the engine drops/reconnects the observ
 
 ### `readonly`
 
-`readonly` is not a native `<select>` concept, but the engine accepts it as a declarative interaction lock. It is reflected onto the interaction input (`refresh()`/`sync()` keep it current) and observed on the source like `disabled`. On a `readonly` select the **user interaction** is locked: focus and keyboard navigation never open the picker, chips render without a remove button, and `Backspace`/`Delete`, `toggleSelected`, picker clicks and `createOnBlur` never mutate the selection. The **programmatic API is untouched** — `select()`, `remove()` and `clear()` still work exactly as on a `disabled` source, because the lock targets interaction, not the JS surface.
+`readonly` is not a native `<select>` concept, but the engine accepts it as a declarative interaction lock. It is reflected onto the interaction input (`refresh()`/`sync()` keep it current) and observed on the source like `disabled`. On a `readonly` select the **user interaction** is locked: focus and keyboard navigation never open the picker, chips render without a remove button, and `Backspace`/`Delete`, `toggleSelected`, picker clicks and `createOnBlur` never mutate the selection. The **programmatic API is untouched** — `select()`, `remove()` and `clear()` still work exactly as on a `disabled` source, because the lock targets interaction, not the JS surface. A native `<input list readonly>` is locked the same way: focus and keyboard never open the picker, so the user cannot change its value through it, while `select()`/`clear()` keep working.
 
 ## Remote
 
@@ -525,7 +531,12 @@ vetoed by `combobox:beforeselect`, the loading row is replaced with the normal
 search rows. Input text and native selection remain editable and unchanged by
 the refused creation. Errors emit `combobox:createerror`; an `AbortError` is
 silent. Completion never opens a closed picker merely to clear loading state.
-The native fallback has no picker or loading row; its Add input uses the
+Only one creation runs at a time: a repeated Enter/Tab/blur (or Add click) while
+`create()` is pending waits for it and then resolves the term against the option
+just created, so it never creates a twin.
+The native fallback has no picker or loading row; its Add input and button
+mirror the select's `:disabled` state (at init and on `refresh()`/`sync()`) and
+refuse interaction on a disabled select; its Add input uses the
 placeholder as its accessible name, or `messages.add` when the placeholder is blank.
 
 Creation and remote loads currently share a loading indicator. If they overlap,
@@ -735,7 +746,7 @@ toggle. Reaching `maxItems` never blocks a deselection; it only blocks additions
   `setOptions()` when `allow-empty-option` admits it; otherwise those APIs throw
   / skip it so the placeholder convention stays the single-select default.
 
-`remove()` and `clear()` are async because they can await `guards`; they resolve `false` when refused (voluntary `false`, `before*` veto, disposed instance) and **reject** when a guard throws. A guard that is still pending when `dispose()` runs resolves `false` and mutates nothing.
+`remove()` and `clear()` are async because they can await `guards`; they resolve `false` when refused (voluntary `false`, `before*` veto, disposed instance) and **reject** when a guard throws. A guard that is still pending when `dispose()` runs resolves `false` and mutates nothing. Ownership, eligibility and selection are re-checked after the guard and after the synchronous `before*` event (which may itself call `dispose()`): an option moved to another select, already deselected by a concurrent `remove()`, or a selection emptied meanwhile resolves `false` without native events.
 
 `clear()` on a **multiple** select deselects every selectable option. On a
 **single** select it deselects the current option and the browser collapses the

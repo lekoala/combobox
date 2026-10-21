@@ -242,3 +242,25 @@ test.describe("Cancellable value events", () => {
     expect(state.selected).toEqual(["1"]);
   });
 });
+
+test.describe("Concurrent removals", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/identity.html");
+  });
+
+  test("two remove() calls for one selection emit a single input/change", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      source.add(new Option("A", "a", true, true));
+      document.body.append(source);
+      const events = [];
+      source.addEventListener("input", () => events.push("input"));
+      source.addEventListener("change", () => events.push("change"));
+      const combo = new Combobox(source);
+      const results = await Promise.all([combo.remove("a"), combo.remove(source.options[0])]);
+      return { results, events, selected: source.selectedOptions.length };
+    });
+    expect(state).toEqual({ results: [true, false], events: ["input", "change"], selected: 0 });
+  });
+});

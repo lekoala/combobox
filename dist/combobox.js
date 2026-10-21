@@ -579,6 +579,8 @@
     return visible;
   }
   function visibleItemsFor(combobox) {
+    if (combobox.loading || combobox.loadError)
+      return [];
     return combobox.options.maxOptions > 0 ? combobox.filteredItems.slice(0, combobox.options.maxOptions) : combobox.filteredItems;
   }
 
@@ -884,6 +886,8 @@
     #suppressInputEvent = false;
     #resolvedCoordinateSpace = "viewport";
     #tokenQueue = Promise.resolve();
+    #pendingCreation = null;
+    #hideGeneration = 0;
     #separatorKey = "";
     #splitTokens = prepareTokenSplitter([]);
     #activeOption = null;
@@ -1057,7 +1061,7 @@
       button.textContent = this.options.messages.add ?? "Add";
       const add = async () => {
         const label = input.value.trim();
-        if (!label)
+        if (!label || this.source.matches(":disabled"))
           return;
         if (await this.#createFallbackOption(label, input))
           input.value = "";
@@ -1073,8 +1077,19 @@
       control.append(input, button);
       this.source.after(control);
       this.fallbackControl = control;
+      this.#syncFallbackDisabled();
+    }
+    #syncFallbackDisabled() {
+      if (!this.fallbackControl)
+        return;
+      const disabled = this.source.matches(":disabled");
+      for (const control of this.fallbackControl.querySelectorAll("input, button")) {
+        control.disabled = disabled;
+      }
     }
     async#createFallbackOption(label, input) {
+      if (this.#pendingCreation && !await this.#creationSettled())
+        return null;
       if (!this.#canCreate(label, input))
         return null;
       const existing = this.#findCreateMatch(label);
@@ -1737,6 +1752,10 @@
         return;
       const generation = ++this.searchGeneration;
       this.query = String(query ?? "");
+      const hideGeneration = this.#hideGeneration;
+      const canShow = () => show && hideGeneration === this.#hideGeneration;
+      this.loadController?.abort();
+      this.loading = false;
       const before = emit(this.#inputEl(), "beforefilter", {
         query: this.query,
         combobox: this,
@@ -1746,12 +1765,10 @@
       if (before.defaultPrevented || !this.#alive())
         return;
       if (this.#shouldLoad(this.query)) {
-        await this.#load(this.query, { debounce: reason === "input", show });
+        await this.#load(this.query, { debounce: reason === "input", show: canShow });
         if (!this.#alive() || generation !== this.searchGeneration)
           return;
       } else {
-        this.loadController?.abort();
-        this.loading = false;
         if (typeof this.options.load === "function")
           this.clearResults();
       }
@@ -1762,7 +1779,7 @@
         items: this.filteredItems,
         source: this.source
       });
-      if (show)
+      if (canShow())
         this.show();
     }
     setQuery(value, { show = true, reason = "api" } = {}) {
@@ -1798,7 +1815,7 @@
     #shouldLoad(query) {
       return shouldLoadRemote(this, query);
     }
-    async#load(query, { cursor = null, append = false, debounce = false, show = false } = {}) {
+    async#load(query, { cursor = null, append = false, debounce = false, show = () => false } = {}) {
       if (!this.#alive())
         return false;
       if (!append)
@@ -1825,7 +1842,7 @@
         return false;
       this.loading = true;
       this.#renderLoading();
-      if (show)
+      if (show())
         this.show();
       try {
         const result = await this.options.load(query, {
@@ -2259,7 +2276,9 @@
       return instances.get(this.source) === this && !this.abortController.signal.aborted;
     }
     #isReadonly() {
-      return this.isSelect && this.source.hasAttribute("readonly");
+      if (!this.isSelect)
+        return this.source.readOnly;
+      return this.source.hasAttribute("readonly");
     }
     #commitItemSelection(option, item, { keepQuery = false } = {}) {
       if (this.isSelect && option)
@@ -2318,6 +2337,8 @@
       return true;
     }
     async#createItem(label) {
+      if (this.#pendingCreation && !await this.#creationSettled())
+        return null;
       if (!this.#canCreate(label, this.#inputEl()))
         return null;
       const existing = this.#findCreateMatch(label);
@@ -2345,7 +2366,24 @@
       this.#markEngineMutation();
       return item.option;
     }
-    async#materializeCreated(label, input, { fallback = false } = {}) {
+    async#materializeCreated(label, input, options = {}) {
+      const pending = this.#runCreation(label, input, options);
+      this.#pendingCreation = pending.catch(() => {});
+      try {
+        return await pending;
+      } finally {
+        this.#pendingCreation = null;
+      }
+    }
+    async#creationSettled() {
+      while (this.#pendingCreation) {
+        await this.#pendingCreation;
+        if (!this.#alive())
+          return false;
+      }
+      return true;
+    }
+    async#runCreation(label, input, { fallback = false } = {}) {
       const guard = await this.#runGuard("add", { label }, input);
       if (!guard.ok)
         return null;
@@ -2586,19 +2624,18 @@
       if (!this.isSelect)
         return false;
       const option = valueOrOption instanceof HTMLOptionElement ? valueOrOption : this.#selectedOptionsInOrder().find((entry) => entry.value === String(valueOrOption));
-      if (!option?.selected || option.closest("select") !== this.#selectSource() || isOptionDisabled(option)) {
+      if (!option || !this.#isRemovable(option))
         return false;
-      }
       const item = optionToItem(option);
       const guard = await this.#runGuard("remove", { item });
       if (guard.error)
         throw guard.error;
       if (!guard.ok)
         return false;
-      if (!this.#alive())
+      if (!this.#alive() || !this.#isRemovable(option))
         return false;
       const before = emit(this.source, "combobox:beforeremove", { combobox: this, item }, { cancelable: true });
-      if (before.defaultPrevented)
+      if (before.defaultPrevented || !this.#alive() || !this.#isRemovable(option))
         return false;
       option.selected = false;
       this.#forgetSelection(option);
@@ -2606,6 +2643,9 @@
       emit(this.source, "combobox:remove", { combobox: this, item });
       this.#markEngineMutation();
       return true;
+    }
+    #isRemovable(option) {
+      return option.selected && option.closest("select") === this.#selectSource() && !isOptionDisabled(option);
     }
     async clear() {
       if (!this.isSelect) {
@@ -2616,28 +2656,31 @@
           throw inputGuard.error;
         if (!inputGuard.ok)
           return false;
-        if (!this.#alive())
+        if (!this.#alive() || !this.source.value)
           return false;
         const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
-        if (before.defaultPrevented)
+        if (before.defaultPrevented || !this.#alive())
           return false;
         this.source.value = "";
         this.#dispatchNativeValueEvents();
         emit(this.source, "combobox:clear", { combobox: this });
         return true;
       }
-      const selected = Array.from(this.#selectSource().selectedOptions).filter((option) => !isOptionDisabled(option));
-      if (!selected.length)
+      const clearable = () => Array.from(this.#selectSource().selectedOptions).filter((option) => !isOptionDisabled(option));
+      if (!clearable().length)
         return false;
       const guard = await this.#runGuard("clear", {});
       if (guard.error)
         throw guard.error;
       if (!guard.ok)
         return false;
-      if (!this.#alive())
+      if (!this.#alive() || !clearable().length)
         return false;
       const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
-      if (before.defaultPrevented)
+      if (before.defaultPrevented || !this.#alive())
+        return false;
+      const selected = clearable();
+      if (!selected.length)
         return false;
       for (const option of selected)
         option.selected = false;
@@ -2698,8 +2741,12 @@
       return loaded;
     }
     refresh() {
-      if (this.mode !== "enhanced" || !this.#alive())
+      if (!this.#alive())
         return this;
+      if (this.mode !== "enhanced") {
+        this.#syncFallbackDisabled();
+        return this;
+      }
       if (this.isSelect) {
         this.#inputEl().disabled = this.source.disabled;
         this.#inputEl().readOnly = this.source.hasAttribute("readonly");
@@ -2757,6 +2804,7 @@
       if (before.defaultPrevented)
         return false;
       this.#popoverEl().hidePopover();
+      this.#hideGeneration++;
       if (openCombobox === this)
         openCombobox = null;
       return true;

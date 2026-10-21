@@ -210,3 +210,57 @@ test.describe("Programmatic guard errors", () => {
     expect(state.selected).toEqual(["a"]);
   });
 });
+
+test.describe("State revalidated after an async guard", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/identity.html");
+  });
+
+  test("remove() never mutates an option that moved to another select meanwhile", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      source.add(new Option("A", "a", true, true));
+      const other = document.createElement("select");
+      other.multiple = true;
+      document.body.append(source, other);
+      let changes = 0;
+      source.addEventListener("change", () => changes++);
+      let finish;
+      const combo = new Combobox(source, {
+        guards: { remove: () => new Promise((resolve) => (finish = resolve)) },
+      });
+      const option = source.options[0];
+      const pending = combo.remove(option);
+      other.append(option);
+      finish(true);
+      return {
+        result: await pending,
+        stillSelected: option.selected,
+        other: [...other.selectedOptions].map((entry) => entry.value),
+        changes,
+      };
+    });
+    expect(state).toEqual({ result: false, stillSelected: true, other: ["a"], changes: 0 });
+  });
+
+  test("clear() resolves false when the selection emptied during its guard", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      source.add(new Option("A", "a", true, true));
+      document.body.append(source);
+      let changes = 0;
+      source.addEventListener("change", () => changes++);
+      let finish;
+      const combo = new Combobox(source, {
+        guards: { clear: () => new Promise((resolve) => (finish = resolve)) },
+      });
+      const pending = combo.clear();
+      source.options[0].selected = false;
+      finish(true);
+      return { result: await pending, changes };
+    });
+    expect(state).toEqual({ result: false, changes: 0 });
+  });
+});

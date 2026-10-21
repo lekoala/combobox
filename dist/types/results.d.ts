@@ -41,7 +41,8 @@ export declare function computeFilteredItems(combobox: import("./combobox.js").C
 /**
  * `maxOptions` is a rendering cap only: the result store (`filteredItems`) may
  * be large, but at most `maxOptions` options are ever rendered/navigated.
- * `0` means no cap.
+ * `0` means no cap. A loading or error row replaces the list, so nothing is
+ * navigable then: the active index must designate an option actually rendered.
  * @param {import("./combobox.js").Combobox} combobox
  * @returns {import("./helpers.js").ComboboxItem[]}
  */

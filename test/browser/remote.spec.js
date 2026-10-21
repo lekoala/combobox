@@ -1003,3 +1003,105 @@ test.describe("Remote request cancellation", () => {
     expect(state.visible).not.toContain("Old response");
   });
 });
+
+test.describe("Superseded remote responses", () => {
+  const MODERN = "Modern Popover + floating placement support is required";
+
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/identity.html");
+    test.skip(!(await modernSupported(page)), MODERN);
+  });
+
+  test("keyboard cannot select a stale row hidden behind the loading row", async ({ page }) => {
+    await page.evaluate(() => {
+      const source = document.createElement("select");
+      source.id = "stale";
+      source.multiple = true;
+      document.body.append(source);
+      window.finishLoad = null;
+      const combo = new Combobox(source, {
+        debounce: 0,
+        load: () => new Promise((resolve) => (window.finishLoad = resolve)),
+      });
+      combo.input.focus();
+      combo.setResults([{ value: "old", label: "Old" }]).applyFilter("", { show: true });
+      window.pending = combo.setQuery("new");
+    });
+    await expect(page.locator(".cb-loading")).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
+    const state = await page.evaluate(async () => {
+      const combo = Combobox.getInstance(document.getElementById("stale"));
+      const during = {
+        selected: [...combo.source.selectedOptions].map((option) => option.value),
+        options: combo.source.options.length,
+        activedescendant: combo.input.getAttribute("aria-activedescendant"),
+      };
+      window.finishLoad([{ value: "new", label: "New" }]);
+      await window.pending;
+      return { during, rows: combo.visibleItems.map((item) => item.value) };
+    });
+    expect(state).toEqual({ during: { selected: [], options: 0, activedescendant: null }, rows: ["new"] });
+  });
+
+  test("a response superseded by a cancelled beforefilter never overwrites app results", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      document.body.append(source);
+      let finish;
+      const combo = new Combobox(source, { load: () => new Promise((resolve) => (finish = resolve)) });
+      const old = combo.search("old");
+      combo.input.addEventListener("beforefilter", (event) => {
+        event.preventDefault();
+        combo.setResults([{ value: "new", label: "new" }]).applyFilter("new");
+      });
+      await combo.search("new");
+      const rendered = combo.listbox.querySelector(".cb-loading") === null;
+      finish([{ value: "old", label: "old" }]);
+      await old;
+      combo.refresh();
+      return {
+        rendered,
+        results: combo.results.map((item) => item.value),
+        rows: combo.filteredItems.map((item) => item.value),
+        native: source.options.length,
+      };
+    });
+    expect(state).toEqual({ rendered: true, results: ["new"], rows: ["new"], native: 0 });
+  });
+
+  test("a response landing after the picker closed does not reopen it", async ({ page }) => {
+    await page.evaluate(() => {
+      const source = document.createElement("select");
+      source.id = "late";
+      source.multiple = true;
+      const outside = document.createElement("button");
+      outside.id = "outside";
+      outside.textContent = "Outside";
+      document.body.append(source, outside);
+      window.finishLoad = null;
+      new Combobox(source, {
+        debounce: 0,
+        load: () => new Promise((resolve) => (window.finishLoad = resolve)),
+      });
+    });
+    await page.locator("#late + .cb-control .cb-input").pressSequentially("la");
+    await expect(page.locator(".cb-loading")).toBeVisible();
+    await page.locator("#outside").focus();
+    const state = await page.evaluate(async () => {
+      const combo = Combobox.getInstance(document.getElementById("late"));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const closed = !combo.isOpen();
+      window.finishLoad([{ value: "late", label: "late" }]);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const reopened = combo.isOpen();
+      // An explicit opening stays available afterwards.
+      const explicit = combo.search("la", { show: true });
+      window.finishLoad([{ value: "late", label: "late" }]);
+      await explicit;
+      return { closed, reopened, explicit: combo.isOpen(), focus: document.activeElement.id };
+    });
+    expect(state).toEqual({ closed: true, reopened: false, explicit: true, focus: "outside" });
+  });
+});

@@ -494,3 +494,67 @@ test.describe("Progressive enhancement and native fallback", () => {
     expect(state.unnamed).toBe(false);
   });
 });
+
+test.describe("Fallback Add control state", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/identity.html");
+  });
+
+  test("a disabled select locks the Add control; refresh() mirrors later changes", async ({ page }) => {
+    await page.evaluate(() => {
+      const source = document.createElement("select");
+      source.id = "locked";
+      source.multiple = true;
+      source.disabled = true;
+      document.body.append(source);
+      new Combobox(source, { mode: "fallback", create: true });
+    });
+    const input = page.locator("#locked + .cb-fallback-create input");
+    const button = page.locator("#locked + .cb-fallback-create button");
+    await expect(input).toBeDisabled();
+    await expect(button).toBeDisabled();
+
+    const state = await page.evaluate(async () => {
+      const source = document.getElementById("locked");
+      const combo = Combobox.getInstance(source);
+      const control = source.nextElementSibling;
+      // A stale enabled control is still refused by the interaction check.
+      control.querySelector("input").disabled = false;
+      control.querySelector("input").value = "new";
+      control.querySelector("button").disabled = false;
+      control.querySelector("button").click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const blocked = source.options.length;
+      source.disabled = false;
+      combo.refresh();
+      return { blocked, enabled: !control.querySelector("input").disabled };
+    });
+    expect(state).toEqual({ blocked: 0, enabled: true });
+
+    await input.fill("new");
+    await button.click();
+    await expect(page.locator("#locked option:checked")).toHaveAttribute("value", "new");
+  });
+
+  test("a repeated Add while create() is pending creates one option", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      document.body.append(source);
+      const finishes = [];
+      const combo = new Combobox(source, {
+        mode: "fallback",
+        create: (label) => new Promise((resolve) => finishes.push(() => resolve({ value: label, label }))),
+      });
+      combo.fallbackControl.querySelector("input").value = "new";
+      combo.fallbackControl.querySelector("button").click();
+      combo.fallbackControl.querySelector("button").click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const calls = finishes.length;
+      for (const finish of finishes) finish();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return { calls, values: [...source.selectedOptions].map((option) => option.value) };
+    });
+    expect(state).toEqual({ calls: 1, values: ["new"] });
+  });
+});

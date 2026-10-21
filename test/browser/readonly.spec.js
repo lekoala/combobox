@@ -96,3 +96,39 @@ test.describe("Native disabled and readonly reflection", () => {
     expect(await page.locator(control("dis")).isDisabled()).toBe(false);
   });
 });
+
+test.describe("Readonly input+datalist", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/identity.html");
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+  });
+
+  test("a readonly input never opens or commits through the picker but keeps the API", async ({ page }) => {
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.innerHTML = `<input id="ro-text" list="ro-list" readonly><datalist id="ro-list"><option value="other"></option></datalist>`;
+      document.body.append(host);
+      window.roEvents = 0;
+      const source = host.querySelector("input");
+      source.addEventListener("change", () => window.roEvents++);
+      new Combobox(source);
+    });
+    const input = page.locator("#ro-text");
+    await input.focus();
+    await input.press("ArrowDown");
+    await input.press("Enter");
+    const state = await page.evaluate(() => {
+      const source = document.getElementById("ro-text");
+      const combo = Combobox.getInstance(source);
+      const interaction = { value: source.value, open: combo.isOpen(), events: window.roEvents };
+      const api = combo.select({ value: "other", label: "other" });
+      return { interaction, api, value: source.value, readOnly: source.readOnly };
+    });
+    expect(state).toEqual({
+      interaction: { value: "", open: false, events: 0 },
+      api: true,
+      value: "other",
+      readOnly: true,
+    });
+  });
+});

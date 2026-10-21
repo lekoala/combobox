@@ -452,3 +452,32 @@ test.describe("Native source restoration", () => {
     expect(state).toEqual({ enhanced: "Authored hint", restored: "Authored hint" });
   });
 });
+
+test.describe("Dispose from a cancellable value event", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/identity.html");
+  });
+
+  for (const event of ["beforeremove", "beforeclear"]) {
+    test(`dispose() inside combobox:${event} stops the mutation`, async ({ page }) => {
+      const state = await page.evaluate(async (event) => {
+        const source = document.createElement("select");
+        source.multiple = true;
+        source.add(new Option("A", "a", true, true));
+        document.body.append(source);
+        let changes = 0;
+        source.addEventListener("change", () => changes++);
+        const combo = new Combobox(source);
+        source.addEventListener(`combobox:${event}`, () => combo.dispose());
+        const result = event === "beforeremove" ? await combo.remove("a") : await combo.clear();
+        return {
+          result,
+          selected: [...source.selectedOptions].map((option) => option.value),
+          changes,
+          disposed: Combobox.getInstance(source) === null,
+        };
+      }, event);
+      expect(state).toEqual({ result: false, selected: ["a"], changes: 0, disposed: true });
+    });
+  }
+});
