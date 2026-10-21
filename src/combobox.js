@@ -1373,12 +1373,10 @@ export class Combobox {
 
     // Persistent listeners go through #handleEvent so no per-render closure is
     // ever added. #renderList/#renderChips stay listener-free.
-    this.#inputEl().addEventListener("focus", this, { signal });
-    this.#inputEl().addEventListener("input", this, { signal });
-    this.#inputEl().addEventListener("compositionstart", this, { signal });
-    this.#inputEl().addEventListener("compositionend", this, { signal });
-    this.#inputEl().addEventListener("keydown", this, { signal });
-    this.#inputEl().addEventListener("blur", this, { signal });
+    const input = this.#inputEl();
+    for (const type of ["focus", "input", "compositionstart", "compositionend", "keydown", "blur"]) {
+      input.addEventListener(type, this, { signal });
+    }
 
     this.#listEl().addEventListener("pointerdown", (event) => event.preventDefault(), { signal });
     this.#listEl().addEventListener("pointermove", this, { signal });
