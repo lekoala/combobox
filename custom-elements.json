@@ -97,7 +97,7 @@
             {
               "kind": "method",
               "name": "upgrade",
-              "description": "Enhance the native child source. Safe to call repeatedly. child exists."
+              "description": "Enhance the native child source. Safe to call repeatedly."
             },
             {
               "kind": "method",
@@ -142,6 +142,9 @@
               "name": "combobox:clear"
             },
             {
+              "name": "combobox:close"
+            },
+            {
               "name": "combobox:create"
             },
             {
@@ -155,6 +158,12 @@
             },
             {
               "name": "combobox:loaderror"
+            },
+            {
+              "name": "combobox:open"
+            },
+            {
+              "name": "combobox:ready"
             },
             {
               "name": "combobox:remove"

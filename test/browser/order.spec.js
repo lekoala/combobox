@@ -387,3 +387,63 @@ test.describe("Invalid reorder targets", () => {
     expect(state.reorderEvents).toBe(0);
   });
 });
+
+test.describe("Reorder model ownership", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/order.html");
+  });
+
+  test("move() follows external selections and refuses a foreign or detached option", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    const state = await page.evaluate(() => {
+      const select = document.getElementById("ordered");
+      const combo = Combobox.getOrCreateInstance(select, { selectionOrder: "selected" });
+      let reorders = 0;
+      select.addEventListener("combobox:reorder", () => reorders++);
+
+      // Selected behind the engine's back (no change event, no refresh).
+      select.querySelector('option[value="c"]').selected = true;
+      const reported = combo.getSelectedValues();
+      const movedExternal = combo.move("c", 0);
+      const afterExternal = combo.getSelectedValues();
+
+      const foreign = document.createElement("select");
+      foreign.multiple = true;
+      const moving = select.querySelector('option[value="a"]');
+      foreign.append(moving);
+      moving.selected = true;
+      const movedForeign = combo.move(moving, 0);
+      const detached = new Option("X", "x", true, true);
+      const movedDetached = combo.move(detached, 0);
+
+      return { reported, movedExternal, afterExternal, movedForeign, movedDetached, reorders };
+    });
+
+    expect(state.reported).toEqual(["a", "c"]);
+    expect(state.movedExternal).toBe(true);
+    expect(state.afterExternal).toEqual(["c", "a"]);
+    expect(state.movedForeign).toBe(false);
+    expect(state.movedDetached).toBe(false);
+    expect(state.reorders).toBe(1);
+  });
+
+  test("native fallback has no ordering model: move() refuses and values follow native order", async ({
+    page,
+  }) => {
+    const state = await page.evaluate(() => {
+      const select = document.getElementById("ordered");
+      const combo = new Combobox(select, { mode: "fallback", selectionOrder: "selected" });
+      combo.select("c");
+      const moved = combo.move("c", 0);
+      return {
+        moved,
+        values: combo.getSelectedValues(),
+        submitted: new FormData(select.form).getAll(select.name),
+      };
+    });
+
+    expect(state.moved).toBe(false);
+    expect(state.values).toEqual(["a", "c"]);
+    expect(state.submitted).toEqual(["a", "c"]);
+  });
+});

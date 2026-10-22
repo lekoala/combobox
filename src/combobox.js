@@ -606,6 +606,9 @@ export class Combobox {
     if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement)) {
       throw new TypeError("Combobox expects an input or select element");
     }
+    // A direct second construction replaces the current owner: dispose it
+    // first so every snapshot below captures the authored native state.
+    instances.get(element)?.dispose();
 
     /** @type {ComboboxSource} */
     this.source = element;
@@ -1558,9 +1561,9 @@ export class Combobox {
         // refreshed, so run nothing (not even a hidden search that could
         // fire beforefilter/filter or a remote load).
         if (this.#suppressReopen) return;
-        // A readonly source is interaction-locked: focus must not open the
-        // picker (the reflected input is still focusable).
-        if (this.#isReadonly()) return;
+        // A readonly/disabled source is interaction-locked: focus must not
+        // open the picker (the reflected input is still focusable).
+        if (this.#isLocked()) return;
 
         if (this.isSelect && !this.isMultiple && this.#selectSource().selectedOptions.length)
           this.#inputEl().select();
@@ -1616,7 +1619,7 @@ export class Combobox {
       return;
     }
     if (event.type === "click") {
-      if (this.#isReadonly()) return;
+      if (this.#isLocked()) return;
       const option = target.closest(".cb-option");
       if (!option) return;
       if (option.classList.contains("cb-create")) {
@@ -1653,7 +1656,7 @@ export class Combobox {
     if (event.type === "click") {
       const remove = target.closest(".cb-chip-remove");
       if (!remove) return;
-      if (this.#isReadonly()) return;
+      if (this.#isLocked()) return;
       const chip = /** @type {HTMLElement} */ (remove.closest(".cb-chip"));
       if (!chip) return;
       // The chip's exact option is authoritative (duplicate values share a
@@ -1699,7 +1702,7 @@ export class Combobox {
           this.isMultiple &&
           this.options.createOnBlur &&
           !this.composing &&
-          !this.#isReadonly()
+          !this.#isLocked()
         ) {
           const value = this.#inputEl().value;
           this.#suppressReopen = true;
@@ -1736,26 +1739,35 @@ export class Combobox {
    * @param {KeyboardEvent} event
    */
   #onInputKeyDown(event) {
+    // A locked source keeps only non-mutating keys: Escape/Tab close a picker
+    // opened programmatically, ArrowLeft reaches the chips. Navigation would
+    // only write active-option state nobody can commit.
+    if (this.#isLocked()) {
+      if ((event.key === "Escape" || event.key === "Tab") && this.isOpen()) {
+        if (event.key === "Escape") event.preventDefault();
+        this.hide();
+        return;
+      }
+      if (event.key !== "ArrowLeft") return;
+    }
+
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      if (!this.isOpen() && !this.#isReadonly())
-        this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
+      if (!this.isOpen()) this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
       this.#moveActive(1);
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      if (!this.isOpen() && !this.#isReadonly())
-        this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
+      if (!this.isOpen()) this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
       this.#moveActive(-1);
       return;
     }
 
     if (event.key === "PageUp" || event.key === "PageDown") {
       event.preventDefault();
-      if (!this.isOpen() && !this.#isReadonly())
-        this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
+      if (!this.isOpen()) this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
       const down = event.key === "PageDown";
       const base = this.activeIndex < 0 ? (down ? -1 : 0) : this.activeIndex;
       const distance = base + (down ? this.#pageSize() : -this.#pageSize());
@@ -1846,7 +1858,6 @@ export class Combobox {
       event.key === "Backspace" &&
       this.isMultiple &&
       !this.#inputEl().value &&
-      !this.#isReadonly() &&
       this.#selectSource().selectedOptions.length
     ) {
       const selected = this.#selectedOptionsInOrder();
@@ -2280,7 +2291,7 @@ export class Combobox {
       setContent(label, rendered ?? item.label);
       chip.append(label);
 
-      if (!isOptionDisabled(option) && !this.source.disabled && !this.#isReadonly()) {
+      if (!isOptionDisabled(option) && !this.#isLocked()) {
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "cb-chip-remove";
@@ -2302,7 +2313,9 @@ export class Combobox {
 
   #selectedOptionsInOrder() {
     const selected = Array.from(this.#selectSource().selectedOptions);
-    if (this.options.selectionOrder !== "selected") return selected;
+    // The native fallback has no ordering model (no chips, no formdata
+    // rewrite): it reports exactly what the select submits.
+    if (this.options.selectionOrder !== "selected" || this.mode !== "enhanced") return selected;
 
     // Reconcile the remembered order against the actual selection. Options no
     // longer selected are dropped; options selected by external DOM mutations
@@ -2345,7 +2358,7 @@ export class Combobox {
     // without changing navigation keys. The gesture is consumed only when a real
     // move is possible; otherwise it falls through untouched (mirroring the
     // tabSelect "preventDefault only when a commit is possible" rule).
-    if (event.altKey && index >= 0 && this.options.selectionOrder === "selected") {
+    if (event.altKey && index >= 0 && this.options.selectionOrder === "selected" && !this.#isLocked()) {
       const target =
         event.key === "ArrowLeft"
           ? index - 1
@@ -2382,7 +2395,7 @@ export class Combobox {
 
     if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      if (this.#isReadonly()) return;
+      if (this.#isLocked()) return;
       void this.remove(item.option ?? item.value).then(
         (removed) => {
           if (!removed) return;
@@ -2563,8 +2576,7 @@ export class Combobox {
   #toggleSelected(item) {
     if (!this.isMultiple || !this.options.toggleSelected) return false;
     const option = item.option instanceof HTMLOptionElement ? item.option : this.#findOption(item.value);
-    if (!option?.selected || isOptionDisabled(option) || this.source.disabled || this.#isReadonly())
-      return false;
+    if (!option?.selected || isOptionDisabled(option) || this.#isLocked()) return false;
     const snapshot = this.#positionSnapshot(item);
     void (async () => {
       let removed = false;
@@ -2656,6 +2668,16 @@ export class Combobox {
   }
 
   /**
+   * User interaction lock: `readonly`, or natively disabled (`:disabled`
+   * covers an ancestor `<fieldset disabled>`, unlike the `disabled` IDL).
+   * The programmatic API is never locked.
+   * @returns {boolean}
+   */
+  #isLocked() {
+    return this.#isReadonly() || this.source.matches(":disabled");
+  }
+
+  /**
    * Shared validation/commit step for selection and creation: synchronous
    * `combobox:beforeselect` gate, then native mutation, value events and UI.
    * Materialization happens only after `beforeselect` allowed the operation,
@@ -2730,6 +2752,7 @@ export class Combobox {
       this.source.value = item.value;
       this.#dispatchNativeValueEvents();
       this.hide();
+      this.refresh();
     }
 
     emit(this.source, "combobox:select", { combobox: this, item });
@@ -3229,7 +3252,10 @@ export class Combobox {
       if (before.defaultPrevented || !this.#alive()) return false;
       this.source.value = "";
       this.#dispatchNativeValueEvents();
+      // The source is the interaction input: the emptied text is the query.
+      this.refresh();
       emit(this.source, "combobox:clear", { combobox: this });
+      this.#markEngineMutation();
       return true;
     }
 
@@ -3277,14 +3303,22 @@ export class Combobox {
    * @returns {boolean}
    */
   move(itemOrValue, index) {
-    if (!this.isMultiple || this.options.selectionOrder !== "selected") return false;
+    if (
+      this.mode !== "enhanced" ||
+      !this.isMultiple ||
+      this.options.selectionOrder !== "selected" ||
+      !this.#alive()
+    )
+      return false;
+    // Work on the reconciled model, exactly what getSelectedValues() reports.
+    this.selectionOrder = this.#selectedOptionsInOrder();
     // An exact option moves that identity (duplicate values stay distinct); a
     // bare value moves the first selected occurrence in the ordered model.
     const option =
       itemOrValue instanceof HTMLOptionElement
         ? itemOrValue
         : this.selectionOrder.find((entry) => entry.value === String(itemOrValue));
-    if (!option?.selected) return false;
+    if (!option?.selected || option.closest("select") !== this.#selectSource()) return false;
 
     const moved = moveValueInOrder(this.selectionOrder, option, index);
     if (!moved) return false;
@@ -3296,7 +3330,8 @@ export class Combobox {
       { combobox: this, value: option.value, from, to },
       { cancelable: true },
     );
-    if (before.defaultPrevented) return false;
+    // A synchronous beforereorder handler may have disposed the instance.
+    if (before.defaultPrevented || !this.#alive()) return false;
     const valueChanged = nextOrder.some(
       (entry, position) => entry.value !== this.selectionOrder[position]?.value,
     );
@@ -3339,7 +3374,7 @@ export class Combobox {
     }
 
     if (this.isSelect) {
-      this.#inputEl().disabled = this.source.disabled;
+      this.#inputEl().disabled = this.source.matches(":disabled");
       this.#inputEl().readOnly = this.source.hasAttribute("readonly");
       const remembered = new Set(this.selectionOrder);
       for (const option of this.#selectSource().selectedOptions) {
@@ -3354,7 +3389,10 @@ export class Combobox {
       else this.#syncSingleLabel();
     }
 
-    this.#applyFilter(this.isSelect && !this.isMultiple ? "" : this.#inputEl().value);
+    // The applied filter and `query` never diverge (a single select always
+    // reflects the full catalogue once its value changed).
+    this.query = this.isSelect && !this.isMultiple ? "" : this.#inputEl().value;
+    this.#applyFilter(this.query);
     return this;
   }
 

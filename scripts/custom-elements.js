@@ -98,25 +98,34 @@ function extractPublicMembers(source) {
  * @returns {string}
  */
 function extractDescription(text) {
-  const description = text
+  const lines = text
     .replace(/\/\*+|\*+\//g, "")
     .split("\n")
-    .map((l) => l.replace(/^\s*\*\s?/, "").trim())
-    .filter((l) => l && !l.startsWith("@"))
-    .join(" ");
+    .map((l) => l.replace(/^\s*\*\s?/, "").trim());
+  // The description ends at the first block tag: continuation lines of a
+  // `@returns`/`@param` belong to that tag, not to the description.
+  const end = lines.findIndex((l) => l.startsWith("@"));
+  const description = (end < 0 ? lines : lines.slice(0, end)).filter(Boolean).join(" ");
   return description || undefined;
 }
 
 /**
- * Extract literal combobox event names emitted through `emit(...)` /
- * `new CustomEvent(...)`.
- * @param {string} source
+ * Extract the event names dispatched by the given sources: literal names
+ * passed to `emit(target, "name")` (e.g. the unprefixed `beforefilter`/`filter`
+ * on the interaction input), plus every `"combobox:…"` string literal in code
+ * (comments skipped), which covers `new CustomEvent("combobox:ready")` and
+ * computed names such as `open ? "combobox:open" : "combobox:close"`.
+ * @param {string[]} sources
  * @returns {string[]}
  */
-function extractEvents(source) {
+function extractEvents(sources) {
   const names = [];
-  for (const m of source.matchAll(/(?:emit\(|new CustomEvent\()\s*[^,;]+\s*,\s*"([^"]+)"/g)) {
-    names.push(m[1]);
+  for (const source of sources) {
+    for (const m of source.matchAll(/emit\(\s*[^,;]+\s*,\s*"([^"]+)"/g)) names.push(m[1]);
+    for (const line of source.split("\n")) {
+      if (/^\s*(\/\/|\*|\/\*)/.test(line)) continue;
+      for (const m of line.matchAll(/"(combobox:[a-z]+)"/g)) names.push(m[1]);
+    }
   }
   return Array.from(new Set(names)).sort();
 }
@@ -143,7 +152,7 @@ async function main() {
 
   const attributes = extractAttributes(elementSource);
   const members = extractPublicMembers(elementSource);
-  const events = extractEvents(comboboxSource);
+  const events = extractEvents([comboboxSource, elementSource]);
   const cssProperties = extractCssProperties(cssSource);
 
   const manifest = {

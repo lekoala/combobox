@@ -941,6 +941,7 @@
       if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement)) {
         throw new TypeError("Combobox expects an input or select element");
       }
+      instances.get(element)?.dispose();
       this.source = element;
       this.isSelect = element instanceof HTMLSelectElement;
       this.isMultiple = this.isSelect && element.multiple;
@@ -1509,7 +1510,7 @@
         case "focus": {
           if (this.#suppressReopen)
             return;
-          if (this.#isReadonly())
+          if (this.#isLocked())
             return;
           if (this.isSelect && !this.isMultiple && this.#selectSource().selectedOptions.length)
             this.#inputEl().select();
@@ -1555,7 +1556,7 @@
         return;
       }
       if (event.type === "click") {
-        if (this.#isReadonly())
+        if (this.#isLocked())
           return;
         const option = target.closest(".cb-option");
         if (!option)
@@ -1586,7 +1587,7 @@
         const remove = target.closest(".cb-chip-remove");
         if (!remove)
           return;
-        if (this.#isReadonly())
+        if (this.#isLocked())
           return;
         const chip = remove.closest(".cb-chip");
         if (!chip)
@@ -1616,7 +1617,7 @@
         if (stillInside)
           return;
         if (this.isOpen() || this.options.createOnBlur) {
-          if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing && !this.#isReadonly()) {
+          if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing && !this.#isLocked()) {
             const value = this.#inputEl().value;
             this.#suppressReopen = true;
             try {
@@ -1647,23 +1648,33 @@
       });
     }
     #onInputKeyDown(event) {
+      if (this.#isLocked()) {
+        if ((event.key === "Escape" || event.key === "Tab") && this.isOpen()) {
+          if (event.key === "Escape")
+            event.preventDefault();
+          this.hide();
+          return;
+        }
+        if (event.key !== "ArrowLeft")
+          return;
+      }
       if (event.key === "ArrowDown") {
         event.preventDefault();
-        if (!this.isOpen() && !this.#isReadonly())
+        if (!this.isOpen())
           this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
         this.#moveActive(1);
         return;
       }
       if (event.key === "ArrowUp") {
         event.preventDefault();
-        if (!this.isOpen() && !this.#isReadonly())
+        if (!this.isOpen())
           this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
         this.#moveActive(-1);
         return;
       }
       if (event.key === "PageUp" || event.key === "PageDown") {
         event.preventDefault();
-        if (!this.isOpen() && !this.#isReadonly())
+        if (!this.isOpen())
           this.search(this.#inputEl().value, { show: true, reason: "keyboard" });
         const down = event.key === "PageDown";
         const base = this.activeIndex < 0 ? down ? -1 : 0 : this.activeIndex;
@@ -1738,7 +1749,7 @@
           return;
         }
       }
-      if (event.key === "Backspace" && this.isMultiple && !this.#inputEl().value && !this.#isReadonly() && this.#selectSource().selectedOptions.length) {
+      if (event.key === "Backspace" && this.isMultiple && !this.#inputEl().value && this.#selectSource().selectedOptions.length) {
         const selected = this.#selectedOptionsInOrder();
         const last = selected[selected.length - 1];
         if (last && !isOptionDisabled(last))
@@ -2045,7 +2056,7 @@
         const rendered = this.options.render.item?.(item, { combobox: this });
         setContent(label, rendered ?? item.label);
         chip.append(label);
-        if (!isOptionDisabled(option) && !this.source.disabled && !this.#isReadonly()) {
+        if (!isOptionDisabled(option) && !this.#isLocked()) {
           const remove = document.createElement("button");
           remove.type = "button";
           remove.className = "cb-chip-remove";
@@ -2062,7 +2073,7 @@
     }
     #selectedOptionsInOrder() {
       const selected = Array.from(this.#selectSource().selectedOptions);
-      if (this.options.selectionOrder !== "selected")
+      if (this.options.selectionOrder !== "selected" || this.mode !== "enhanced")
         return selected;
       return reconcileSelected(selected, this.selectionOrder);
     }
@@ -2079,7 +2090,7 @@
       const chips = Array.from(this.#chipsEl()?.querySelectorAll(".cb-chip") || []);
       const current = event.target instanceof HTMLElement ? event.target.closest(".cb-chip") : null;
       const index = current ? chips.indexOf(current) : -1;
-      if (event.altKey && index >= 0 && this.options.selectionOrder === "selected") {
+      if (event.altKey && index >= 0 && this.options.selectionOrder === "selected" && !this.#isLocked()) {
         const target = event.key === "ArrowLeft" ? index - 1 : event.key === "ArrowRight" ? index + 1 : event.key === "Home" ? 0 : event.key === "End" ? chips.length - 1 : index;
         if (target !== index && target >= 0 && target < chips.length) {
           event.preventDefault();
@@ -2106,7 +2117,7 @@
       }
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
-        if (this.#isReadonly())
+        if (this.#isLocked())
           return;
         this.remove(item.option ?? item.value).then((removed) => {
           if (!removed)
@@ -2227,7 +2238,7 @@
       if (!this.isMultiple || !this.options.toggleSelected)
         return false;
       const option = item.option instanceof HTMLOptionElement ? item.option : this.#findOption(item.value);
-      if (!option?.selected || isOptionDisabled(option) || this.source.disabled || this.#isReadonly())
+      if (!option?.selected || isOptionDisabled(option) || this.#isLocked())
         return false;
       const snapshot = this.#positionSnapshot(item);
       (async () => {
@@ -2277,6 +2288,9 @@
       if (!this.isSelect)
         return this.source.readOnly;
       return this.source.hasAttribute("readonly");
+    }
+    #isLocked() {
+      return this.#isReadonly() || this.source.matches(":disabled");
     }
     #commitItemSelection(option, item, { keepQuery = false } = {}) {
       if (this.isSelect && option)
@@ -2329,6 +2343,7 @@
         this.source.value = item.value;
         this.#dispatchNativeValueEvents();
         this.hide();
+        this.refresh();
       }
       emit(this.source, "combobox:select", { combobox: this, item });
       this.#markEngineMutation();
@@ -2661,7 +2676,9 @@
           return false;
         this.source.value = "";
         this.#dispatchNativeValueEvents();
+        this.refresh();
         emit(this.source, "combobox:clear", { combobox: this });
+        this.#markEngineMutation();
         return true;
       }
       const clearable = () => Array.from(this.#selectSource().selectedOptions).filter((option) => !isOptionDisabled(option));
@@ -2699,17 +2716,18 @@
       return this.#selectedOptionsInOrder().map((option) => optionToItem(option));
     }
     move(itemOrValue, index) {
-      if (!this.isMultiple || this.options.selectionOrder !== "selected")
+      if (this.mode !== "enhanced" || !this.isMultiple || this.options.selectionOrder !== "selected" || !this.#alive())
         return false;
+      this.selectionOrder = this.#selectedOptionsInOrder();
       const option = itemOrValue instanceof HTMLOptionElement ? itemOrValue : this.selectionOrder.find((entry) => entry.value === String(itemOrValue));
-      if (!option?.selected)
+      if (!option?.selected || option.closest("select") !== this.#selectSource())
         return false;
       const moved = moveValueInOrder(this.selectionOrder, option, index);
       if (!moved)
         return false;
       const { order: nextOrder, from, to } = moved;
       const before = emit(this.source, "combobox:beforereorder", { combobox: this, value: option.value, from, to }, { cancelable: true });
-      if (before.defaultPrevented)
+      if (before.defaultPrevented || !this.#alive())
         return false;
       const valueChanged = nextOrder.some((entry, position) => entry.value !== this.selectionOrder[position]?.value);
       this.selectionOrder = nextOrder;
@@ -2746,7 +2764,7 @@
         return this;
       }
       if (this.isSelect) {
-        this.#inputEl().disabled = this.source.disabled;
+        this.#inputEl().disabled = this.source.matches(":disabled");
         this.#inputEl().readOnly = this.source.hasAttribute("readonly");
         const remembered = new Set(this.selectionOrder);
         for (const option of this.#selectSource().selectedOptions) {
@@ -2764,7 +2782,8 @@
         else
           this.#syncSingleLabel();
       }
-      this.#applyFilter(this.isSelect && !this.isMultiple ? "" : this.#inputEl().value);
+      this.query = this.isSelect && !this.isMultiple ? "" : this.#inputEl().value;
+      this.#applyFilter(this.query);
       return this;
     }
     #syncSingleLabel() {

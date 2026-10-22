@@ -480,4 +480,68 @@ test.describe("Dispose from a cancellable value event", () => {
       expect(state).toEqual({ result: false, selected: ["a"], changes: 0, disposed: true });
     });
   }
+  test("dispose() inside combobox:beforereorder stops the move", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    const state = await page.evaluate(() => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      source.add(new Option("A", "a", true, true));
+      source.add(new Option("B", "b", true, true));
+      document.body.append(source);
+      let events = 0;
+      for (const type of ["input", "change", "combobox:reorder"])
+        source.addEventListener(type, () => events++);
+      const combo = new Combobox(source, { selectionOrder: "selected" });
+      source.addEventListener("combobox:beforereorder", () => combo.dispose());
+      return {
+        result: combo.move("b", 0),
+        order: combo.selectionOrder.map((option) => option.value),
+        events,
+      };
+    });
+    expect(state).toEqual({ result: false, order: ["a", "b"], events: 0 });
+  });
+});
+
+test.describe("Direct reconstruction", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/identity.html");
+  });
+
+  test("a second new Combobox() on the same source replaces the first and dispose restores the authored state", async ({
+    page,
+  }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    const state = await page.evaluate(() => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      source.add(new Option("A", "a", true, true));
+      document.body.append(source);
+      const first = new Combobox(source);
+      const second = new Combobox(source);
+      const result = {
+        current: Combobox.getInstance(source) === second,
+        controls: document.querySelectorAll(".cb-control").length,
+        popovers: document.querySelectorAll(".cb-popover").length,
+        firstDisposed: first.abortController.signal.aborted,
+      };
+      second.dispose();
+      result.ariaHidden = source.getAttribute("aria-hidden");
+      result.tabindex = source.getAttribute("tabindex");
+      result.leftControls = document.querySelectorAll(".cb-control").length;
+      result.leftPopovers = document.querySelectorAll(".cb-popover").length;
+      source.remove();
+      return result;
+    });
+    expect(state).toEqual({
+      current: true,
+      controls: 1,
+      popovers: 1,
+      firstDisposed: true,
+      ariaHidden: null,
+      tabindex: null,
+      leftControls: 0,
+      leftPopovers: 0,
+    });
+  });
 });

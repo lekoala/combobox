@@ -74,7 +74,7 @@
     "typecheck": "tsc -p jsconfig.json",
     "types": "tsc -p tsconfig.types.json",
     "test": "bun test test/unit",
-    "test:syntax": "node --check src/combobox.js && node --check src/combo-box.js && node --check src/helpers.js && node --check src/index.js && node --check src/define.js",
+    "test:syntax": "bun scripts/check-syntax.js",
     "test:types": "tsc -p test/types/tsconfig.json",
     "test:browser": "playwright test test/browser --project chromium",
     "test:browser:headed": "playwright test test/browser --project chromium --headed",

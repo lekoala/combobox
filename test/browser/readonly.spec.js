@@ -132,3 +132,142 @@ test.describe("Readonly input+datalist", () => {
     });
   });
 });
+
+test.describe("Interaction lock on disabled and readonly sources", () => {
+  const IDENTITY_HTML = "/test/fixtures/identity.html";
+  const MODERN = "Modern Popover + floating placement support is required";
+
+  test.beforeEach(async ({ page }) => {
+    await setup(page, IDENTITY_HTML);
+  });
+
+  test("a select in a disabled fieldset disables the input and renders no remove button", async ({
+    page,
+  }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(() => {
+      const form = document.createElement("form");
+      form.innerHTML = `<fieldset disabled><select name="fs" multiple>
+      <option value="a" selected>A</option>
+      <option value="b">B</option>
+    </select></fieldset><input data-filter-for="fs-select">`;
+      document.body.append(form);
+      const select = form.querySelector("select");
+      select.id = "fs-select";
+      const combo = Combobox.getOrCreateInstance(select);
+      const result = {
+        idlDisabled: select.disabled,
+        inputDisabled: combo.input.disabled,
+        removeButtons: form.querySelectorAll(".cb-chip-remove").length,
+      };
+      combo.dispose();
+      result.restoredInputDisabled = form.querySelector("input[data-filter-for]").disabled;
+      form.remove();
+      return result;
+    });
+
+    expect(state.idlDisabled).toBe(false);
+    expect(state.inputDisabled).toBe(true);
+    expect(state.removeButtons).toBe(0);
+    expect(state.restoredInputDisabled).toBe(false);
+  });
+
+  test("chip Delete/Backspace and Alt+Arrow reorder are locked on disabled and readonly selects", async ({
+    page,
+  }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const tick = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const results = {};
+      for (const lock of ["disabled", "readonly"]) {
+        const form = document.createElement("form");
+        form.innerHTML = `<select name="locked" multiple ${lock}>
+        <option value="a" selected>A</option>
+        <option value="b" selected>B</option>
+      </select>`;
+        document.body.append(form);
+        const select = form.querySelector("select");
+        const combo = Combobox.getOrCreateInstance(select, { selectionOrder: "selected" });
+        let events = 0;
+        for (const type of ["input", "change", "combobox:reorder"])
+          select.addEventListener(type, () => events++);
+
+        const chip = form.querySelector(".cb-chip");
+        chip.focus();
+        chip.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", altKey: true, bubbles: true }));
+        for (const key of ["Delete", "Backspace"]) {
+          form.querySelector(".cb-chip").dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+        }
+        await tick(30);
+        results[lock] = { values: combo.getSelectedValues(), events };
+        combo.dispose();
+        form.remove();
+      }
+      return results;
+    });
+
+    for (const lock of ["disabled", "readonly"]) {
+      expect(state[lock].values).toEqual(["a", "b"]);
+      expect(state[lock].events).toBe(0);
+    }
+  });
+
+  test("a programmatically opened readonly picker ignores Enter, Tab and option clicks", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const tick = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const form = document.createElement("form");
+      form.innerHTML = `<select name="ro" readonly>
+      <option value="a" selected>A</option>
+      <option value="b">B</option>
+    </select>`;
+      document.body.append(form);
+      const select = form.querySelector("select");
+      const combo = Combobox.getOrCreateInstance(select, { tabSelect: true, autoselectFirst: true });
+      combo.input.focus();
+      combo.show();
+      await tick(30);
+      const option = combo.listbox.querySelector('.cb-option[data-index="1"]');
+      option.click();
+      combo.input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+      combo.input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      const valueAfterEnter = select.value;
+      combo.input.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+      await tick(30);
+      const result = { valueAfterEnter, value: select.value, open: combo.isOpen() };
+      combo.dispose();
+      form.remove();
+      return result;
+    });
+
+    expect(state.valueAfterEnter).toBe("a");
+    expect(state.value).toBe("a");
+    expect(state.open).toBe(false);
+  });
+
+  test("ArrowDown on a readonly input+datalist writes no active-option state", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(() => {
+      const form = document.createElement("form");
+      form.innerHTML = `<input name="city" list="ro-cities" readonly>
+      <datalist id="ro-cities"><option value="Brussels"></option><option value="Paris"></option></datalist>`;
+      document.body.append(form);
+      const input = form.querySelector("input");
+      const combo = Combobox.getOrCreateInstance(input);
+      input.focus();
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+      const result = {
+        open: combo.isOpen(),
+        activeIndex: combo.activeIndex,
+        activedescendant: input.getAttribute("aria-activedescendant"),
+      };
+      combo.dispose();
+      form.remove();
+      return result;
+    });
+
+    expect(state.open).toBe(false);
+    expect(state.activeIndex).toBe(-1);
+    expect(state.activedescendant).toBeNull();
+  });
+});

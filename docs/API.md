@@ -14,6 +14,10 @@ Combobox.getOrCreateInstance(element, options);
 Combobox.supported;
 ```
 
+`new Combobox(element)` on an already enhanced element disposes the current
+instance first, so the new one always captures the authored native state;
+`getOrCreateInstance()` returns the existing instance instead.
+
 `init()` is a discovery/creation API, not a reconfiguration API. It accepts:
 - a CSS selector, globally or scoped to a root;
 - a root `Element`/`Document` **plus an explicit selector**;
@@ -490,7 +494,7 @@ Engine-driven mutations are not observed (the engine drops/reconnects the observ
 
 ### `readonly`
 
-`readonly` is not a native `<select>` concept, but the engine accepts it as a declarative interaction lock. It is reflected onto the interaction input (`refresh()`/`sync()` keep it current) and observed on the source like `disabled`. On a `readonly` select the **user interaction** is locked: focus and keyboard navigation never open the picker, chips render without a remove button, and `Backspace`/`Delete`, `toggleSelected`, picker clicks and `createOnBlur` never mutate the selection. The **programmatic API is untouched** — `select()`, `remove()` and `clear()` still work exactly as on a `disabled` source, because the lock targets interaction, not the JS surface. A native `<input list readonly>` is locked the same way: focus and keyboard never open the picker, so the user cannot change its value through it, while `select()`/`clear()` keep working.
+`readonly` is not a native `<select>` concept, but the engine accepts it as a declarative interaction lock. It is reflected onto the interaction input (`refresh()`/`sync()` keep it current) and observed on the source like `disabled`. On a `readonly` select the **user interaction** is locked: focus and keyboard navigation never open the picker, chips render without a remove button, and `Backspace`/`Delete`, `toggleSelected`, picker clicks and `createOnBlur` never mutate the selection; chip keyboard reorder (`Alt+Arrow/Home/End`) is locked too. The same interaction lock applies to a natively disabled source, including one inside a `<fieldset disabled>` (`:disabled`, not only the `disabled` attribute), which also disables the interaction input. The **programmatic API is untouched** — `select()`, `remove()` and `clear()` still work exactly as on a `disabled` source, because the lock targets interaction, not the JS surface. A native `<input list readonly>` is locked the same way: focus and keyboard never open the picker, so the user cannot change its value through it, while `select()`/`clear()` keep working.
 
 ## Remote
 
@@ -772,6 +776,11 @@ combo.move(option, 2); // exact option identity
 ```
 
 No built-in drag/drop. Applications may wire any UI to `move()`.
+
+`move()` works on the same reconciled order `getSelectedValues()` reports, and
+returns `false` for an option that is not selected in this select. The native
+fallback has no ordering model: `move()` returns `false` and
+`getSelectedValues()` reports native order, exactly what the form submits.
 
 In ordered mode, a focused chip supports a keyboard reorder gesture:
 
