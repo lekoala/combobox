@@ -583,3 +583,119 @@ test.describe("Concurrent creation intents", () => {
     expect(state).toEqual({ calls: 1, options: 1, selected: ["new"] });
   });
 });
+
+test.describe("Async creation intent validity", () => {
+  test.beforeEach(async ({ page }) => {
+    await setup(page, "/test/fixtures/identity.html");
+  });
+
+  for (const [mode, multiple] of [
+    ["enhanced", false],
+    ["enhanced", true],
+    ["fallback", false],
+    ["fallback", true],
+  ]) {
+    for (const phase of ["guard", "create"]) {
+      for (const change of [
+        "edit",
+        "edit-back",
+        "selection",
+        "native-selection",
+        "readonly",
+        "disabled",
+        "fieldset",
+        "dispose",
+      ]) {
+        test(`${mode} ${multiple ? "multiple" : "single"}: ${change} supersedes pending ${phase}`, async ({
+          page,
+        }) => {
+          if (mode === "enhanced") test.skip(!(await modernSupported(page)), "Popover support required");
+          const state = await page.evaluate(
+            async ({ mode, multiple, phase, change }) => {
+              const fieldset = document.createElement("fieldset");
+              fieldset.innerHTML =
+                '<select name="choice"><option value="old" selected>Old</option><option value="beta">Beta</option></select>';
+              document.body.append(fieldset);
+              const source = fieldset.querySelector("select");
+              source.multiple = multiple;
+              let release;
+              let started;
+              const ready = new Promise((resolve) => {
+                started = resolve;
+              });
+              const gate = new Promise((resolve) => {
+                release = resolve;
+              });
+              let creates = 0;
+              const combo = new Combobox(source, {
+                ...(mode === "fallback" ? { mode } : {}),
+                guards: {
+                  add: async () => {
+                    if (phase === "guard") {
+                      started();
+                      await gate;
+                    }
+                    return true;
+                  },
+                },
+                create: async (label) => {
+                  creates++;
+                  if (phase === "create") {
+                    started();
+                    await gate;
+                  }
+                  return { value: label, label };
+                },
+              });
+              const input =
+                mode === "fallback" ? source.nextElementSibling.querySelector("input") : combo.input;
+              input.value = "Alpha";
+              if (mode === "enhanced") await combo.search("Alpha", { show: true });
+              input.dispatchEvent(
+                new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+              );
+              await ready;
+              if (change === "edit" || change === "edit-back") {
+                input.value = "Beta";
+                input.dispatchEvent(new Event("input", { bubbles: true }));
+                if (change === "edit-back") {
+                  input.value = "Alpha";
+                  input.dispatchEvent(new Event("input", { bubbles: true }));
+                }
+              }
+              if (change === "selection") combo.select("beta");
+              if (change === "native-selection") source.options[1].selected = true;
+              if (change === "readonly") source.setAttribute("readonly", "");
+              if (change === "disabled") source.disabled = true;
+              if (change === "fieldset") fieldset.disabled = true;
+              if (change === "dispose") combo.dispose();
+              const text = input.value;
+              const events = [];
+              for (const name of ["input", "change", "combobox:select", "combobox:create"]) {
+                source.addEventListener(name, () => events.push(name));
+              }
+              release();
+              await new Promise((resolve) => setTimeout(resolve, 0));
+              return {
+                text,
+                after: input.value,
+                events,
+                creates,
+                values: [...source.selectedOptions].map((option) => option.value),
+                options: [...source.options].map((option) => option.value),
+              };
+            },
+            { mode, multiple, phase, change },
+          );
+          expect(state.after).toBe(state.text);
+          expect(state.events).toEqual([]);
+          expect(state.creates).toBe(phase === "guard" ? 0 : 1);
+          expect(state.values).toEqual(
+            change.includes("selection") ? (multiple ? ["old", "beta"] : ["beta"]) : ["old"],
+          );
+          expect(state.options).toEqual(["old", "beta"]);
+        });
+      }
+    }
+  }
+});

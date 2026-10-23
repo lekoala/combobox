@@ -539,6 +539,14 @@ silent. Completion never opens a closed picker merely to clear loading state.
 Only one creation runs at a time: a repeated Enter/Tab/blur (or Add click) while
 `create()` is pending waits for it and then resolves the term against the option
 just created, so it never creates a twin.
+After each asynchronous guard or create callback, creation rechecks the original
+edit and exact native selection. A newer edit or selection, disposal, or a source
+that has become readonly or disabled (including through a fieldset) discards the
+stale result without adding an option or emitting selection/creation value events.
+This also applies to the fallback Add control; newer text remains editable.
+Complete separator tokens remain queued when typing continues: they commit in
+sequence without clearing newer text, and only the latest input batch writes
+its trailing remainder.
 The native fallback has no picker or loading row; its Add input and button
 mirror the select's `:disabled` state (at init and on `refresh()`/`sync()`) and
 refuse interaction on a disabled select; its Add input uses the

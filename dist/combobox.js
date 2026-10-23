@@ -891,6 +891,8 @@
     #resolvedCoordinateSpace = "viewport";
     #tokenQueue = Promise.resolve();
     #pendingCreation = null;
+    #interactionGeneration = 0;
+    #editGeneration = 0;
     #hideGeneration = 0;
     #separatorKey = "";
     #splitTokens = prepareTokenSplitter([]);
@@ -1066,12 +1068,26 @@
       button.textContent = this.options.messages.add ?? "Add";
       const add = async () => {
         const label = input.value.trim();
-        if (!label || this.source.matches(":disabled"))
+        if (!label || this.#isLocked())
           return;
-        if (await this.#createFallbackOption(label, input))
+        const generation = this.#interactionGeneration;
+        const edit = this.#editGeneration;
+        const value = input.value;
+        const option = await this.#createFallbackOption(label, input);
+        if (!this.#alive() || this.#isLocked() || input.value !== value)
+          return;
+        if (edit !== this.#editGeneration || this.#interactionGeneration > generation + 1)
+          return;
+        if (option)
           input.value = "";
         input.focus();
       };
+      input.addEventListener("input", () => {
+        this.#interactionGeneration++;
+        this.#editGeneration++;
+      }, {
+        signal: this.abortController.signal
+      });
       button.addEventListener("click", add, { signal: this.abortController.signal });
       input.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -1093,7 +1109,10 @@
       }
     }
     async#createFallbackOption(label, input) {
+      const isCurrent = this.#creationIntent(input);
       if (this.#pendingCreation && !await this.#creationSettled())
+        return null;
+      if (!isCurrent())
         return null;
       if (!this.#canCreate(label, input))
         return null;
@@ -1531,6 +1550,8 @@
         case "input": {
           if (this.#suppressInputEvent)
             return;
+          this.#interactionGeneration++;
+          this.#editGeneration++;
           const inputEvent = event;
           if (this.isMultiple && !inputEvent.isComposing && this.#separatorsActive()) {
             this.#handleTokenInput();
@@ -1629,6 +1650,7 @@
         if (this.isOpen() || this.options.createOnBlur) {
           if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing && !this.#isLocked()) {
             const value = this.#inputEl().value;
+            const edit = this.#editGeneration;
             this.#suppressReopen = true;
             try {
               if (this.#separatorsActive()) {
@@ -1636,18 +1658,17 @@
                   if (!this.#alive())
                     return;
                   const result = await this.#processTokens(this.#inputEl().value, { final: true });
-                  if (this.#alive() && result)
+                  if (this.#alive() && edit === this.#editGeneration && result) {
                     this.#inputEl().value = result.rest;
+                  }
                 });
               } else if (value.trim()) {
-                const created = await this.#createItem(value.trim());
-                if (this.#alive() && created)
-                  this.#inputEl().value = "";
+                await this.#createItem(value.trim());
               }
             } finally {
               this.#suppressReopen = false;
             }
-            if (!this.#alive())
+            if (!this.#alive() || edit !== this.#editGeneration)
               return;
             this.refresh();
           }
@@ -2359,8 +2380,11 @@
       this.#markEngineMutation();
       return true;
     }
-    async#createItem(label) {
+    async#createItem(label, { token = false } = {}) {
+      const isCurrent = this.#creationIntent(this.#inputEl(), { token });
       if (this.#pendingCreation && !await this.#creationSettled())
+        return null;
+      if (!isCurrent())
         return null;
       if (!this.#canCreate(label, this.#inputEl()))
         return null;
@@ -2372,9 +2396,16 @@
           return existing.option;
         return this.#selectItem(existing) ? existing.option ?? null : null;
       }
-      const item = await this.#materializeCreated(label, this.#inputEl());
+      const generation = this.#interactionGeneration;
+      const item = await this.#materializeCreated(label, this.#inputEl(), { token });
       if (!item || !this.#alive())
         return null;
+      if (token)
+        return item.option;
+      if (this.#isLocked() || this.#interactionGeneration !== generation + 1)
+        return item.option;
+      if (this.#inputEl().value !== (this.isMultiple ? "" : item.label))
+        return item.option;
       this.#inputEl().value = "";
       if (this.isMultiple) {
         if (this.#suppressReopen)
@@ -2388,6 +2419,20 @@
       }
       this.#markEngineMutation();
       return item.option;
+    }
+    #creationIntent(input, { token = false } = {}) {
+      const generation = this.#interactionGeneration - (token ? this.#editGeneration : 0);
+      const value = input.value;
+      const selected = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
+      return () => {
+        if (!this.#alive() || this.#isLocked())
+          return false;
+        const currentGeneration = this.#interactionGeneration - (token ? this.#editGeneration : 0);
+        if (generation !== currentGeneration || !token && input.value !== value)
+          return false;
+        const current = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
+        return current.length === selected.length && current.every((option, index) => option === selected[index]);
+      };
     }
     async#materializeCreated(label, input, options = {}) {
       const pending = this.#runCreation(label, input, options);
@@ -2406,17 +2451,16 @@
       }
       return true;
     }
-    async#runCreation(label, input, { fallback = false } = {}) {
+    async#runCreation(label, input, { fallback = false, token = false } = {}) {
+      const isCurrent = this.#creationIntent(input, { token });
       const guard = await this.#runGuard("add", { label }, input);
-      if (!guard.ok)
-        return null;
-      if (!this.#alive())
+      if (!guard.ok || !isCurrent())
         return null;
       const before = emit(this.source, "combobox:beforecreate", {
         combobox: this,
         label
       }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive())
+      if (before.defaultPrevented || !isCurrent())
         return null;
       let created = { value: label, label };
       if (typeof this.options.create === "function") {
@@ -2446,12 +2490,14 @@
       }
       if (!this.#alive())
         return null;
+      if (!isCurrent())
+        return null;
       const appeared = this.#findCreateMatch(label);
       if (appeared?.option) {
         const { option } = appeared;
         if (isOptionDisabled(option))
           return null;
-        if (!option.selected && !this.#commitItemSelection(option, appeared))
+        if (!option.selected && !this.#commitItemSelection(option, appeared, { keepQuery: token }))
           return null;
         return { ...appeared, option, selected: true };
       }
@@ -2467,7 +2513,7 @@
       }
       if (!option)
         return null;
-      if (!this.#commitItemSelection(option, created)) {
+      if (!this.#commitItemSelection(option, created, { keepQuery: token })) {
         option.remove();
         return null;
       }
@@ -2548,7 +2594,10 @@
             rest: typeof this.options.tokenize === "function" ? value : value.slice(consumedLength)
           };
         }
+        const isCurrent = this.#creationIntent(this.#inputEl(), { token: true });
         if (!await this.#applyToken(entry.text)) {
+          if (!isCurrent())
+            return null;
           return {
             consumed: false,
             rest: typeof this.options.tokenize === "function" ? value : value.slice(consumedLength)
@@ -2568,11 +2617,11 @@
           return false;
         if (existing.option?.selected)
           return true;
-        return this.#selectItem(existing);
+        return this.#selectItem(existing, { keepQuery: true });
       }
       if (!this.#canCreate(term, this.#inputEl()))
         return false;
-      const created = await this.#createItem(term);
+      const created = await this.#createItem(term, { token: true });
       return created !== null;
     }
     #enqueueTokens(batch) {
@@ -2583,11 +2632,14 @@
     }
     async#handleTokenInput() {
       const value = this.#inputEl().value;
+      const edit = this.#editGeneration;
       return this.#enqueueTokens(async () => {
-        if (!this.#alive())
+        if (!this.#alive() || edit !== this.#editGeneration || this.#isLocked())
           return;
         const result = await this.#processTokens(value);
         if (!this.#alive())
+          return;
+        if (edit !== this.#editGeneration || this.#isLocked())
           return;
         if (result)
           this.#inputEl().value = result.rest;
@@ -2596,11 +2648,14 @@
     }
     async#commitEnterTokens(resolved) {
       const value = this.#inputEl().value;
+      const edit = this.#editGeneration;
       return this.#enqueueTokens(async () => {
-        if (!this.#alive())
+        if (!this.#alive() || edit !== this.#editGeneration || this.#isLocked())
           return;
         const result = await this.#processTokens(value, { final: true, resolved });
         if (!this.#alive())
+          return;
+        if (edit !== this.#editGeneration || this.#isLocked())
           return;
         if (result) {
           this.#inputEl().value = result.rest;
@@ -2609,6 +2664,7 @@
       });
     }
     #dispatchNativeValueEvents() {
+      this.#interactionGeneration++;
       this.#suppressInputEvent = true;
       try {
         this.source.dispatchEvent(new Event("input", { bubbles: true }));

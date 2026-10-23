@@ -474,6 +474,10 @@ export class Combobox {
   /** @type {Promise<unknown> | null} The creation in flight (see #createItem). */
   #pendingCreation = null;
 
+  // User edits and value commits invalidate older asynchronous intentions.
+  #interactionGeneration = 0;
+  #editGeneration = 0;
+
   // Bumped by every effective hide(): a pending search whose `show` intent
   // predates a close must not reopen the picker when its response lands.
   #hideGeneration = 0;
@@ -854,14 +858,30 @@ export class Combobox {
       // A disabled select is locked for user interaction, whatever the Add
       // control currently reflects.
       const label = input.value.trim();
-      if (!label || this.source.matches(":disabled")) return;
+      if (!label || this.#isLocked()) return;
+      const generation = this.#interactionGeneration;
+      const edit = this.#editGeneration;
+      const value = input.value;
       // The input is cleared only on a real selection or creation (an existing
       // native match by normalized value or label now selects instead of
       // creating a duplicate native option). On refusal the text stays editable.
-      if (await this.#createFallbackOption(label, input)) input.value = "";
+      const option = await this.#createFallbackOption(label, input);
+      if (!this.#alive() || this.#isLocked() || input.value !== value) return;
+      if (edit !== this.#editGeneration || this.#interactionGeneration > generation + 1) return;
+      if (option) input.value = "";
       input.focus();
     };
 
+    input.addEventListener(
+      "input",
+      () => {
+        this.#interactionGeneration++;
+        this.#editGeneration++;
+      },
+      {
+        signal: this.abortController.signal,
+      },
+    );
     button.addEventListener("click", add, { signal: this.abortController.signal });
     input.addEventListener(
       "keydown",
@@ -899,7 +919,9 @@ export class Combobox {
    * @returns {Promise<HTMLOptionElement | null>}
    */
   async #createFallbackOption(label, input) {
+    const isCurrent = this.#creationIntent(input);
     if (this.#pendingCreation && !(await this.#creationSettled())) return null;
+    if (!isCurrent()) return null;
     if (!this.#canCreate(label, input)) return null;
 
     const existing = this.#findCreateMatch(label);
@@ -1598,6 +1620,8 @@ export class Combobox {
         // engine's own value-event dispatch reenters this handler. That
         // synthetic event is not a search intent.
         if (this.#suppressInputEvent) return;
+        this.#interactionGeneration++;
+        this.#editGeneration++;
         // Separator tokens are consumed as they complete (typing or paste).
         // IME composition feeds search but never tokenizes/creates.
         const inputEvent = /** @type {InputEvent} */ (event);
@@ -1727,6 +1751,7 @@ export class Combobox {
           !this.#isLocked()
         ) {
           const value = this.#inputEl().value;
+          const edit = this.#editGeneration;
           this.#suppressReopen = true;
           try {
             if (this.#separatorsActive()) {
@@ -1736,19 +1761,20 @@ export class Combobox {
               await this.#enqueueTokens(async () => {
                 if (!this.#alive()) return;
                 const result = await this.#processTokens(this.#inputEl().value, { final: true });
-                if (this.#alive() && result) this.#inputEl().value = result.rest;
+                if (this.#alive() && edit === this.#editGeneration && result) {
+                  this.#inputEl().value = result.rest;
+                }
               });
             } else if (value.trim()) {
               // The input clears only once the creation actually landed:
               // a refused guard, a cancelled beforecreate or a vetoed
               // beforeselect leaves the typed text editable.
-              const created = await this.#createItem(value.trim());
-              if (this.#alive() && created) this.#inputEl().value = "";
+              await this.#createItem(value.trim());
             }
           } finally {
             this.#suppressReopen = false;
           }
-          if (!this.#alive()) return;
+          if (!this.#alive() || edit !== this.#editGeneration) return;
           this.refresh();
         }
         if (this.isSelect && !this.isMultiple) this.#syncSingleLabel();
@@ -2784,10 +2810,13 @@ export class Combobox {
 
   /**
    * @param {string} label
+   * @param {{ token?: boolean }} [options]
    * @returns {Promise<HTMLOptionElement | null>}
    */
-  async #createItem(label) {
+  async #createItem(label, { token = false } = {}) {
+    const isCurrent = this.#creationIntent(this.#inputEl(), { token });
     if (this.#pendingCreation && !(await this.#creationSettled())) return null;
+    if (!isCurrent()) return null;
     if (!this.#canCreate(label, this.#inputEl())) return null;
 
     const existing = this.#findCreateMatch(label);
@@ -2801,8 +2830,14 @@ export class Combobox {
 
     // guards.add is about creating a brand-new item; existing matches are
     // selected above without running it.
-    const item = await this.#materializeCreated(label, this.#inputEl());
+    const generation = this.#interactionGeneration;
+    const item = await this.#materializeCreated(label, this.#inputEl(), { token });
     if (!item || !this.#alive()) return null;
+    if (token) return item.option;
+    // Selection already updates the input. Event handlers may have started a
+    // newer edit or selection before this continuation gets to clean up.
+    if (this.#isLocked() || this.#interactionGeneration !== generation + 1) return item.option;
+    if (this.#inputEl().value !== (this.isMultiple ? "" : item.label)) return item.option;
 
     this.#inputEl().value = "";
     if (this.isMultiple) {
@@ -2814,6 +2849,28 @@ export class Combobox {
     }
     this.#markEngineMutation();
     return item.option;
+  }
+
+  /**
+   * Capture the edit and exact native selection that requested a creation.
+   * Tokens capture their own intent in sequence, after the preceding commit.
+   * @param {HTMLInputElement} input
+   * @param {{ token?: boolean }} [options] Complete tokens survive subsequent typing.
+   * @returns {() => boolean}
+   */
+  #creationIntent(input, { token = false } = {}) {
+    const generation = this.#interactionGeneration - (token ? this.#editGeneration : 0);
+    const value = input.value;
+    const selected = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
+    return () => {
+      if (!this.#alive() || this.#isLocked()) return false;
+      const currentGeneration = this.#interactionGeneration - (token ? this.#editGeneration : 0);
+      if (generation !== currentGeneration || (!token && input.value !== value)) return false;
+      const current = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
+      return (
+        current.length === selected.length && current.every((option, index) => option === selected[index])
+      );
+    };
   }
 
   /**
@@ -2829,7 +2886,7 @@ export class Combobox {
    * @param {string} label
    * @param {HTMLInputElement} input The interaction input exposed on the
    *   `create` and guard contexts.
-   * @param {{ fallback?: boolean }} [options]
+   * @param {{ fallback?: boolean, token?: boolean }} [options]
    * @returns {Promise<import("./helpers.js").ComboboxItem & { option: HTMLOptionElement } | null>}
    */
   async #materializeCreated(label, input, options = {}) {
@@ -2860,13 +2917,13 @@ export class Combobox {
   /**
    * @param {string} label
    * @param {HTMLInputElement} input
-   * @param {{ fallback?: boolean }} [options]
+   * @param {{ fallback?: boolean, token?: boolean }} [options]
    * @returns {Promise<import("./helpers.js").ComboboxItem & { option: HTMLOptionElement } | null>}
    */
-  async #runCreation(label, input, { fallback = false } = {}) {
+  async #runCreation(label, input, { fallback = false, token = false } = {}) {
+    const isCurrent = this.#creationIntent(input, { token });
     const guard = await this.#runGuard("add", { label }, input);
-    if (!guard.ok) return null;
-    if (!this.#alive()) return null;
+    if (!guard.ok || !isCurrent()) return null;
 
     const before = emit(
       this.source,
@@ -2877,7 +2934,7 @@ export class Combobox {
       },
       { cancelable: true },
     );
-    if (before.defaultPrevented || !this.#alive()) return null;
+    if (before.defaultPrevented || !isCurrent()) return null;
 
     /** @type {import("./helpers.js").ComboboxItem} */
     let created = { value: label, label };
@@ -2909,13 +2966,14 @@ export class Combobox {
     // Revalidate after the awaits: a concurrent batch may have filled
     // maxItems, and the instance may have been disposed meanwhile.
     if (!this.#alive()) return null;
+    if (!isCurrent()) return null;
     // The term may have appeared natively during the awaits (external
     // addOption/sync): select that option instead of materializing a twin.
     const appeared = this.#findCreateMatch(label);
     if (appeared?.option) {
       const { option } = appeared;
       if (isOptionDisabled(option)) return null;
-      if (!option.selected && !this.#commitItemSelection(option, appeared)) return null;
+      if (!option.selected && !this.#commitItemSelection(option, appeared, { keepQuery: token })) return null;
       return { ...appeared, option, selected: true };
     }
     if (
@@ -2942,7 +3000,7 @@ export class Combobox {
       return null;
     }
     if (!option) return null;
-    if (!this.#commitItemSelection(option, created)) {
+    if (!this.#commitItemSelection(option, created, { keepQuery: token })) {
       option.remove();
       return null;
     }
@@ -3071,7 +3129,9 @@ export class Combobox {
           rest: typeof this.options.tokenize === "function" ? value : value.slice(consumedLength),
         };
       }
+      const isCurrent = this.#creationIntent(this.#inputEl(), { token: true });
       if (!(await this.#applyToken(entry.text))) {
+        if (!isCurrent()) return null;
         return {
           consumed: false,
           rest: typeof this.options.tokenize === "function" ? value : value.slice(consumedLength),
@@ -3097,10 +3157,10 @@ export class Combobox {
     if (existing) {
       if (existing.disabled) return false;
       if (existing.option?.selected) return true;
-      return this.#selectItem(existing);
+      return this.#selectItem(existing, { keepQuery: true });
     }
     if (!this.#canCreate(term, this.#inputEl())) return false;
-    const created = await this.#createItem(term);
+    const created = await this.#createItem(term, { token: true });
     return created !== null;
   }
 
@@ -3122,20 +3182,20 @@ export class Combobox {
   }
 
   async #handleTokenInput() {
-    // Snapshot the value at event time: a batch still running from an earlier
-    // keystroke writes its own remainder back first, and this batch then
-    // processes the text as typed — never a remainder clobbered mid-flight.
+    // Snapshot at event time so queued batches process the text as typed.
+    // Completed tokens survive later typing, but only the latest edit may
+    // write its remainder back to the interaction input.
     const value = this.#inputEl().value;
+    const edit = this.#editGeneration;
     return this.#enqueueTokens(async () => {
-      if (!this.#alive()) return;
+      if (!this.#alive() || edit !== this.#editGeneration || this.#isLocked()) return;
       const result = await this.#processTokens(value);
       // #processTokens always returns the computed remainder (`rest`): the
       // trailing incomplete token on a full consumption, or the unconsumed tail
-      // (including a refused token) on a refusal/maxItems stop. #createItem
-      // clears the interaction input for each created token, so the remainder
-      // must be written back in both cases — otherwise a mid-batch refusal
-      // would silently swallow the rest of the pasted text.
+      // (including a refused token) on a refusal/maxItems stop. Keep that
+      // remainder editable without overwriting a newer edit.
       if (!this.#alive()) return;
+      if (edit !== this.#editGeneration || this.#isLocked()) return;
       if (result) this.#inputEl().value = result.rest;
       this.search(this.#inputEl().value, { show: true, reason: "input" });
     });
@@ -3144,10 +3204,12 @@ export class Combobox {
   /** @param {{ entries: Array<{ text: string, sep: string }>, rest: string }} resolved */
   async #commitEnterTokens(resolved) {
     const value = this.#inputEl().value;
+    const edit = this.#editGeneration;
     return this.#enqueueTokens(async () => {
-      if (!this.#alive()) return;
+      if (!this.#alive() || edit !== this.#editGeneration || this.#isLocked()) return;
       const result = await this.#processTokens(value, { final: true, resolved });
       if (!this.#alive()) return;
+      if (edit !== this.#editGeneration || this.#isLocked()) return;
       if (result) {
         this.#inputEl().value = result.rest;
         this.search(result.rest, { show: true, reason: "create" });
@@ -3156,6 +3218,7 @@ export class Combobox {
   }
 
   #dispatchNativeValueEvents() {
+    this.#interactionGeneration++;
     // The events must stay trustworthy for native form listeners, so suppress
     // only our own reentrant handling of them (see #suppressInputEvent).
     this.#suppressInputEvent = true;

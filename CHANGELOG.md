@@ -4,6 +4,21 @@ All notable changes to `@lekoala/combobox` are documented here.
 
 The changelog highlights user-facing changes rather than listing every build, dependency, or test commit. Versions and dates follow the GitHub releases.
 
+## [Unreleased]
+
+## [0.7.2] - 2026-10-23
+
+### Fixed
+
+- Discarded stale asynchronous creation intents after newer input or selection, disposal, or a readonly/disabled transition, in both the enhanced picker and native Add fallback. Pending guards cannot start an obsolete creation; stale results cannot clear newer text or mutate native selection.
+- Rechecked native matches after asynchronous creation to avoid duplicate options when an equivalent option appears during the request. Repeated creation requests share the pending operation.
+- Kept generated controls responsive to ancestor `fieldset[disabled]` changes instead of freezing inherited disabled state, and respected readonly controls across user interaction paths.
+- Extended `observeSource` to ancestor fieldset state and kept input/datalist query state synchronized after programmatic value changes.
+- Prevented late remote responses from reopening a closed picker or replacing newer results after a cancelled search; loading/error rows no longer expose stale selectable results.
+- Disposed an existing instance before constructing its replacement, preserving authored state and cleanup ownership.
+- Revalidated guarded removal and clearing against concurrent selection changes, and aligned `move()` with reconciled selection order and native fallback submission order.
+- Aligned fallback selection events and limits with the enhanced picker.
+
 ## [0.7.1] - 2026-10-18
 
 ### Fixed
@@ -130,7 +145,10 @@ The changelog highlights user-facing changes rather than listing every build, de
 - Native form values, validation, `input`/`change`, reset and progressive fallback, without a separate JavaScript form model.
 - ESM and classic browser builds, styling hooks, documentation, demos and browser tests.
 
-[Unreleased]: https://github.com/lekoala/combobox/compare/0.6.0...master
+[Unreleased]: https://github.com/lekoala/combobox/compare/0.7.1...master
+[0.7.2]: https://github.com/lekoala/combobox/compare/0.7.1...0.7.2
+[0.7.1]: https://github.com/lekoala/combobox/compare/0.7.0...0.7.1
+[0.7.0]: https://github.com/lekoala/combobox/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/lekoala/combobox/compare/0.5.0...0.6.0
 [0.5.0]: https://github.com/lekoala/combobox/compare/0.4.0...0.5.0
 [0.4.0]: https://github.com/lekoala/combobox/compare/0.3.0...0.4.0
