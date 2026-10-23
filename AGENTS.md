@@ -135,6 +135,18 @@ distributable; the source ESM is exercised directly by the unit/browser test sui
 Generated artifacts are committed; never hand-edit `dist/` or `custom-elements.json` —
 the `verify`/CI drift gate rejects out-of-sync generated files.
 
+## State transitions (review checklist)
+
+Most regressions live between two moments, not inside one code path. Review and test every change against these:
+
+- **After every `await`** (guard, `create`, `load`): re-check that the instance is alive and that the target (option, query, open state, existing match) is still what the operation started with. A stale intent never wins over a newer one and never emits a commit event.
+- **One helper per invariant** (`#isLocked()`, `#isRemovable()`, `#findCreateMatch()`…), applied on every path: keyboard, pointer, programmatic API, tokenization, blur, fallback. A per-path check is a future bug.
+- **Effective native state, not the IDL property**: `:disabled` (covers `<fieldset disabled>`), `defaultSelected`/`form.reset()`. When mirroring state onto a control the engine generates or drives, write only what it does not inherit natively, so the platform keeps it in sync when an ancestor changes.
+- **External changes**: the native source (or an ancestor) may change without going through the API, including during an `await`. Define what is re-read on `refresh()`/`sync()`/`observeSource`.
+- **Lifecycle**: construct twice, connect → disconnect → reconnect, calls after `dispose()`, `dispose()` while a guard/create/load is pending.
+- **Concurrency test shape**: A pending → B mutates the same state → B finishes first → A cannot overwrite B and emits nothing.
+- **Distribution**: a test passing on `src/` does not validate the bundle; `test:dist` covers it. Publishing requires the CI browser matrix and `test:dist` to be green — `prepublishOnly` (`verify`) alone does not run browsers.
+
 ## Definition of done for a feature
 
 A feature is not done until:

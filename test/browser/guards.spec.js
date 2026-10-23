@@ -244,6 +244,47 @@ test.describe("State revalidated after an async guard", () => {
     expect(state).toEqual({ result: false, stillSelected: true, other: ["a"], changes: 0 });
   });
 
+  test("an add guard selects a matching option that appeared meanwhile instead of creating a twin", async ({
+    page,
+  }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    const state = await page.evaluate(async () => {
+      const tick = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const source = document.createElement("select");
+      source.multiple = true;
+      document.body.append(source);
+      let finish;
+      let creates = 0;
+      let changes = 0;
+      source.addEventListener("combobox:create", () => creates++);
+      source.addEventListener("change", () => changes++);
+      const combo = new Combobox(source, {
+        create: true,
+        guards: { add: () => new Promise((resolve) => (finish = resolve)) },
+      });
+      combo.input.focus();
+      combo.input.value = "New";
+      combo.input.dispatchEvent(new Event("input", { bubbles: true }));
+      await tick(20);
+      combo.input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      await tick(10);
+      const external = new Option("New", "New");
+      source.add(external);
+      finish(true);
+      await tick(30);
+      const result = {
+        options: [...source.options].map((option) => [option.value, option.selected]),
+        externalSelected: external.selected,
+        creates,
+        changes,
+      };
+      combo.dispose();
+      source.remove();
+      return result;
+    });
+    expect(state).toEqual({ options: [["New", true]], externalSelected: true, creates: 0, changes: 1 });
+  });
+
   test("clear() resolves false when the selection emptied during its guard", async ({ page }) => {
     const state = await page.evaluate(async () => {
       const source = document.createElement("select");

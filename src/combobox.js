@@ -151,6 +151,19 @@ const DEFAULTS = {
   anchor: null,
 };
 
+/**
+ * Mirror the source's effective `:disabled` state onto an interaction
+ * control. Only what the control does not already inherit is written: a
+ * control sharing the source's `<fieldset disabled>` follows that fieldset
+ * natively, so re-enabling it re-enables the control without a refresh.
+ * @param {HTMLInputElement | HTMLButtonElement} control
+ * @param {boolean} disabled
+ */
+function mirrorDisabled(control, disabled) {
+  control.disabled = false;
+  control.disabled = disabled && !control.matches(":disabled");
+}
+
 function supportsModernCombobox() {
   return (
     typeof HTMLElement.prototype.showPopover === "function" &&
@@ -872,7 +885,7 @@ export class Combobox {
     if (!this.fallbackControl) return;
     const disabled = this.source.matches(":disabled");
     for (const control of this.fallbackControl.querySelectorAll("input, button")) {
-      /** @type {HTMLInputElement | HTMLButtonElement} */ (control).disabled = disabled;
+      mirrorDisabled(/** @type {HTMLInputElement | HTMLButtonElement} */ (control), disabled);
     }
   }
 
@@ -1240,7 +1253,8 @@ export class Combobox {
   /**
    * Opt-in automatic source sync. `observeSource` watches the native catalogue
    * (select's <option>/<optgroup> structure and selected/disabled/required/
-   * readonly state; the datalist's <option> set for inputs) and calls
+   * readonly state, plus ancestor `<fieldset>` `disabled`; the datalist's
+   * <option> set for inputs) and calls
    * `sync()` once per debounced batch. `multiple` is deliberately not observed:
    * the value model is fixed at init time.
    */
@@ -1263,6 +1277,14 @@ export class Combobox {
     this._sourceObserver = new MutationObserver(() => this.#scheduleSourceSync());
     const target = this.isSelect ? this.source : this.datalist;
     if (target) this._sourceObserver.observe(target, config);
+    // An ancestor <fieldset disabled> changes the effective `:disabled` lock
+    // (chip remove buttons, interaction input) without touching the source.
+    if (this.isSelect) {
+      for (let fieldset = this.source.parentElement?.closest("fieldset"); fieldset; ) {
+        this._sourceObserver.observe(fieldset, { attributes: true, attributeFilter: ["disabled"] });
+        fieldset = fieldset.parentElement?.closest("fieldset") ?? null;
+      }
+    }
   }
 
   #scheduleSourceSync() {
@@ -2887,6 +2909,15 @@ export class Combobox {
     // Revalidate after the awaits: a concurrent batch may have filled
     // maxItems, and the instance may have been disposed meanwhile.
     if (!this.#alive()) return null;
+    // The term may have appeared natively during the awaits (external
+    // addOption/sync): select that option instead of materializing a twin.
+    const appeared = this.#findCreateMatch(label);
+    if (appeared?.option) {
+      const { option } = appeared;
+      if (isOptionDisabled(option)) return null;
+      if (!option.selected && !this.#commitItemSelection(option, appeared)) return null;
+      return { ...appeared, option, selected: true };
+    }
     if (
       this.options.maxItems > 0 &&
       this.isMultiple &&
@@ -3374,7 +3405,7 @@ export class Combobox {
     }
 
     if (this.isSelect) {
-      this.#inputEl().disabled = this.source.matches(":disabled");
+      mirrorDisabled(this.#inputEl(), this.source.matches(":disabled"));
       this.#inputEl().readOnly = this.source.hasAttribute("readonly");
       const remembered = new Set(this.selectionOrder);
       for (const option of this.#selectSource().selectedOptions) {

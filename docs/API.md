@@ -485,6 +485,7 @@ Refresh from externally-mutated native DOM. `sync()` also drops transient `setRe
 `observeSource: true` (default `false`) adds an opt-in, debounced MutationObserver that calls `sync()` once per batch. It watches:
 
 - the select's `<option>`/`<optgroup>` structure and its `selected`/`disabled`/`required`/`readonly` attributes;
+- the `disabled` attribute of every ancestor `<fieldset>` of a select (present at init), so toggling it re-renders the chip remove buttons and the interaction lock;
 - the `<datalist>`'s `<option>` set for input-backed comboboxes (the catalogue stays discoverable by id while the input's native `list` liaison is temporarily removed).
 
 Engine-driven mutations are not observed (the engine drops/reconnects the observer around its own writes and refreshes from source anyway), and the search input keeps focus and its query during an external sync. Two platform boundaries apply:
@@ -494,7 +495,7 @@ Engine-driven mutations are not observed (the engine drops/reconnects the observ
 
 ### `readonly`
 
-`readonly` is not a native `<select>` concept, but the engine accepts it as a declarative interaction lock. It is reflected onto the interaction input (`refresh()`/`sync()` keep it current) and observed on the source like `disabled`. On a `readonly` select the **user interaction** is locked: focus and keyboard navigation never open the picker, chips render without a remove button, and `Backspace`/`Delete`, `toggleSelected`, picker clicks and `createOnBlur` never mutate the selection; chip keyboard reorder (`Alt+Arrow/Home/End`) is locked too. The same interaction lock applies to a natively disabled source, including one inside a `<fieldset disabled>` (`:disabled`, not only the `disabled` attribute), which also disables the interaction input. The **programmatic API is untouched** — `select()`, `remove()` and `clear()` still work exactly as on a `disabled` source, because the lock targets interaction, not the JS surface. A native `<input list readonly>` is locked the same way: focus and keyboard never open the picker, so the user cannot change its value through it, while `select()`/`clear()` keep working.
+`readonly` is not a native `<select>` concept, but the engine accepts it as a declarative interaction lock. It is reflected onto the interaction input (`refresh()`/`sync()` keep it current) and observed on the source like `disabled`. On a `readonly` select the **user interaction** is locked: focus and keyboard navigation never open the picker, chips render without a remove button, and `Backspace`/`Delete`, `toggleSelected`, picker clicks and `createOnBlur` never mutate the selection; chip keyboard reorder (`Alt+Arrow/Home/End`) is locked too. The same interaction lock applies to a natively disabled source, including one inside a `<fieldset disabled>` (`:disabled`, not only the `disabled` attribute), which also disables the interaction input. The engine only writes `disabled` onto the interaction input for what it does not already inherit: a generated input sharing the source's `<fieldset>` follows it natively, so re-enabling the fieldset re-enables the input immediately. Chip remove buttons are rendered from the lock state, so after toggling an ancestor fieldset call `refresh()` (or enable `observeSource`). The **programmatic API is untouched** — `select()`, `remove()` and `clear()` still work exactly as on a `disabled` source, because the lock targets interaction, not the JS surface. A native `<input list readonly>` is locked the same way: focus and keyboard never open the picker, so the user cannot change its value through it, while `select()`/`clear()` keep working.
 
 ## Remote
 
@@ -622,6 +623,7 @@ separators: parseSeparators(",|;"),
   no source offsets for a lossless partial cut. Accepted choices remain selected.
   On success, `rest` stays in the input even after Enter, Tab or blur finalization.
 - Existing terms resolve to the first enabled, unselected match in multiple mode; an already-selected match is an idempotent success when no further match is available. A disabled-only match is refused without creating a duplicate, and its text stays editable (including in native fallback).
+- The match is re-checked after the asynchronous `guards.add`/`create` steps: if a matching option appeared natively meanwhile (external `addOption()`, `sync()`), that option is selected instead of materializing a twin, and no `combobox:create` is emitted.
 - Unexpected token-batch failures (for example a throwing custom tokenizer) emit `combobox:tokenerror` with `{ combobox, error }`. Later input batches still run. Guard and creation failures retain their dedicated `guarderror`/`createerror` events.
 - A trailing incomplete token stays in the input.
 - Empty separator segments consume their separators without creating options,

@@ -157,7 +157,7 @@ test.describe("Interaction lock on disabled and readonly sources", () => {
       const combo = Combobox.getOrCreateInstance(select);
       const result = {
         idlDisabled: select.disabled,
-        inputDisabled: combo.input.disabled,
+        inputDisabled: combo.input.matches(":disabled"),
         removeButtons: form.querySelectorAll(".cb-chip-remove").length,
       };
       combo.dispose();
@@ -170,6 +170,61 @@ test.describe("Interaction lock on disabled and readonly sources", () => {
     expect(state.inputDisabled).toBe(true);
     expect(state.removeButtons).toBe(0);
     expect(state.restoredInputDisabled).toBe(false);
+  });
+
+  test("toggling an ancestor fieldset after init follows the effective disabled state", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const tick = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const form = document.createElement("form");
+      form.innerHTML = `<fieldset disabled><select name="fs" multiple>
+      <option value="a" selected>A</option>
+      <option value="b">B</option>
+    </select></fieldset>`;
+      document.body.append(form);
+      const fieldset = form.querySelector("fieldset");
+      const select = form.querySelector("select");
+      const combo = Combobox.getOrCreateInstance(select, { observeSource: true });
+      const snapshot = () => ({
+        inputDisabled: combo.input.matches(":disabled"),
+        removeButtons: form.querySelectorAll(".cb-chip-remove").length,
+      });
+      const result = { initial: snapshot() };
+      fieldset.disabled = false;
+      await tick(100);
+      result.enabled = snapshot();
+      fieldset.disabled = true;
+      await tick(100);
+      result.disabled = snapshot();
+      combo.dispose();
+      form.remove();
+      return result;
+    });
+
+    expect(state.initial).toEqual({ inputDisabled: true, removeButtons: 0 });
+    expect(state.enabled).toEqual({ inputDisabled: false, removeButtons: 1 });
+    expect(state.disabled).toEqual({ inputDisabled: true, removeButtons: 0 });
+  });
+
+  test("re-enabling an ancestor fieldset re-enables a generated input without a refresh", async ({
+    page,
+  }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(() => {
+      const form = document.createElement("form");
+      form.innerHTML = `<fieldset disabled><select name="fs"><option value="a">A</option></select></fieldset>`;
+      document.body.append(form);
+      const fieldset = form.querySelector("fieldset");
+      const combo = Combobox.getOrCreateInstance(form.querySelector("select"));
+      const initial = combo.input.matches(":disabled");
+      fieldset.disabled = false;
+      const result = { initial, enabled: combo.input.matches(":disabled") };
+      combo.dispose();
+      form.remove();
+      return result;
+    });
+
+    expect(state).toEqual({ initial: true, enabled: false });
   });
 
   test("chip Delete/Backspace and Alt+Arrow reorder are locked on disabled and readonly selects", async ({

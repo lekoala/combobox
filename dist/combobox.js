@@ -796,6 +796,10 @@
     render: {},
     anchor: null
   };
+  function mirrorDisabled(control, disabled) {
+    control.disabled = false;
+    control.disabled = disabled && !control.matches(":disabled");
+  }
   function supportsModernCombobox() {
     return typeof HTMLElement.prototype.showPopover === "function" && typeof HTMLElement.prototype.hidePopover === "function";
   }
@@ -1085,7 +1089,7 @@
         return;
       const disabled = this.source.matches(":disabled");
       for (const control of this.fallbackControl.querySelectorAll("input, button")) {
-        control.disabled = disabled;
+        mirrorDisabled(control, disabled);
       }
     }
     async#createFallbackOption(label, input) {
@@ -1317,6 +1321,12 @@
       const target = this.isSelect ? this.source : this.datalist;
       if (target)
         this._sourceObserver.observe(target, config);
+      if (this.isSelect) {
+        for (let fieldset = this.source.parentElement?.closest("fieldset");fieldset; ) {
+          this._sourceObserver.observe(fieldset, { attributes: true, attributeFilter: ["disabled"] });
+          fieldset = fieldset.parentElement?.closest("fieldset") ?? null;
+        }
+      }
     }
     #scheduleSourceSync() {
       if (this._sourceSyncTimer)
@@ -2436,6 +2446,15 @@
       }
       if (!this.#alive())
         return null;
+      const appeared = this.#findCreateMatch(label);
+      if (appeared?.option) {
+        const { option } = appeared;
+        if (isOptionDisabled(option))
+          return null;
+        if (!option.selected && !this.#commitItemSelection(option, appeared))
+          return null;
+        return { ...appeared, option, selected: true };
+      }
       if (this.options.maxItems > 0 && this.isMultiple && this.#selectSource().selectedOptions.length >= this.options.maxItems) {
         return null;
       }
@@ -2764,7 +2783,7 @@
         return this;
       }
       if (this.isSelect) {
-        this.#inputEl().disabled = this.source.matches(":disabled");
+        mirrorDisabled(this.#inputEl(), this.source.matches(":disabled"));
         this.#inputEl().readOnly = this.source.hasAttribute("readonly");
         const remembered = new Set(this.selectionOrder);
         for (const option of this.#selectSource().selectedOptions) {
