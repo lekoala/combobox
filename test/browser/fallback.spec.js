@@ -581,4 +581,26 @@ test.describe("Fallback Add control state", () => {
     });
     expect(state).toEqual([true, true]);
   });
+
+  test("guards receive null when native fallback has no interaction input", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      source.add(new Option("A", "a", true, true));
+      source.add(new Option("B", "b", true, true));
+      document.body.append(source);
+      const inputs = [];
+      const combo = new Combobox(source, {
+        mode: "fallback",
+        guards: {
+          remove: (_payload, context) => inputs.push(context.input),
+          clear: (_payload, context) => inputs.push(context.input),
+        },
+      });
+      await combo.remove("a");
+      await combo.clear();
+      return inputs;
+    });
+    expect(state).toEqual([null, null]);
+  });
 });

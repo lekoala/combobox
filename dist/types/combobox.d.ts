@@ -31,7 +31,13 @@ export type CreateContext = {
     fallback?: boolean;
 };
 export type CreateCallback = (label: string, context: CreateContext) => Promise<any>;
-export type GuardCallback = (payload: any, context: CreateContext) => Promise<boolean | void> | boolean | void;
+export type GuardContext = {
+    signal: AbortSignal;
+    combobox: Combobox;
+    source: ComboboxSource;
+    input: HTMLInputElement | null;
+};
+export type GuardCallback = (payload: any, context: GuardContext) => Promise<boolean | void> | boolean | void;
 export type TokenizeCallback = (value: string, context: ComboboxContext) => {
     tokens: string[];
     rest?: string;
@@ -334,6 +340,7 @@ export declare class Combobox {
     _sourceObserver: MutationObserver | null;
     /** @type {ReturnType<typeof setTimeout> | null} */
     _sourceSyncTimer: ReturnType<typeof setTimeout> | null;
+    _sourceSyncNeedsCatalogue: boolean;
     /** @type {ComboboxOptions} */
     explicitOptions: ComboboxOptions;
     /** @type {ResolvedOptions} */

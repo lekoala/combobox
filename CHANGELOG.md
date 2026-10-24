@@ -13,7 +13,8 @@ The changelog highlights user-facing changes rather than listing every build, de
 - Cancelled pending picker-opening intents on `hide()` even before the picker opens, and after external Popover closure; native closes now also clear the tracked open instance.
 - Kept all input navigation and editing keys native during IME composition, preventing active-row movement, chip focus handoff and Backspace removal while composing.
 - Re-resolved labels, `aria-label`, `aria-labelledby` and `aria-describedby` from the native source during `refresh()` and observed source updates.
-- Passed the native fallback Add input to `remove` and `clear` guards, consumed Backspace when it removes a chip, and preserved distinct same-label `<optgroup>` identities and disabled states across `setOptions()`.
+- Followed late owner-form changes for `form.reset()`, and kept transient results intact when `observeSource` sees an accessible-name-only change.
+- Passed the native fallback Add input to `remove` and `clear` guards, exposed `null` when fallback has no interaction input, consumed Backspace when it removes a chip, and preserved distinct same-label `<optgroup>` identities and disabled states across `setOptions()`.
 
 ### Documentation
 

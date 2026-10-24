@@ -479,7 +479,9 @@ Concretely:
   temporary remote collections never accumulate indefinitely in the `<select>`.
 - `form.reset()` follows native `<select>` semantics: it restores the authored
   default selection and never rewrites the catalogue. A created option stays in
-  the source after a reset, it just stops being selected.
+  the source after a reset, it just stops being selected. The owner form is
+  resolved when reset fires, so assigning or changing it after initialization
+  still refreshes chips, query and selected order.
 
 ### `sync()`
 
@@ -488,9 +490,12 @@ Refresh from externally-mutated native DOM. `sync()` also drops transient `setRe
 `observeSource: true` (default `false`) adds an opt-in, debounced MutationObserver that calls `sync()` once per batch. It watches:
 
 - the select's `<option>`/`<optgroup>` structure and its `selected`/`disabled`/`required`/`readonly` attributes;
+- the select's `aria-label`, `aria-labelledby` and `aria-describedby` attributes;
 - the `disabled` attribute of every ancestor `<fieldset>` of a select (present at init), so toggling it re-renders the chip remove buttons and the interaction lock;
 - the `<datalist>`'s `<option>` set for input-backed comboboxes (the catalogue stays discoverable by id while the input's native `list` liaison is temporarily removed).
 
+Accessible-name-only mutations use `refresh()` and preserve transient results;
+catalogue/state mutations use `sync()` and return to source-backed results.
 Engine-driven mutations are not observed (the engine drops/reconnects the observer around its own writes and refreshes from source anyway), and the search input keeps focus and its query during an external sync. Two platform boundaries apply:
 
 - `multiple` is deliberately **not** observed — the value model is fixed at init time; toggling it after init requires re-initialization;
@@ -597,11 +602,13 @@ create: async (label, { signal }) => {
 guards: {
   add: async (label, ctx) => confirm(`Add ${label}?`),   // creation (new items)
   remove: async (item, ctx) => confirm(`Remove ${item.label}?`),
-  clear: async (ctx) => confirm("Clear all?"),
+  clear: async (_payload, ctx) => confirm("Clear all?"),
 }
 ```
 
 `ctx = { combobox, source, input, signal }`.
+`input` is the enhanced filter or fallback Add input. It is `null` only in
+native fallback when creation is disabled and no interaction input exists.
 
 Contract:
 

@@ -177,6 +177,28 @@ test.describe("observeSource", () => {
     expect(result.count).toBe(52);
   });
 
+  test("observed accessible-name changes refresh without clearing transient results", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+    const state = await page.evaluate(async () => {
+      const select = document.getElementById("syncs");
+      const combo = Combobox.getOrCreateInstance(select, { observeSource: true });
+      combo.setResults([{ value: "remote", label: "Remote result" }]).applyFilter("");
+      select.setAttribute("aria-labelledby", "updated-heading");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return {
+        results: combo.results?.map((item) => item.value),
+        rows: combo.filteredItems.map((item) => item.value),
+        labelledBy: combo.input.getAttribute("aria-labelledby"),
+      };
+    });
+    expect(state).toEqual({
+      results: ["remote"],
+      rows: ["remote"],
+      labelledBy: "updated-heading",
+    });
+  });
+
   test("observeSource covers attributes and structure; programmatic selection still needs sync()", async ({
     page,
   }) => {

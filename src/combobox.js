@@ -60,7 +60,7 @@ import {
  */
 
 /**
- * Context passed to the create and guards callbacks.
+ * Context passed to the create callback.
  * @typedef {Object} CreateContext
  * @property {AbortSignal} signal
  * @property {Combobox} combobox
@@ -75,10 +75,21 @@ import {
  */
 
 /**
+ * Context passed to mutation guards. Enhanced mode and creatable fallback
+ * provide their interaction input; a native fallback with no Add control has
+ * no honest input to expose and reports `null`.
+ * @typedef {Object} GuardContext
+ * @property {AbortSignal} signal
+ * @property {Combobox} combobox
+ * @property {ComboboxSource} source
+ * @property {HTMLInputElement | null} input
+ */
+
+/**
  * Guard callback for `add`/`remove`/`clear`. A resolved `false` refuses the
  * change; any other resolved value allows it. A thrown/rejected value is
  * surfaced as an application error (guards distinguish `false` from rejection).
- * @typedef {(payload: any, context: CreateContext) => Promise<boolean | void> | boolean | void} GuardCallback
+ * @typedef {(payload: any, context: GuardContext) => Promise<boolean | void> | boolean | void} GuardCallback
  */
 
 /**
@@ -483,6 +494,9 @@ export class Combobox {
   // intent predates either must not reopen the picker.
   #hideGeneration = 0;
 
+  /** @type {WeakSet<HTMLLabelElement>} */
+  #boundLabelClicks = new WeakSet();
+
   #separatorKey = "";
   #splitTokens = prepareTokenSplitter([]);
 
@@ -667,6 +681,7 @@ export class Combobox {
     this._sourceObserver = null;
     /** @type {ReturnType<typeof setTimeout> | null} */
     this._sourceSyncTimer = null;
+    this._sourceSyncNeedsCatalogue = false;
 
     /** @type {ComboboxOptions} */
     this.explicitOptions = options;
@@ -1157,6 +1172,19 @@ export class Combobox {
       return label.id;
     });
     if (labelIds.length) input.setAttribute("aria-labelledby", labelIds.join(" "));
+
+    for (const label of this.boundLabels) {
+      if (this.#boundLabelClicks.has(label)) continue;
+      this.#boundLabelClicks.add(label);
+      label.addEventListener(
+        "click",
+        (event) => {
+          event.preventDefault();
+          this.#inputEl().focus();
+        },
+        { signal: this.abortController.signal },
+      );
+    }
   }
 
   #sourceItems() {
@@ -1286,6 +1314,7 @@ export class Combobox {
       clearTimeout(this._sourceSyncTimer);
       this._sourceSyncTimer = null;
     }
+    this._sourceSyncNeedsCatalogue = false;
     this._sourceObserver?.disconnect();
     this._sourceObserver = null;
     queueMicrotask(() => {
@@ -1327,7 +1356,15 @@ export class Combobox {
           attributeFilter: ["value", "disabled", "label"],
         };
 
-    this._sourceObserver = new MutationObserver(() => this.#scheduleSourceSync());
+    this._sourceObserver = new MutationObserver((records) => {
+      const accessibleOnly = records.every(
+        (record) =>
+          record.type === "attributes" &&
+          record.target === this.source &&
+          ["aria-label", "aria-labelledby", "aria-describedby"].includes(record.attributeName || ""),
+      );
+      this.#scheduleSourceSync({ catalogue: !accessibleOnly });
+    });
     const target = this.isSelect ? this.source : this.datalist;
     if (target) this._sourceObserver.observe(target, config);
     // An ancestor <fieldset disabled> changes the effective `:disabled` lock
@@ -1340,12 +1377,17 @@ export class Combobox {
     }
   }
 
-  #scheduleSourceSync() {
+  /** @param {{ catalogue?: boolean }} [options] */
+  #scheduleSourceSync({ catalogue = true } = {}) {
+    if (catalogue) this._sourceSyncNeedsCatalogue = true;
     if (this._sourceSyncTimer) clearTimeout(this._sourceSyncTimer);
     this._sourceSyncTimer = setTimeout(() => {
       this._sourceSyncTimer = null;
       if (instances.get(this.source) !== this) return;
-      this.sync();
+      const syncCatalogue = this._sourceSyncNeedsCatalogue;
+      this._sourceSyncNeedsCatalogue = false;
+      if (syncCatalogue) this.sync();
+      else this.refresh();
     }, 50);
   }
 
@@ -1517,16 +1559,6 @@ export class Combobox {
     if (this.isSelect) {
       this.source.addEventListener("change", () => this.refresh(), { signal });
       this.source.addEventListener("focus", () => this.#inputEl().focus(), { signal });
-      for (const label of this.boundLabels) {
-        label.addEventListener(
-          "click",
-          (event) => {
-            event.preventDefault();
-            this.#inputEl().focus();
-          },
-          { signal },
-        );
-      }
       if (this.isMultiple && this.options.selectionOrder === "selected") {
         document.addEventListener(
           "formdata",
@@ -1589,9 +1621,10 @@ export class Combobox {
       );
     }
 
-    this.source.form?.addEventListener(
+    document.addEventListener(
       "reset",
-      (event) =>
+      (event) => {
+        if (event.target !== this.source.form) return;
         // A real task, not a microtask: when the reset event returns to the
         // button's native activation code the JS stack is empty, so a
         // microtask would run *before* the browser restores defaultSelected.
@@ -1608,8 +1641,9 @@ export class Combobox {
           }
           this.query = this.isSelect ? "" : this.source.value;
           this.refresh();
-        }),
-      { signal },
+        });
+      },
+      { capture: true, signal },
     );
   }
 
@@ -3054,12 +3088,12 @@ export class Combobox {
    * `combobox:guarderror` event is emitted and the operation is blocked.
    * @param {"add" | "remove" | "clear"} name
    * @param {any} payload
-   * @param {HTMLInputElement} [input] The interaction input exposed on the
-   *   context; defaults to the enhanced filter input. The fallback path passes
-   *   its own Add control so guards never observe a `null` input.
+   * @param {HTMLInputElement | null} [input] The interaction input exposed on
+   *   the context. Native fallback without creation has no Add input and
+   *   therefore exposes `null`.
    * @returns {Promise<{ ok: boolean, refused?: boolean, error?: any }>}
    */
-  async #runGuard(name, payload, input = this.#inputEl()) {
+  async #runGuard(name, payload, input = this.input) {
     const guards = this.options.guards;
     const guard = guards[name];
     if (typeof guard !== "function") return { ok: true };
@@ -3586,6 +3620,7 @@ export class Combobox {
       clearTimeout(this._sourceSyncTimer);
       this._sourceSyncTimer = null;
     }
+    this._sourceSyncNeedsCatalogue = false;
 
     if (this.mode === "fallback") {
       this.fallbackControl?.remove();

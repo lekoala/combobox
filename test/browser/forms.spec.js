@@ -222,6 +222,34 @@ test.describe("Submission and validation", () => {
     expect(state).toEqual({ values: ["c", "a", "b"], submitted: ["c", "a", "b"] });
   });
 
+  test("form reset follows a form assigned after init", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const select = document.createElement("select");
+      select.multiple = true;
+      for (const value of ["a", "b", "c"]) select.add(new Option(value, value, true, true));
+      document.body.append(select);
+      const combo = new Combobox(select, { selectionOrder: "selected" });
+      combo.move("c", 0);
+
+      const form = document.createElement("form");
+      document.body.append(form);
+      form.append(select, combo.control);
+      form.reset();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return {
+        values: combo.getSelectedValues(),
+        chips: [...combo.chips.children].map((chip) => chip.dataset.value),
+        native: [...select.selectedOptions].map((option) => option.value),
+      };
+    });
+    expect(state).toEqual({
+      values: ["a", "b", "c"],
+      chips: ["a", "b", "c"],
+      native: ["a", "b", "c"],
+    });
+  });
+
   test("form validation focuses the first invalid combobox, not the last", async ({ page }) => {
     test.skip(!(await modernSupported(page)), MODERN);
     const state = await page.evaluate(() => {

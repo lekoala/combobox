@@ -905,6 +905,7 @@
     #interactionGeneration = 0;
     #editGeneration = 0;
     #hideGeneration = 0;
+    #boundLabelClicks = new WeakSet;
     #separatorKey = "";
     #splitTokens = prepareTokenSplitter([]);
     #activeOption = null;
@@ -979,6 +980,7 @@
       this.composing = false;
       this._sourceObserver = null;
       this._sourceSyncTimer = null;
+      this._sourceSyncNeedsCatalogue = false;
       this.explicitOptions = options;
       this.options = {
         ...DEFAULTS,
@@ -1279,6 +1281,15 @@
       });
       if (labelIds.length)
         input.setAttribute("aria-labelledby", labelIds.join(" "));
+      for (const label of this.boundLabels) {
+        if (this.#boundLabelClicks.has(label))
+          continue;
+        this.#boundLabelClicks.add(label);
+        label.addEventListener("click", (event) => {
+          event.preventDefault();
+          this.#inputEl().focus();
+        }, { signal: this.abortController.signal });
+      }
     }
     #sourceItems() {
       return readSourceItems(this);
@@ -1345,6 +1356,7 @@
         clearTimeout(this._sourceSyncTimer);
         this._sourceSyncTimer = null;
       }
+      this._sourceSyncNeedsCatalogue = false;
       this._sourceObserver?.disconnect();
       this._sourceObserver = null;
       queueMicrotask(() => {
@@ -1374,7 +1386,10 @@
         attributes: true,
         attributeFilter: ["value", "disabled", "label"]
       };
-      this._sourceObserver = new MutationObserver(() => this.#scheduleSourceSync());
+      this._sourceObserver = new MutationObserver((records) => {
+        const accessibleOnly = records.every((record) => record.type === "attributes" && record.target === this.source && ["aria-label", "aria-labelledby", "aria-describedby"].includes(record.attributeName || ""));
+        this.#scheduleSourceSync({ catalogue: !accessibleOnly });
+      });
       const target = this.isSelect ? this.source : this.datalist;
       if (target)
         this._sourceObserver.observe(target, config);
@@ -1385,14 +1400,21 @@
         }
       }
     }
-    #scheduleSourceSync() {
+    #scheduleSourceSync({ catalogue = true } = {}) {
+      if (catalogue)
+        this._sourceSyncNeedsCatalogue = true;
       if (this._sourceSyncTimer)
         clearTimeout(this._sourceSyncTimer);
       this._sourceSyncTimer = setTimeout(() => {
         this._sourceSyncTimer = null;
         if (instances.get(this.source) !== this)
           return;
-        this.sync();
+        const syncCatalogue = this._sourceSyncNeedsCatalogue;
+        this._sourceSyncNeedsCatalogue = false;
+        if (syncCatalogue)
+          this.sync();
+        else
+          this.refresh();
       }, 50);
     }
     #createPicker() {
@@ -1496,12 +1518,6 @@
       if (this.isSelect) {
         this.source.addEventListener("change", () => this.refresh(), { signal });
         this.source.addEventListener("focus", () => this.#inputEl().focus(), { signal });
-        for (const label of this.boundLabels) {
-          label.addEventListener("click", (event) => {
-            event.preventDefault();
-            this.#inputEl().focus();
-          }, { signal });
-        }
         if (this.isMultiple && this.options.selectionOrder === "selected") {
           document.addEventListener("formdata", (event) => {
             if (event.target !== this.source.form)
@@ -1553,21 +1569,25 @@
           this.#inputEl().focus();
         }, { signal });
       }
-      this.source.form?.addEventListener("reset", (event) => setTimeout(() => {
-        if (event.defaultPrevented || !this.#alive())
+      document.addEventListener("reset", (event) => {
+        if (event.target !== this.source.form)
           return;
-        this.searchGeneration++;
-        this.loadController?.abort();
-        this.loading = false;
-        this.nextCursor = null;
-        this.clearResults();
-        if (this.isSelect) {
-          this.selectionOrder = Array.from(this.#selectSource().selectedOptions);
-          this.#inputEl().value = "";
-        }
-        this.query = this.isSelect ? "" : this.source.value;
-        this.refresh();
-      }), { signal });
+        setTimeout(() => {
+          if (event.defaultPrevented || !this.#alive())
+            return;
+          this.searchGeneration++;
+          this.loadController?.abort();
+          this.loading = false;
+          this.nextCursor = null;
+          this.clearResults();
+          if (this.isSelect) {
+            this.selectionOrder = Array.from(this.#selectSource().selectedOptions);
+            this.#inputEl().value = "";
+          }
+          this.query = this.isSelect ? "" : this.source.value;
+          this.refresh();
+        });
+      }, { capture: true, signal });
     }
     handleEvent(event) {
       if (event.currentTarget === this.#inputEl())
@@ -2570,7 +2590,7 @@
       emit(this.source, "combobox:create", { combobox: this, item });
       return item;
     }
-    async#runGuard(name, payload, input = this.#inputEl()) {
+    async#runGuard(name, payload, input = this.input) {
       const guards = this.options.guards;
       const guard = guards[name];
       if (typeof guard !== "function")
@@ -2967,6 +2987,7 @@
         clearTimeout(this._sourceSyncTimer);
         this._sourceSyncTimer = null;
       }
+      this._sourceSyncNeedsCatalogue = false;
       if (this.mode === "fallback") {
         this.fallbackControl?.remove();
         return;

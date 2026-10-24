@@ -116,6 +116,8 @@ test.describe("label/description accessibility transfer", () => {
       combo.refresh();
       const fromLabel = combo.input.getAttribute("aria-labelledby");
       const labelId = label.id;
+      label.click();
+      const lateLabelFocused = document.activeElement === combo.input;
 
       source.setAttribute("aria-label", "Late aria label");
       source.setAttribute("aria-describedby", "late-description");
@@ -124,6 +126,7 @@ test.describe("label/description accessibility transfer", () => {
       return {
         fromLabel,
         labelId,
+        lateLabelFocused,
         staleLabelIdRemoved: label.id === "",
         labelledby: combo.input.getAttribute("aria-labelledby"),
         ariaLabel: combo.input.getAttribute("aria-label"),
@@ -131,6 +134,7 @@ test.describe("label/description accessibility transfer", () => {
       };
     });
     expect(state.fromLabel).toBe(state.labelId);
+    expect(state.lateLabelFocused).toBe(true);
     expect(state.staleLabelIdRemoved).toBe(true);
     expect(state.labelledby).toBe("late-heading");
     expect(state.ariaLabel).toBeNull();
