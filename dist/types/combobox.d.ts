@@ -326,7 +326,6 @@ export declare class Combobox {
     selectionOrder: HTMLOptionElement[];
     /** @type {WeakMap<HTMLElement, HTMLOptionElement>} */
     _chipOptions: WeakMap<HTMLElement, HTMLOptionElement>;
-    searchGeneration: number;
     /** @type {string | null} */
     nextCursor: string | null;
     loading: boolean;

@@ -101,6 +101,13 @@ one for the same source. Consequences:
   `combobox:ready` is emitted, and the error is not swallowed. A later
   `upgrade()` recovers it, and `whenReady()` remains pending until then.
 
+A **form reset** follows the native contract and is also an authority change:
+an effective reset invalidates pending searches, creations, removals and
+clears, even when the selection it restores is identical to the current one. A
+reset cancelled by `preventDefault()` invalidates nothing. The picker may stay
+open, but it is repainted from the restored native state and never receives a
+late remote result.
+
 ### Observed attributes
 
 The table below is driven by a single `OPTION_ATTRIBUTES` schema in
@@ -620,6 +627,7 @@ Contract:
 - `false` is a **voluntary refusal**: the operation is blocked and nothing mutates.
 - A **rejection is an application error**: `combobox:guarderror` (detail `{ guard, error }`) fires and the operation is blocked. `remove()`/`clear()` additionally **reject their returned promise** with that error, so a programmatic caller can distinguish refusal (`false`) from failure (throw) — interaction paths (chip click, keyboard) swallow the rejection after the event. Do not reject for a user cancelling a dialog — that must resolve `false`.
 - Guards run on both user and programmatic paths. `before` events still fire (synchronously, cancellable) only after a guard has passed.
+- A guard that settles after `dispose()` mutates nothing and emits no `guarderror`; `remove()`/`clear()` resolve `false` instead of throwing the late error.
 - `guards.add` applies to brand-new items only: an existing match is selected without running it.
 - `createOnBlur` means genuinely leaving the combobox. Blur caused by internal interaction (picker click, adornment, chip removal, clear) never creates, and IME composition also blocks it.
 - Switching tabs or windows does not count as leaving when `document.activeElement`

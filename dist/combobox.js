@@ -902,9 +902,11 @@
     #resolvedCoordinateSpace = "viewport";
     #tokenQueue = Promise.resolve();
     #pendingCreation = null;
-    #interactionGeneration = 0;
-    #editGeneration = 0;
-    #hideGeneration = 0;
+    #editEpoch = 0;
+    #commitEpoch = 0;
+    #resetPending = false;
+    #closeEpoch = 0;
+    #searchEpoch = 0;
     #boundLabelClicks = new WeakSet;
     #separatorKey = "";
     #splitTokens = prepareTokenSplitter([]);
@@ -970,7 +972,6 @@
       this.results = null;
       this.selectionOrder = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
       this._chipOptions = new WeakMap;
-      this.searchGeneration = 0;
       this.nextCursor = null;
       this.loading = false;
       this.loadError = null;
@@ -1084,21 +1085,20 @@
         const label = input.value.trim();
         if (!label || this.#isLocked())
           return;
-        const generation = this.#interactionGeneration;
-        const edit = this.#editGeneration;
+        const commit = this.#commitEpoch;
+        const edit = this.#editEpoch;
         const value = input.value;
         const option = await this.#createFallbackOption(label, input);
-        if (!this.#alive() || this.#isLocked() || input.value !== value)
+        if (!this.#alive() || this.#isLocked() || this.#resetPending || input.value !== value)
           return;
-        if (edit !== this.#editGeneration || this.#interactionGeneration > generation + 1)
+        if (edit !== this.#editEpoch || this.#commitEpoch > commit + 1)
           return;
         if (option)
           input.value = "";
         input.focus();
       };
       input.addEventListener("input", () => {
-        this.#interactionGeneration++;
-        this.#editGeneration++;
+        this.#editEpoch++;
       }, {
         signal: this.abortController.signal
       });
@@ -1320,7 +1320,7 @@
       return this;
     }
     clearResults() {
-      this.searchGeneration++;
+      this.#searchEpoch++;
       this.loadController?.abort();
       this.loading = false;
       this.nextCursor = null;
@@ -1502,7 +1502,7 @@
         this.#inputEl().setAttribute("aria-expanded", String(open));
         emit(this.source, open ? "combobox:open" : "combobox:close", { combobox: this });
         if (!open) {
-          this.#hideGeneration++;
+          this.#closeEpoch++;
           if (openCombobox === this)
             openCombobox = null;
           this.stopAutoUpdate?.();
@@ -1572,20 +1572,29 @@
       document.addEventListener("reset", (event) => {
         if (event.target !== this.source.form)
           return;
-        setTimeout(() => {
-          if (event.defaultPrevented || !this.#alive())
+        this.#resetPending = true;
+        queueMicrotask(() => {
+          if (!this.#alive())
             return;
-          this.searchGeneration++;
-          this.loadController?.abort();
-          this.loading = false;
-          this.nextCursor = null;
+          if (event.defaultPrevented) {
+            this.#resetPending = false;
+            return;
+          }
+          this.#commitEpoch++;
           this.clearResults();
+        });
+        setTimeout(() => {
+          if (!this.#alive())
+            return;
+          if (event.defaultPrevented)
+            return;
           if (this.isSelect) {
             this.selectionOrder = Array.from(this.#selectSource().selectedOptions);
             this.#inputEl().value = "";
           }
           this.query = this.isSelect ? "" : this.source.value;
           this.refresh();
+          this.#resetPending = false;
         });
       }, { capture: true, signal });
     }
@@ -1615,8 +1624,7 @@
         case "input": {
           if (this.#suppressInputEvent)
             return;
-          this.#interactionGeneration++;
-          this.#editGeneration++;
+          this.#editEpoch++;
           const inputEvent = event;
           if (this.isMultiple && !inputEvent.isComposing && this.#separatorsActive()) {
             this.#handleTokenInput();
@@ -1715,7 +1723,7 @@
         if (this.isOpen() || this.options.createOnBlur) {
           if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing && !this.#isLocked()) {
             const value = this.#inputEl().value;
-            const edit = this.#editGeneration;
+            const edit = this.#editEpoch;
             this.#suppressReopen = true;
             try {
               if (this.#separatorsActive()) {
@@ -1723,7 +1731,7 @@
                   if (!this.#alive())
                     return;
                   const result = await this.#processTokens(this.#inputEl().value, { final: true });
-                  if (this.#alive() && edit === this.#editGeneration && result) {
+                  if (this.#alive() && edit === this.#editEpoch && result) {
                     this.#inputEl().value = result.rest;
                   }
                 });
@@ -1733,7 +1741,7 @@
             } finally {
               this.#suppressReopen = false;
             }
-            if (!this.#alive() || edit !== this.#editGeneration)
+            if (!this.#alive() || edit !== this.#editEpoch)
               return;
             this.refresh();
           }
@@ -1855,10 +1863,10 @@
     async search(query = "", { show = false, reason = "api" } = {}) {
       if (this.mode !== "enhanced" || !this.#alive())
         return;
-      const generation = ++this.searchGeneration;
+      const searchEpoch = ++this.#searchEpoch;
       this.query = String(query ?? "");
-      const hideGeneration = this.#hideGeneration;
-      const canShow = () => show && hideGeneration === this.#hideGeneration;
+      const closeEpoch = this.#closeEpoch;
+      const canShow = () => show && closeEpoch === this.#closeEpoch && !this.#resetPending;
       this.loadController?.abort();
       this.loading = false;
       const before = emit(this.#inputEl(), "beforefilter", {
@@ -1867,11 +1875,11 @@
         source: this.source,
         reason
       }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive())
+      if (before.defaultPrevented || !this.#alive() || this.#resetPending)
         return;
       if (this.#shouldLoad(this.query)) {
         await this.#load(this.query, { debounce: reason === "input", show: canShow });
-        if (!this.#alive() || generation !== this.searchGeneration)
+        if (!this.#alive() || searchEpoch !== this.#searchEpoch || this.#resetPending)
           return;
       } else {
         if (typeof this.options.load === "function")
@@ -1943,7 +1951,7 @@
         combobox: this,
         signal
       }, { cancelable: true });
-      if (before.defaultPrevented || signal.aborted || !this.#alive())
+      if (before.defaultPrevented || signal.aborted || !this.#alive() || this.#resetPending)
         return false;
       this.loading = true;
       this.#renderLoading();
@@ -1957,7 +1965,7 @@
           source: this.source,
           input: this.#inputEl()
         });
-        if (signal.aborted || !this.#alive())
+        if (signal.aborted || !this.#alive() || this.#resetPending)
           return false;
         const items = Array.isArray(result) ? result : result?.items;
         if (items) {
@@ -1973,7 +1981,7 @@
         return true;
       } catch (error) {
         const caught = error;
-        if (signal.aborted || !this.#alive() || caught?.name === "AbortError")
+        if (signal.aborted || !this.#alive() || this.#resetPending || caught?.name === "AbortError")
           return false;
         this.loadError = caught;
         emit(this.source, "combobox:loaderror", {
@@ -2461,13 +2469,14 @@
           return existing.option;
         return this.#selectItem(existing) ? existing.option ?? null : null;
       }
-      const generation = this.#interactionGeneration;
+      const commit = this.#commitEpoch;
+      const edit = this.#editEpoch;
       const item = await this.#materializeCreated(label, this.#inputEl(), { token });
       if (!item || !this.#alive())
         return null;
       if (token)
         return item.option;
-      if (this.#isLocked() || this.#interactionGeneration !== generation + 1)
+      if (this.#isLocked() || this.#resetPending || this.#commitEpoch !== commit + 1 || this.#editEpoch !== edit)
         return item.option;
       if (this.#inputEl().value !== (this.isMultiple ? "" : item.label))
         return item.option;
@@ -2486,14 +2495,16 @@
       return item.option;
     }
     #creationIntent(input, { token = false } = {}) {
-      const generation = this.#interactionGeneration - (token ? this.#editGeneration : 0);
+      const edit = this.#editEpoch;
+      const commit = this.#commitEpoch;
       const value = input.value;
       const selected = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
       return () => {
-        if (!this.#alive() || this.#isLocked())
+        if (!this.#alive() || this.#isLocked() || this.#resetPending)
           return false;
-        const currentGeneration = this.#interactionGeneration - (token ? this.#editGeneration : 0);
-        if (generation !== currentGeneration || !token && input.value !== value)
+        if (this.#commitEpoch !== commit)
+          return false;
+        if (!token && (this.#editEpoch !== edit || input.value !== value))
           return false;
         const current = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
         return current.length === selected.length && current.every((option, index) => option === selected[index]);
@@ -2544,7 +2555,7 @@
             return null;
           created = toItem(result, this.#fields());
         } catch (error) {
-          if (error?.name !== "AbortError")
+          if (error?.name !== "AbortError" && this.#alive())
             emit(this.source, "combobox:createerror", { combobox: this, label, error });
           return null;
         } finally {
@@ -2604,7 +2615,8 @@
         });
         return { ok: result !== false, refused: result === false };
       } catch (error) {
-        emit(this.source, "combobox:guarderror", { combobox: this, guard: name, error });
+        if (this.#alive())
+          emit(this.source, "combobox:guarderror", { combobox: this, guard: name, error });
         return { ok: false, refused: false, error };
       }
     }
@@ -2697,14 +2709,14 @@
     }
     async#handleTokenInput() {
       const value = this.#inputEl().value;
-      const edit = this.#editGeneration;
+      const edit = this.#editEpoch;
       return this.#enqueueTokens(async () => {
-        if (!this.#alive() || edit !== this.#editGeneration || this.#isLocked())
+        if (!this.#alive() || edit !== this.#editEpoch || this.#isLocked())
           return;
         const result = await this.#processTokens(value);
         if (!this.#alive())
           return;
-        if (edit !== this.#editGeneration || this.#isLocked())
+        if (edit !== this.#editEpoch || this.#isLocked())
           return;
         if (result)
           this.#inputEl().value = result.rest;
@@ -2713,14 +2725,14 @@
     }
     async#commitEnterTokens(resolved) {
       const value = this.#inputEl().value;
-      const edit = this.#editGeneration;
+      const edit = this.#editEpoch;
       return this.#enqueueTokens(async () => {
-        if (!this.#alive() || edit !== this.#editGeneration || this.#isLocked())
+        if (!this.#alive() || edit !== this.#editEpoch || this.#isLocked())
           return;
         const result = await this.#processTokens(value, { final: true, resolved });
         if (!this.#alive())
           return;
-        if (edit !== this.#editGeneration || this.#isLocked())
+        if (edit !== this.#editEpoch || this.#isLocked())
           return;
         if (result) {
           this.#inputEl().value = result.rest;
@@ -2729,7 +2741,7 @@
       });
     }
     #dispatchNativeValueEvents() {
-      this.#interactionGeneration++;
+      this.#commitEpoch++;
       this.#suppressInputEvent = true;
       try {
         this.source.dispatchEvent(new Event("input", { bubbles: true }));
@@ -2780,15 +2792,19 @@
       if (!option || !this.#isRemovable(option))
         return false;
       const item = optionToItem(option);
+      const commit = this.#commitEpoch;
       const guard = await this.#runGuard("remove", { item });
-      if (guard.error)
-        throw guard.error;
+      if (guard.error) {
+        if (this.#alive())
+          throw guard.error;
+        return false;
+      }
       if (!guard.ok)
         return false;
-      if (!this.#alive() || !this.#isRemovable(option))
+      if (!this.#alive() || this.#resetPending || this.#commitEpoch !== commit || !this.#isRemovable(option))
         return false;
       const before = emit(this.source, "combobox:beforeremove", { combobox: this, item }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive() || !this.#isRemovable(option))
+      if (before.defaultPrevented || !this.#alive() || this.#resetPending || this.#commitEpoch !== commit || !this.#isRemovable(option))
         return false;
       option.selected = false;
       this.#forgetSelection(option);
@@ -2804,15 +2820,19 @@
       if (!this.isSelect) {
         if (!this.source.value)
           return false;
+        const commit = this.#commitEpoch;
         const inputGuard = await this.#runGuard("clear", {});
-        if (inputGuard.error)
-          throw inputGuard.error;
+        if (inputGuard.error) {
+          if (this.#alive())
+            throw inputGuard.error;
+          return false;
+        }
         if (!inputGuard.ok)
           return false;
-        if (!this.#alive() || !this.source.value)
+        if (!this.#alive() || this.#resetPending || this.#commitEpoch !== commit || !this.source.value)
           return false;
         const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
-        if (before.defaultPrevented || !this.#alive())
+        if (before.defaultPrevented || !this.#alive() || this.#resetPending || this.#commitEpoch !== commit)
           return false;
         this.source.value = "";
         this.#dispatchNativeValueEvents();
@@ -2824,15 +2844,19 @@
       const clearable = () => Array.from(this.#selectSource().selectedOptions).filter((option) => !isOptionDisabled(option));
       if (!clearable().length)
         return false;
+      const commit = this.#commitEpoch;
       const guard = await this.#runGuard("clear", {});
-      if (guard.error)
-        throw guard.error;
+      if (guard.error) {
+        if (this.#alive())
+          throw guard.error;
+        return false;
+      }
       if (!guard.ok)
         return false;
-      if (!this.#alive() || !clearable().length)
+      if (!this.#alive() || this.#resetPending || this.#commitEpoch !== commit || !clearable().length)
         return false;
       const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive())
+      if (before.defaultPrevented || !this.#alive() || this.#resetPending || this.#commitEpoch !== commit)
         return false;
       const selected = clearable();
       if (!selected.length)
@@ -2856,7 +2880,7 @@
       return this.#selectedOptionsInOrder().map((option) => optionToItem(option));
     }
     move(itemOrValue, index) {
-      if (this.mode !== "enhanced" || !this.isMultiple || this.options.selectionOrder !== "selected" || !this.#alive())
+      if (this.mode !== "enhanced" || !this.isMultiple || this.options.selectionOrder !== "selected" || !this.#alive() || this.#resetPending)
         return false;
       this.selectionOrder = this.#selectedOptionsInOrder();
       const option = itemOrValue instanceof HTMLOptionElement ? itemOrValue : this.selectionOrder.find((entry) => entry.value === String(itemOrValue));
@@ -2867,7 +2891,7 @@
         return false;
       const { order: nextOrder, from, to } = moved;
       const before = emit(this.source, "combobox:beforereorder", { combobox: this, value: option.value, from, to }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive())
+      if (before.defaultPrevented || !this.#alive() || this.#resetPending)
         return false;
       const valueChanged = nextOrder.some((entry, position) => entry.value !== this.selectionOrder[position]?.value);
       this.selectionOrder = nextOrder;
@@ -2887,11 +2911,11 @@
       if (!this.#alive() || !this.nextCursor || typeof this.options.load !== "function")
         return false;
       const cursor = this.nextCursor;
-      const generation = this.searchGeneration;
+      const searchEpoch = this.#searchEpoch;
       const pending = this.#load(this.query, { cursor, append: true, debounce: false });
       const controller = this.loadController;
       const loaded = await pending;
-      if (!this.#alive() || generation !== this.searchGeneration || controller !== this.loadController || controller?.signal.aborted)
+      if (!this.#alive() || this.#resetPending || searchEpoch !== this.#searchEpoch || controller !== this.loadController || controller?.signal.aborted)
         return false;
       this.#applyFilter(this.query);
       return loaded;
@@ -2932,7 +2956,7 @@
       this.#inputEl().value = selected?.value ? selected.label : "";
     }
     show() {
-      if (this.mode !== "enhanced" || !this.#alive() || this.isOpen())
+      if (this.mode !== "enhanced" || !this.#alive() || this.#resetPending || this.isOpen())
         return false;
       if (openCombobox && openCombobox !== this) {
         openCombobox.hide();
@@ -2940,7 +2964,7 @@
           return false;
       }
       const before = emit(this.source, "combobox:beforeopen", { combobox: this }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive())
+      if (before.defaultPrevented || !this.#alive() || this.#resetPending)
         return false;
       try {
         this.#popoverEl().showPopover({ source: this.#inputEl() });
@@ -2959,13 +2983,13 @@
       if (this.mode !== "enhanced" || !this.#alive())
         return false;
       if (!this.isOpen()) {
-        this.#hideGeneration++;
+        this.#closeEpoch++;
         return false;
       }
       const before = emit(this.source, "combobox:beforeclose", { combobox: this }, { cancelable: true });
       if (before.defaultPrevented)
         return false;
-      this.#hideGeneration++;
+      this.#closeEpoch++;
       this.#popoverEl().hidePopover();
       if (openCombobox === this)
         openCombobox = null;

@@ -165,6 +165,139 @@ test.describe("Reset and durable selections", () => {
     expect(await exists()).toBe(1);
     expect(await select.evaluate((el) => Array.from(el.selectedOptions, (o) => o.value))).toEqual(["1"]);
   });
+
+  test("an effective reset invalidates a pending creation even when the selection is unchanged", async ({
+    page,
+  }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    const state = await page.evaluate(async () => {
+      const source = document.getElementById("tags");
+      const form = source.form;
+      let release;
+      let started;
+      const ready = new Promise((resolve) => {
+        started = resolve;
+      });
+      const events = [];
+      for (const type of ["combobox:create", "combobox:select", "input", "change"])
+        source.addEventListener(type, () => events.push(type));
+
+      const combo = new Combobox(source, {
+        create: () =>
+          new Promise((resolve) => {
+            release = () => resolve({ value: "B", label: "B" });
+            started();
+          }),
+      });
+      combo.input.value = "B";
+      await combo.search("B", { show: true });
+      combo.input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+      await ready;
+
+      // Reset restores option 1, which is already selected: the native
+      // selection is identical, yet the pending creation of B must lose.
+      form.reset();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+
+      return {
+        options: Array.from(source.options, (option) => option.value),
+        selected: Array.from(source.selectedOptions, (option) => option.value),
+        chips: Array.from(combo.chips.children, (chip) => chip.dataset.value),
+        input: combo.input.value,
+        events,
+      };
+    });
+    expect(state).toEqual({
+      options: ["1", "2", "3"],
+      selected: ["1"],
+      chips: ["1"],
+      input: "",
+      events: [],
+    });
+  });
+
+  test("a cancelled reset does not invalidate a pending creation", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    const state = await page.evaluate(async () => {
+      const source = document.getElementById("tags");
+      const form = source.form;
+      let release;
+      let started;
+      const ready = new Promise((resolve) => {
+        started = resolve;
+      });
+      const combo = new Combobox(source, {
+        create: () =>
+          new Promise((resolve) => {
+            release = () => resolve({ value: "B", label: "B" });
+            started();
+          }),
+      });
+      combo.input.value = "B";
+      await combo.search("B", { show: true });
+      combo.input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+      await ready;
+
+      form.addEventListener("reset", (event) => event.preventDefault(), { once: true });
+      form.reset();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+
+      return {
+        options: Array.from(source.options, (option) => option.value),
+        selected: Array.from(source.selectedOptions, (option) => option.value),
+        chips: Array.from(combo.chips.children, (chip) => chip.dataset.value),
+        input: combo.input.value,
+      };
+    });
+    expect(state.options).toEqual(["1", "2", "3", "B"]);
+    expect(state.selected).toEqual(["1", "B"]);
+    expect(state.chips).toEqual(["1", "B"]);
+    expect(state.input).toBe("");
+  });
+
+  test("an effective reset invalidates a pending removal when the option stays selected", async ({
+    page,
+  }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    const state = await page.evaluate(async () => {
+      const source = document.getElementById("tags");
+      const form = source.form;
+      let release;
+      let started;
+      const ready = new Promise((resolve) => {
+        started = resolve;
+      });
+      const events = [];
+      for (const type of ["combobox:remove", "input", "change"])
+        source.addEventListener(type, () => events.push(type));
+
+      const combo = new Combobox(source, {
+        guards: {
+          remove: () =>
+            new Promise((resolve) => {
+              release = resolve;
+              started();
+            }),
+        },
+      });
+      const pending = combo.remove("1");
+      await ready;
+      form.reset();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      release(true);
+      const removed = await pending;
+      return { removed, selected: Array.from(source.selectedOptions, (option) => option.value), events };
+    });
+    expect(state).toEqual({ removed: false, selected: ["1"], events: [] });
+  });
 });
 
 test.describe("Submission and validation", () => {

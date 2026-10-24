@@ -236,6 +236,78 @@ test.describe("Pending operations and attribute restoration", () => {
     expect(state.selected).toEqual(["a"]);
   });
 
+  test("a guard rejecting after dispose emits no guarderror", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const form = document.createElement("form");
+      form.innerHTML = `<select name="choice" multiple><option value="a" selected>A</option></select>`;
+      document.body.append(form);
+      const select = form.querySelector("select");
+      const errors = [];
+      select.addEventListener("combobox:guarderror", () => errors.push("guarderror"));
+      let reject;
+      const combo = new Combobox(select, {
+        guards: {
+          remove: () =>
+            new Promise((_, rejectGuard) => {
+              reject = rejectGuard;
+            }),
+        },
+      });
+      const pending = combo.remove("a");
+      combo.dispose();
+      reject(new Error("late boom"));
+      const settled = await pending;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      form.remove();
+      return { settled, errors, selected: Array.from(select.selectedOptions, (o) => o.value) };
+    });
+
+    expect(state).toEqual({ settled: false, errors: [], selected: ["a"] });
+  });
+
+  test("a create rejecting after dispose emits no createerror", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const form = document.createElement("form");
+      form.innerHTML = `<select name="choice" multiple><option value="a" selected>A</option></select>`;
+      document.body.append(form);
+      const select = form.querySelector("select");
+      const errors = [];
+      select.addEventListener("combobox:createerror", () => errors.push("createerror"));
+      let reject;
+      let started;
+      const ready = new Promise((resolve) => {
+        started = resolve;
+      });
+      const combo = new Combobox(select, {
+        create: () =>
+          new Promise((_, rejectCreate) => {
+            reject = rejectCreate;
+            started();
+          }),
+      });
+      combo.input.value = "B";
+      await combo.search("B", { show: true });
+      combo.input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+      await ready;
+      combo.dispose();
+      reject(new Error("late boom"));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const result = {
+        errors,
+        options: Array.from(select.options, (option) => option.value),
+        selected: Array.from(select.selectedOptions, (option) => option.value),
+      };
+      form.remove();
+      return result;
+    });
+
+    expect(state).toEqual({ errors: [], options: ["a"], selected: ["a"] });
+  });
+
   test("dispose restores authored filter and source attributes", async ({ page }) => {
     test.skip(!(await modernSupported(page)), MODERN);
     const state = await page.evaluate(() => {

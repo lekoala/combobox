@@ -202,6 +202,8 @@ Supported mutations:
 
 A synchronous DOM move preserves the engine by deferring teardown to a microtask. A durable removal disposes it; a later reinsertion builds a new instance. This differs deliberately from Date-picker's "disconnect = destroy" rule.
 
+A **form reset is a selection-authority change**. An effective reset invalidates any pending search, creation, removal or clear, even when the resulting native selection is identical to the current one (for example restoring an option that was already selected). A reset cancelled by `preventDefault()` invalidates nothing. No asynchronous continuation may commit or reopen the picker between the reset event and the native state re-read. A disposed instance emits no event at all: `guarderror`, `createerror`, `loaderror` and `select` belong to a live engine.
+
 
 ## 4. Popover and positioning
 
