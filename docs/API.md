@@ -65,9 +65,9 @@ customElements.define("app-combobox", class extends ComboBoxElement {});
 
 - `box.upgrade()` enhances the first direct child `<select>`, else the first direct child `<input list="…">`. Safe to call repeatedly; returns the `Combobox` instance or `null` until a source child exists.
 - `box.combobox` is the underlying `Combobox` instance (or `null`).
-- `box.whenReady()` returns a promise resolving to the `Combobox` instance once upgraded.
+- `box.whenReady()` returns a promise resolving to the `Combobox` instance once upgraded. If the element is disposed before it ever upgrades, the promise rejects with an `AbortError`; a rebuild does not reject it.
 - `box.configure(options)` merges JavaScript-only options (remote `load`, `create`, renderers); JS options always win over attributes.
-- `box.dispose()` tears the engine down and restores the native source.
+- `box.dispose()` tears the engine down, restores the native source, and settles a still-pending `whenReady()` (rejection with `AbortError`).
 
 Child lookup is **direct children only**: a source nested inside another element is not found.
 
@@ -77,9 +77,10 @@ Child lookup is **direct children only**: a source nested inside another element
 - element removed → teardown is deferred until a microtask confirms the element is truly gone, so a simple DOM move does not destroy state;
 - attribute changes on observed attributes rebuild the instance.
 
-**A rebuild is a full teardown.** `box.configure(options)` and any change to an
-observed attribute dispose the current engine and construct a new one on a
-microtask (`dispose()` → `upgrade()`). Consequences:
+**A rebuild is a full engine replacement, not a disposal of the wrapper.**
+`box.configure(options)` and any change to an observed attribute capture the
+durable state, tear the current engine down on a microtask, and construct a new
+one for the same source. Consequences:
 
 - a `Combobox` reference obtained before the rebuild is **stale** — it is not
   updated in place, and its state/listeners are gone;
@@ -94,7 +95,11 @@ microtask (`dispose()` → `upgrade()`). Consequences:
 - `box.configure()` merges options **shallowly** (`{ ...current, ...options }`);
   replacing a nested object (e.g. `render`) replaces the whole object;
 - `combobox:ready` fires with `detail.combobox` on every upgrade, including
-  rebuilds — it is the reliable hook to (re)wire per-instance behavior.
+  rebuilds — it is the reliable hook to (re)wire per-instance behavior;
+- if the new engine cannot be constructed (for example a missing `<datalist>`),
+  the element stays inert but native: `box.combobox` is `null`, no
+  `combobox:ready` is emitted, and the error is not swallowed. A later
+  `upgrade()` recovers it, and `whenReady()` remains pending until then.
 
 ### Observed attributes
 

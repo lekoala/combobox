@@ -34,6 +34,20 @@ test.describe("Disposed instances and source ownership", () => {
     });
   }
 
+  test("whenReady() rejects when a source-less wrapper is disposed", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const wrap = document.createElement("combo-box");
+      document.body.append(wrap);
+      const pending = wrap.whenReady().then(
+        () => ({ settled: "resolved" }),
+        (error) => ({ settled: "rejected", name: error.name }),
+      );
+      wrap.remove();
+      return pending;
+    });
+    expect(state).toEqual({ settled: "rejected", name: "AbortError" });
+  });
+
   for (const replacement of [false, true]) {
     test(`disposed rendering methods are harmless ${replacement ? "after replacement" : "after teardown"}`, async ({
       page,

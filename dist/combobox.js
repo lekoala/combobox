@@ -3079,7 +3079,6 @@
       this._source = null;
       this._options = {};
       this._sourceObserver = null;
-      this._selectionOrder = null;
       this._revision = 0;
       this._rebuildQueued = false;
       this._readyResolvers = [];
@@ -3129,6 +3128,9 @@
       return this;
     }
     upgrade() {
+      return this.#upgrade(null);
+    }
+    #upgrade(durable) {
       const source = this.#findSource();
       if (!source) {
         this.#watchForSource();
@@ -3144,20 +3146,11 @@
       if (previous)
         previous.dispose();
       const combobox = new Combobox(source, this.#resolvedOptions());
-      if (this._selectionOrder && source instanceof HTMLSelectElement && combobox.isMultiple && combobox.options.selectionOrder === "selected") {
-        const selected = new Set(source.selectedOptions);
-        combobox.selectionOrder = this._selectionOrder.filter((option) => selected.has(option) && option.closest("select") === source);
-        for (const option of source.selectedOptions) {
-          if (!combobox.selectionOrder.includes(option))
-            combobox.selectionOrder.push(option);
-        }
-        combobox.refresh();
-      }
-      this._selectionOrder = null;
+      this.#restoreDurableState(combobox, durable);
       this._combobox = combobox;
       this._source = source;
       const ready = this._readyResolvers.splice(0);
-      for (const resolve of ready)
+      for (const { resolve } of ready)
         resolve(combobox);
       this.dispatchEvent(new CustomEvent("combobox:ready", {
         bubbles: true,
@@ -3165,17 +3158,56 @@
       }));
       return combobox;
     }
+    #captureDurableState() {
+      const combobox = this._combobox;
+      if (!combobox?.isMultiple || combobox.options.selectionOrder !== "selected")
+        return null;
+      if (!(combobox.source instanceof HTMLSelectElement))
+        return null;
+      return { selectionOrder: [...combobox.selectionOrder] };
+    }
+    #restoreDurableState(combobox, durable) {
+      if (!durable?.selectionOrder.length)
+        return;
+      const source = combobox.source;
+      if (!(source instanceof HTMLSelectElement))
+        return;
+      if (!combobox.isMultiple || combobox.options.selectionOrder !== "selected")
+        return;
+      const selected = new Set(source.selectedOptions);
+      combobox.selectionOrder = durable.selectionOrder.filter((option) => selected.has(option) && option.closest("select") === source);
+      for (const option of source.selectedOptions) {
+        if (!combobox.selectionOrder.includes(option))
+          combobox.selectionOrder.push(option);
+      }
+      combobox.refresh();
+    }
+    #teardown() {
+      this._sourceObserver?.disconnect();
+      this._sourceObserver = null;
+      const combobox = this._combobox;
+      this._combobox = null;
+      this._source = null;
+      combobox?.dispose();
+    }
+    #rebuild() {
+      const durable = this.#captureDurableState();
+      this.#teardown();
+      this.#upgrade(durable);
+    }
     whenReady() {
       if (this._combobox)
         return Promise.resolve(this._combobox);
-      return new Promise((resolve) => this._readyResolvers.push(resolve));
+      return new Promise((resolve, reject) => this._readyResolvers.push({ resolve, reject }));
     }
     dispose() {
-      this._sourceObserver?.disconnect();
-      this._sourceObserver = null;
-      this._combobox?.dispose();
-      this._combobox = null;
-      this._source = null;
+      this.#teardown();
+      const pending = this._readyResolvers.splice(0);
+      if (!pending.length)
+        return;
+      const error = new DOMException("combo-box was disposed before it upgraded", "AbortError");
+      for (const { reject } of pending)
+        reject(error);
     }
     #findSource() {
       for (const child of this.children) {
@@ -3217,12 +3249,7 @@
         this._rebuildQueued = false;
         if (!this.isConnected || !this._combobox)
           return;
-        const source = this._source;
-        this._selectionOrder = this._combobox.isMultiple && this._combobox.options.selectionOrder === "selected" ? [...this._combobox.selectionOrder] : null;
-        this._combobox.dispose();
-        this._combobox = null;
-        this._source = source;
-        this.upgrade();
+        this.#rebuild();
       });
     }
     #upgradeProperty(name) {

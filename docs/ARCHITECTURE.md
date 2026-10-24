@@ -167,6 +167,42 @@ The wrapper owns only lifecycle (upgrade/dispose); the native source never chang
 
 Fallback: without JS or on unsupported browsers the browser sees an unknown element wrapping a fully functional native control.
 
+### Lifecycle and supported mutations
+
+`<combo-box>` owns the engine lifecycle; the engine owns interaction; the native source owns value and form semantics. A rebuild replaces the engine, not the source.
+
+| State | Rebuild on the same source |
+|---|---|
+| Selected native options | Preserved (the source is untouched) |
+| `<option>` node identity | Preserved as long as the nodes stay in the source |
+| `selectionOrder: "selected"` | Preserved and reconciled by option identity |
+| Name, form owner, native values | Preserved |
+| Typed query / temporary text | Abandoned |
+| Transient results and remote load | Invalidated |
+| Pending creation / guard | Invalidated |
+| Open picker, active row, chip focus | Abandoned |
+
+A failed rebuild (for example an `input[list]` whose `<datalist>` no longer resolves) leaves the element inert but native: `box.combobox` is `null`, no `combobox:ready` is emitted, the error is not swallowed, and a later successful `upgrade()` recovers the element. `whenReady()` stays pending until that successful upgrade; only the public `dispose()` rejects it.
+
+Supported mutations:
+
+| Mutation | Policy |
+|---|---|
+| Change `input[list]` to a select (or the reverse) | Not supported without a new instance |
+| Change `multiple` after initialization | Not supported; re-initialize |
+| Add, remove or move `<option>` elements | Explicit `sync()`, or `observeSource` when enabled |
+| Assign `option.selected` from JavaScript | Explicit `sync()` |
+| Change `disabled` / `required` / `readonly` | Native semantics respected; `refresh()`/`sync()` to update projections |
+| Change `name`, `form`, reset the form | Native contract at the relevant moment |
+| Add or replace remote results | `setResults()` without touching the catalogue |
+| Replace the catalogue | `setOptions()`; selected node preservation per its contract |
+| Change `<combo-box>` attributes or call `configure()` | Grouped engine rebuild |
+| Replace the child source element | Explicit `upgrade()` |
+| Other arbitrary structural mutations | No automatic resynchronization guarantee |
+
+A synchronous DOM move preserves the engine by deferring teardown to a microtask. A durable removal disposes it; a later reinsertion builds a new instance. This differs deliberately from Date-picker's "disconnect = destroy" rule.
+
+
 ## 4. Popover and positioning
 
 Use a manual popover:
