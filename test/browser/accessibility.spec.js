@@ -100,6 +100,43 @@ test.describe("label/description accessibility transfer", () => {
     expect(await page.locator(control("described")).getAttribute("aria-describedby")).toBe("desc-text");
   });
 
+  test("refresh re-resolves labels and source aria attributes added after init", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    const state = await page.evaluate(() => {
+      const source = document.createElement("select");
+      source.id = "late-name";
+      source.add(new Option("One", "1"));
+      document.body.append(source);
+      const combo = new Combobox(source);
+
+      const label = document.createElement("label");
+      label.htmlFor = source.id;
+      label.textContent = "Late label";
+      source.before(label);
+      combo.refresh();
+      const fromLabel = combo.input.getAttribute("aria-labelledby");
+      const labelId = label.id;
+
+      source.setAttribute("aria-label", "Late aria label");
+      source.setAttribute("aria-describedby", "late-description");
+      source.setAttribute("aria-labelledby", "late-heading");
+      combo.refresh();
+      return {
+        fromLabel,
+        labelId,
+        staleLabelIdRemoved: label.id === "",
+        labelledby: combo.input.getAttribute("aria-labelledby"),
+        ariaLabel: combo.input.getAttribute("aria-label"),
+        describedby: combo.input.getAttribute("aria-describedby"),
+      };
+    });
+    expect(state.fromLabel).toBe(state.labelId);
+    expect(state.staleLabelIdRemoved).toBe(true);
+    expect(state.labelledby).toBe("late-heading");
+    expect(state.ariaLabel).toBeNull();
+    expect(state.describedby).toBe("late-description");
+  });
+
   test("label click focuses the enhanced filter input", async ({ page }) => {
     test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 

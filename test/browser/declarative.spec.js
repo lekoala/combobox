@@ -24,6 +24,34 @@ test("chip-class applies on every declarative rebuild and JS options take preced
   await expect(page.locator("#classed select")).toHaveValues(["a"]);
 });
 
+test("declarative rebuild preserves selected order by option identity", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  const state = await page.evaluate(async () => {
+    const wrap = document.createElement("combo-box");
+    wrap.setAttribute("selection-order", "selected");
+    wrap.innerHTML = `
+      <select multiple name="ordered[]">
+        <option value="a" selected>Alpha</option>
+        <option value="b" selected>Beta</option>
+        <option value="c" selected>Gamma</option>
+      </select>`;
+    document.body.append(wrap);
+    const before = await wrap.whenReady();
+    before.move(wrap.querySelector('option[value="c"]'), 0);
+    const identities = [...before.selectionOrder];
+    wrap.setAttribute("chip-class", "updated");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return {
+      rebuilt: wrap.combobox !== before,
+      values: wrap.combobox.getSelectedValues(),
+      identities: wrap.combobox.selectionOrder.every((option, index) => option === identities[index]),
+    };
+  });
+  expect(state.rebuilt).toBe(true);
+  expect(state.values).toEqual(["c", "a", "b"]);
+  expect(state.identities).toBe(true);
+});
+
 test.beforeEach(async ({ page }) => {
   await setup(page, HTML);
 });

@@ -83,6 +83,9 @@ microtask (`dispose()` → `upgrade()`). Consequences:
 
 - a `Combobox` reference obtained before the rebuild is **stale** — it is not
   updated in place, and its state/listeners are gone;
+- native selection and the option-identity order maintained by
+  `selectionOrder: "selected"` survive a rebuild. Ephemeral interaction state
+  does not: the typed filter, focus, active row and open picker are reset;
 - listeners attached to the generated interaction input (`combo.input`) must be
   re-attached after a rebuild; hold the current instance instead of caching one;
 - `box.combobox` always returns the current instance; `box.whenReady()`
@@ -375,7 +378,7 @@ an empty query skips matching entirely (the matcher has nothing to decide) but
 | `includes` (default) | plain substring within one field (case- and accent-insensitive) |
 | `startswith` | a field starts with the query |
 | `fuzzy` | lightweight subsequence match within one field: every non-space query character appears in order (over already-normalized text, so `som` matches `Sómething`). It **never re-ranks** — catalogue order is preserved; use `score`/`sort` for custom ranking |
-| `pattern` | escape-hatch regex on a field: the query string becomes a `RegExp` with the `i` flag only (never a caller-supplied regex, so no stateful `g`/`y` matcher); case- and accent-insensitive — `liège`, `Liège`, `LIEGE` and `liege` all match each other while regex structure (classes, anchors) is preserved. An invalid regex yields no results, never an error |
+| `pattern` | escape-hatch regex on a field: the query string becomes a `RegExp` with the `i` flag only (never a caller-supplied regex, so no stateful `g`/`y` matcher); case- and accent-insensitive — `liège`, `Liège`, `LIEGE` and `liege` all match each other while regex structure (classes, anchors) is preserved. An invalid regex yields no results, never an error. JavaScript regex execution cannot be timed out: use this mode only for trusted/bounded patterns, not unrestricted user-authored regexes; use `includes`/`startswith`/`fuzzy` or a custom matcher for untrusted input |
 | `function` | `match(item, query, { combobox })` fully owns matching |
 
 `searchFields` reads only own properties on an item or its `data` object; inherited properties are ignored. Built-in matchers prepare the query once per filtering pass, without caching catalogue values.
@@ -679,7 +682,7 @@ Focus stays in the search input; the picker is driven entirely through it (`role
 | `Escape` | close the picker and clear `aria-activedescendant` |
 | `Tab` | native focus traversal by default (an open picker closes first without blocking traversal, per the ARIA APG combobox pattern); with `tabSelect: true` commits the active option / eligible create like Enter, and only `preventDefault()`s when a commit is actually possible |
 
-Navigation keys always operate on the filtered, rendered window (`maxOptions`), open a closed picker, skip `disabled` rows, and never land on one. IME composition never tokenizes/selects. `autoselectFirst: true` preselects the first selectable option after every filter.
+Navigation keys always operate on the filtered, rendered window (`maxOptions`), open a closed picker, skip `disabled` rows, and never land on one. During IME composition, navigation and editing keys remain entirely native: they never move active state or chip focus, remove a chip, tokenize or select. `autoselectFirst: true` preselects the first selectable option after every filter.
 
 ### Chips (multiple)
 
@@ -709,7 +712,9 @@ choices — each selectable once, each kept as its own chip, each serialized int
 With `selectionOrder: "selected"`, the `formdata` rewrite keeps every other
 control's same-`name` contributions (only the select's own entries are
 reordered) and stays out of the way when the select is not submittable
-(disabled select/fieldset, disabled option or optgroup).
+(disabled select/fieldset, disabled option or optgroup). The name and owner
+form are resolved when `FormData` is constructed, so assigning `name` or moving
+the select into a form after initialization keeps the ordered submission.
 Two multiple-selection models are valid, and the picker can work as either:
 - default (*pick from what remains*): the picker hides already-selected rows, so
   there is no same-value toggle — best when selecting many values and mostly

@@ -35,6 +35,8 @@ export declare class ComboBoxElement extends HTMLElement {
     _options: ComboboxOptions;
     /** @type {MutationObserver | null} */
     _sourceObserver: MutationObserver | null;
+    /** @type {HTMLOptionElement[] | null} */
+    _selectionOrder: HTMLOptionElement[] | null;
     _revision: number;
     _rebuildQueued: boolean;
     /** @type {Array<(combobox: Combobox) => void>} */

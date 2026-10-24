@@ -89,4 +89,41 @@ test.describe("Catalogue identity and adoption", () => {
     expect(state.viaSelectLanded).toBe(true);
     expect(state.values).toEqual(["v"]);
   });
+
+  test("setOptions preserves distinct same-label optgroups for selected option identities", async ({
+    page,
+  }) => {
+    const state = await page.evaluate(() => {
+      const select = document.createElement("select");
+      select.multiple = true;
+      const enabled = document.createElement("optgroup");
+      enabled.label = "Same";
+      enabled.append(new Option("A", "a", true, true));
+      const disabled = document.createElement("optgroup");
+      disabled.label = "Same";
+      disabled.disabled = true;
+      disabled.append(new Option("B", "b", true, true));
+      select.append(enabled, disabled);
+      document.body.append(select);
+      const options = [...select.selectedOptions];
+      const combo = new Combobox(select);
+      combo.setOptions([]);
+      return {
+        groups: [...select.querySelectorAll("optgroup")].map((group) => ({
+          sameEnabled: group === enabled,
+          sameDisabled: group === disabled,
+          disabled: group.disabled,
+          values: [...group.children].map((option) => option.value),
+        })),
+        optionsKept: options.every((option) => option.closest("select") === select),
+      };
+    });
+    expect(state).toEqual({
+      groups: [
+        { sameEnabled: true, sameDisabled: false, disabled: false, values: ["a"] },
+        { sameEnabled: false, sameDisabled: true, disabled: true, values: ["b"] },
+      ],
+      optionsKept: true,
+    });
+  });
 });

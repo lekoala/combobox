@@ -658,32 +658,43 @@
       const select = selectSourceOf(combobox);
       const preserved = preserveSelected ? Array.from(select.selectedOptions) : [];
       const preservedSet = new Set(preserved);
-      const preservedItems = preserved.map((option) => ({
-        value: option.value,
-        label: option.label,
-        selected: option.selected,
-        disabled: isOptionDisabled(option),
-        group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
-        option,
-        data: { ...option.dataset }
-      }));
+      const preservedItems = preserved.map((option) => {
+        const group = option.parentElement instanceof HTMLOptGroupElement ? option.parentElement : null;
+        return {
+          value: option.value,
+          label: option.label,
+          selected: option.selected,
+          disabled: isOptionDisabled(option),
+          group: group?.label ?? "",
+          groupNode: group,
+          option,
+          data: { ...option.dataset }
+        };
+      });
       const groupDisabled = new Map;
       for (const group of select.querySelectorAll("optgroup"))
         groupDisabled.set(group.label, group.disabled);
       const emptyOption = Array.from(select.options).find((option) => !option.value);
+      for (const group of select.querySelectorAll("optgroup"))
+        group.replaceChildren();
       select.replaceChildren();
       const catalog = [...preservedItems, ...normalized];
       const groups = new Map;
-      const appendOption = (option, groupLabel) => {
+      const appendedGroups = new Set;
+      const appendOption = (option, groupLabel, groupNode = null) => {
         if (groupLabel) {
-          let group = groups.get(groupLabel);
+          let group = groupNode || groups.get(groupLabel);
           if (!group) {
             group = document.createElement("optgroup");
             group.label = groupLabel;
             if (groupDisabled.get(groupLabel))
               group.disabled = true;
+          }
+          if (!groups.has(groupLabel))
             groups.set(groupLabel, group);
+          if (!appendedGroups.has(group)) {
             select.append(group);
+            appendedGroups.add(group);
           }
           group.append(option);
         } else {
@@ -694,7 +705,7 @@
         appendOption(emptyOption, "");
       for (const item of catalog) {
         if (item.option instanceof HTMLOptionElement) {
-          appendOption(item.option, item.group || "");
+          appendOption(item.option, item.group || "", item.groupNode || null);
           continue;
         }
         if (!item.value && !options.allowEmptyOption)
@@ -989,6 +1000,7 @@
       this.original = {
         filterInputPlaceholder: null,
         inventedLabels: [],
+        inputAccessible: null,
         optionMarkers: new WeakMap
       };
       this.boundLabels = [];
@@ -1098,6 +1110,7 @@
       control.append(input, button);
       this.source.after(control);
       this.fallbackControl = control;
+      this.input = input;
       this.#syncFallbackDisabled();
     }
     #syncFallbackDisabled() {
@@ -1208,6 +1221,23 @@
       return { input: document.createElement("input"), inputSnapshot: null };
     }
     #copyAccessibleName(input) {
+      const attributes = ["aria-labelledby", "aria-label", "aria-required", "aria-describedby"];
+      if (!this.original.inputAccessible) {
+        this.original.inputAccessible = new Map(attributes.map((attribute) => [attribute, input.getAttribute(attribute)]));
+      } else {
+        for (const { label, id } of this.original.inventedLabels) {
+          if (label.id === id)
+            label.removeAttribute("id");
+        }
+        this.original.inventedLabels = [];
+        this.boundLabels = [];
+        for (const [attribute, value] of this.original.inputAccessible) {
+          if (value === null)
+            input.removeAttribute(attribute);
+          else
+            input.setAttribute(attribute, value);
+        }
+      }
       const labelledBy = this.source.getAttribute("aria-labelledby");
       if (labelledBy) {
         input.setAttribute("aria-labelledby", labelledBy);
@@ -1330,7 +1360,15 @@
         childList: true,
         subtree: true,
         attributes: true,
-        attributeFilter: ["selected", "disabled", "required", "readonly"]
+        attributeFilter: [
+          "selected",
+          "disabled",
+          "required",
+          "readonly",
+          "aria-label",
+          "aria-labelledby",
+          "aria-describedby"
+        ]
       } : {
         childList: true,
         attributes: true,
@@ -1442,6 +1480,9 @@
         this.#inputEl().setAttribute("aria-expanded", String(open));
         emit(this.source, open ? "combobox:open" : "combobox:close", { combobox: this });
         if (!open) {
+          this.#hideGeneration++;
+          if (openCombobox === this)
+            openCombobox = null;
           this.stopAutoUpdate?.();
           this.stopAutoUpdate = null;
           this.#setActive(-1);
@@ -1461,11 +1502,15 @@
             this.#inputEl().focus();
           }, { signal });
         }
-        if (this.isMultiple && this.options.selectionOrder === "selected" && this.source.name && this.source.form) {
-          this.source.form.addEventListener("formdata", (event) => {
+        if (this.isMultiple && this.options.selectionOrder === "selected") {
+          document.addEventListener("formdata", (event) => {
+            if (event.target !== this.source.form)
+              return;
             if (this.source.matches(":disabled"))
               return;
             const name = this.source.name;
+            if (!name)
+              return;
             const ordered = [];
             for (const option of this.#selectedOptionsInOrder()) {
               if (!isOptionDisabled(option))
@@ -1489,7 +1534,7 @@
               event.formData.append(name, value);
             for (const value of rest)
               event.formData.append(name, value);
-          }, { signal });
+          }, { capture: true, signal });
         }
         this.source.addEventListener("invalid", (event) => {
           event.preventDefault();
@@ -1679,6 +1724,8 @@
       });
     }
     #onInputKeyDown(event) {
+      if (event.isComposing || this.composing)
+        return;
       if (this.#isLocked()) {
         if ((event.key === "Escape" || event.key === "Tab") && this.isOpen()) {
           if (event.key === "Escape")
@@ -1714,8 +1761,6 @@
         return;
       }
       if (event.key === "Enter" && this.isOpen()) {
-        if (event.isComposing || this.composing)
-          return;
         if (this.isMultiple && this.#separatorsActive()) {
           const tokenCommit = this.#resolveTokenCommit();
           if (tokenCommit) {
@@ -1738,8 +1783,6 @@
       }
       if (event.key === "Tab" && this.isOpen()) {
         if (this.options.tabSelect) {
-          if (event.isComposing || this.composing)
-            return;
           if (this.isMultiple && this.#separatorsActive()) {
             const tokenCommit = this.#resolveTokenCommit();
             if (tokenCommit) {
@@ -1783,8 +1826,10 @@
       if (event.key === "Backspace" && this.isMultiple && !this.#inputEl().value && this.#selectSource().selectedOptions.length) {
         const selected = this.#selectedOptionsInOrder();
         const last = selected[selected.length - 1];
-        if (last && !isOptionDisabled(last))
+        if (last && !isOptionDisabled(last)) {
+          event.preventDefault();
           this.remove(last).catch(() => {});
+        }
       }
     }
     async search(query = "", { show = false, reason = "api" } = {}) {
@@ -2839,6 +2884,7 @@
         return this;
       }
       if (this.isSelect) {
+        this.#copyAccessibleName(this.#inputEl());
         mirrorDisabled(this.#inputEl(), this.source.matches(":disabled"));
         this.#inputEl().readOnly = this.source.hasAttribute("readonly");
         const remembered = new Set(this.selectionOrder);
@@ -2890,13 +2936,17 @@
       return true;
     }
     hide() {
-      if (this.mode !== "enhanced" || !this.isOpen())
+      if (this.mode !== "enhanced" || !this.#alive())
         return false;
+      if (!this.isOpen()) {
+        this.#hideGeneration++;
+        return false;
+      }
       const before = emit(this.source, "combobox:beforeclose", { combobox: this }, { cancelable: true });
       if (before.defaultPrevented)
         return false;
-      this.#popoverEl().hidePopover();
       this.#hideGeneration++;
+      this.#popoverEl().hidePopover();
       if (openCombobox === this)
         openCombobox = null;
       return true;
@@ -3008,6 +3058,7 @@
       this._source = null;
       this._options = {};
       this._sourceObserver = null;
+      this._selectionOrder = null;
       this._revision = 0;
       this._rebuildQueued = false;
       this._readyResolvers = [];
@@ -3072,6 +3123,16 @@
       if (previous)
         previous.dispose();
       const combobox = new Combobox(source, this.#resolvedOptions());
+      if (this._selectionOrder && source instanceof HTMLSelectElement && combobox.isMultiple && combobox.options.selectionOrder === "selected") {
+        const selected = new Set(source.selectedOptions);
+        combobox.selectionOrder = this._selectionOrder.filter((option) => selected.has(option) && option.closest("select") === source);
+        for (const option of source.selectedOptions) {
+          if (!combobox.selectionOrder.includes(option))
+            combobox.selectionOrder.push(option);
+        }
+        combobox.refresh();
+      }
+      this._selectionOrder = null;
       this._combobox = combobox;
       this._source = source;
       const ready = this._readyResolvers.splice(0);
@@ -3136,6 +3197,7 @@
         if (!this.isConnected || !this._combobox)
           return;
         const source = this._source;
+        this._selectionOrder = this._combobox.isMultiple && this._combobox.options.selectionOrder === "selected" ? [...this._combobox.selectionOrder] : null;
         this._combobox.dispose();
         this._combobox = null;
         this._source = source;

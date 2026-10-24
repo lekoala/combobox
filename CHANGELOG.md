@@ -6,6 +6,19 @@ The changelog highlights user-facing changes rather than listing every build, de
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserved `selectionOrder: "selected"` by exact option identity when `<combo-box>` rebuilds after configuration or observed-attribute changes.
+- Resolved a multiple select's current `name` and owner form when `FormData` is constructed, so ordered submission also works when either is assigned after initialization.
+- Cancelled pending picker-opening intents on `hide()` even before the picker opens, and after external Popover closure; native closes now also clear the tracked open instance.
+- Kept all input navigation and editing keys native during IME composition, preventing active-row movement, chip focus handoff and Backspace removal while composing.
+- Re-resolved labels, `aria-label`, `aria-labelledby` and `aria-describedby` from the native source during `refresh()` and observed source updates.
+- Passed the native fallback Add input to `remove` and `clear` guards, consumed Backspace when it removes a chip, and preserved distinct same-label `<optgroup>` identities and disabled states across `setOptions()`.
+
+### Documentation
+
+- Documented which interaction state survives declarative rebuilds and warned that unrestricted user-authored `match: "pattern"` expressions can cause unbounded JavaScript regular-expression execution.
+
 ## [0.7.2] - 2026-10-23
 
 ### Fixed
@@ -145,7 +158,7 @@ The changelog highlights user-facing changes rather than listing every build, de
 - Native form values, validation, `input`/`change`, reset and progressive fallback, without a separate JavaScript form model.
 - ESM and classic browser builds, styling hooks, documentation, demos and browser tests.
 
-[Unreleased]: https://github.com/lekoala/combobox/compare/0.7.1...master
+[Unreleased]: https://github.com/lekoala/combobox/compare/0.7.2...master
 [0.7.2]: https://github.com/lekoala/combobox/compare/0.7.1...0.7.2
 [0.7.1]: https://github.com/lekoala/combobox/compare/0.7.0...0.7.1
 [0.7.0]: https://github.com/lekoala/combobox/compare/0.6.0...0.7.0

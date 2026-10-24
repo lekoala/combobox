@@ -183,21 +183,29 @@ export function replaceCatalogue(combobox, normalized, { preserveSelected = comb
     const preserved = preserveSelected ? Array.from(select.selectedOptions) : [];
     const preservedSet = new Set(preserved);
     /** @type {import("./helpers.js").ComboboxItem[]} */
-    const preservedItems = preserved.map((option) => ({
-      value: option.value,
-      label: option.label,
-      selected: option.selected,
-      disabled: isOptionDisabled(option),
-      group: option.parentElement instanceof HTMLOptGroupElement ? option.parentElement.label : "",
-      option,
-      data: { ...option.dataset },
-    }));
+    const preservedItems = preserved.map((option) => {
+      const group = option.parentElement instanceof HTMLOptGroupElement ? option.parentElement : null;
+      return {
+        value: option.value,
+        label: option.label,
+        selected: option.selected,
+        disabled: isOptionDisabled(option),
+        group: group?.label ?? "",
+        groupNode: group,
+        option,
+        data: { ...option.dataset },
+      };
+    });
     // A disabled optgroup disables its options natively; record the state so
     // rebuilt groups keep it.
     const groupDisabled = new Map();
     for (const group of select.querySelectorAll("optgroup")) groupDisabled.set(group.label, group.disabled);
 
     const emptyOption = Array.from(select.options).find((option) => !option.value);
+    // Reuse native group identity for preserved selections, but empty the
+    // groups first so unselected options absent from the replacement payload
+    // cannot hitch a ride with a kept group node.
+    for (const group of select.querySelectorAll("optgroup")) group.replaceChildren();
     select.replaceChildren();
 
     // Adopt one preserved node per selected element, then fresh nodes for the
@@ -207,19 +215,24 @@ export function replaceCatalogue(combobox, normalized, { preserveSelected = comb
     const catalog = [...preservedItems, ...normalized];
 
     const groups = new Map();
+    const appendedGroups = new Set();
     /**
      * @param {HTMLOptionElement} option
      * @param {string} groupLabel
+     * @param {HTMLOptGroupElement | null} [groupNode]
      */
-    const appendOption = (option, groupLabel) => {
+    const appendOption = (option, groupLabel, groupNode = null) => {
       if (groupLabel) {
-        let group = groups.get(groupLabel);
+        let group = groupNode || groups.get(groupLabel);
         if (!group) {
           group = document.createElement("optgroup");
           group.label = groupLabel;
           if (groupDisabled.get(groupLabel)) group.disabled = true;
-          groups.set(groupLabel, group);
+        }
+        if (!groups.has(groupLabel)) groups.set(groupLabel, group);
+        if (!appendedGroups.has(group)) {
           select.append(group);
+          appendedGroups.add(group);
         }
         group.append(option);
       } else {
@@ -230,7 +243,7 @@ export function replaceCatalogue(combobox, normalized, { preserveSelected = comb
     if (emptyOption && !isMultiple && !preservedSet.has(emptyOption)) appendOption(emptyOption, "");
     for (const item of catalog) {
       if (item.option instanceof HTMLOptionElement) {
-        appendOption(item.option, item.group || "");
+        appendOption(item.option, item.group || "", item.groupNode || null);
         continue;
       }
       // An empty value is a legitimate option only when allowEmptyOption

@@ -478,8 +478,9 @@ export class Combobox {
   #interactionGeneration = 0;
   #editGeneration = 0;
 
-  // Bumped by every effective hide(): a pending search whose `show` intent
-  // predates a close must not reopen the picker when its response lands.
+  // Bumped by every close intent (including one while still debouncing) and
+  // every externally observed popover close. A pending search whose `show`
+  // intent predates either must not reopen the picker.
   #hideGeneration = 0;
 
   #separatorKey = "";
@@ -697,6 +698,10 @@ export class Combobox {
       // <label> elements whose id the engine invented for aria-labelledby
       /** @type {Array<{ label: HTMLLabelElement, id: string }>} */
       inventedLabels: [],
+      // Authored accessible attributes on the interaction input. refresh()
+      // restores this baseline before resolving the source's current name.
+      /** @type {Map<string, string | null> | null} */
+      inputAccessible: null,
       // native options whose mirror markers the engine overwrites; the
       // authored values are snapshotted lazily on first write so datalist
       // options and post-init additions are covered too
@@ -897,6 +902,7 @@ export class Combobox {
     control.append(input, button);
     this.source.after(control);
     this.fallbackControl = control;
+    this.input = input;
     this.#syncFallbackDisabled();
   }
 
@@ -1078,6 +1084,23 @@ export class Combobox {
    * @param {HTMLInputElement} input
    */
   #copyAccessibleName(input) {
+    const attributes = ["aria-labelledby", "aria-label", "aria-required", "aria-describedby"];
+    if (!this.original.inputAccessible) {
+      this.original.inputAccessible = new Map(
+        attributes.map((attribute) => [attribute, input.getAttribute(attribute)]),
+      );
+    } else {
+      for (const { label, id } of this.original.inventedLabels) {
+        if (label.id === id) label.removeAttribute("id");
+      }
+      this.original.inventedLabels = [];
+      this.boundLabels = [];
+      for (const [attribute, value] of this.original.inputAccessible) {
+        if (value === null) input.removeAttribute(attribute);
+        else input.setAttribute(attribute, value);
+      }
+    }
+
     // The source's own aria-labelledby (e.g. a grid naming its filter select
     // after the column header) is the authoritative accessible name — an
     // association that no <label> traversal can rediscover. Only when it is
@@ -1288,7 +1311,15 @@ export class Combobox {
           childList: true,
           subtree: true,
           attributes: true,
-          attributeFilter: ["selected", "disabled", "required", "readonly"],
+          attributeFilter: [
+            "selected",
+            "disabled",
+            "required",
+            "readonly",
+            "aria-label",
+            "aria-labelledby",
+            "aria-describedby",
+          ],
         }
       : {
           childList: true,
@@ -1469,6 +1500,8 @@ export class Combobox {
         this.#inputEl().setAttribute("aria-expanded", String(open));
         emit(this.source, open ? "combobox:open" : "combobox:close", { combobox: this });
         if (!open) {
+          this.#hideGeneration++;
+          if (openCombobox === this) openCombobox = null;
           this.stopAutoUpdate?.();
           this.stopAutoUpdate = null;
           this.#setActive(-1);
@@ -1494,20 +1527,17 @@ export class Combobox {
           { signal },
         );
       }
-      if (
-        this.isMultiple &&
-        this.options.selectionOrder === "selected" &&
-        this.source.name &&
-        this.source.form
-      ) {
-        this.source.form.addEventListener(
+      if (this.isMultiple && this.options.selectionOrder === "selected") {
+        document.addEventListener(
           "formdata",
           (event) => {
+            if (event.target !== this.source.form) return;
             // A disabled select contributes nothing natively (`:disabled`
             // covers the fieldset-disabled case too): leave every sibling
             // control untouched instead of re-inserting our values.
             if (this.source.matches(":disabled")) return;
             const name = this.source.name;
+            if (!name) return;
             const ordered = [];
             for (const option of this.#selectedOptionsInOrder()) {
               if (!isOptionDisabled(option)) ordered.push(option.value);
@@ -1529,7 +1559,7 @@ export class Combobox {
             for (const value of ordered) event.formData.append(name, value);
             for (const value of rest) event.formData.append(name, value);
           },
-          { signal },
+          { capture: true, signal },
         );
       }
       this.source.addEventListener(
@@ -1787,6 +1817,10 @@ export class Combobox {
    * @param {KeyboardEvent} event
    */
   #onInputKeyDown(event) {
+    // While an IME owns the input, every key remains native: navigation must
+    // not move active state/focus, and editing keys must not remove chips.
+    if (event.isComposing || this.composing) return;
+
     // A locked source keeps only non-mutating keys: Escape/Tab close a picker
     // opened programmatically, ArrowLeft reaches the chips. Navigation would
     // only write active-option state nobody can commit.
@@ -1826,7 +1860,6 @@ export class Combobox {
     if (event.key === "Enter" && this.isOpen()) {
       // IME composition owns the key: returning first never steals Enter from a
       // composing input, and never preventDefault()s it.
-      if (event.isComposing || this.composing) return;
       if (this.isMultiple && this.#separatorsActive()) {
         const tokenCommit = this.#resolveTokenCommit();
         if (tokenCommit) {
@@ -1858,7 +1891,6 @@ export class Combobox {
     // proceed — without ever preventDefault()ing.
     if (event.key === "Tab" && this.isOpen()) {
       if (this.options.tabSelect) {
-        if (event.isComposing || this.composing) return;
         if (this.isMultiple && this.#separatorsActive()) {
           const tokenCommit = this.#resolveTokenCommit();
           if (tokenCommit) {
@@ -1910,7 +1942,10 @@ export class Combobox {
     ) {
       const selected = this.#selectedOptionsInOrder();
       const last = selected[selected.length - 1];
-      if (last && !isOptionDisabled(last)) void this.remove(last).catch(() => {});
+      if (last && !isOptionDisabled(last)) {
+        event.preventDefault();
+        void this.remove(last).catch(() => {});
+      }
     }
   }
 
@@ -3468,6 +3503,7 @@ export class Combobox {
     }
 
     if (this.isSelect) {
+      this.#copyAccessibleName(this.#inputEl());
       mirrorDisabled(this.#inputEl(), this.source.matches(":disabled"));
       this.#inputEl().readOnly = this.source.hasAttribute("readonly");
       const remembered = new Set(this.selectionOrder);
@@ -3522,11 +3558,15 @@ export class Combobox {
   }
 
   hide() {
-    if (this.mode !== "enhanced" || !this.isOpen()) return false;
+    if (this.mode !== "enhanced" || !this.#alive()) return false;
+    if (!this.isOpen()) {
+      this.#hideGeneration++;
+      return false;
+    }
     const before = emit(this.source, "combobox:beforeclose", { combobox: this }, { cancelable: true });
     if (before.defaultPrevented) return false;
-    this.#popoverEl().hidePopover();
     this.#hideGeneration++;
+    this.#popoverEl().hidePopover();
     if (openCombobox === this) openCombobox = null;
     return true;
   }

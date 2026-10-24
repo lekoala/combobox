@@ -200,6 +200,28 @@ test.describe("Submission and validation", () => {
     expect(state.disabled).toEqual(["sibling"]);
   });
 
+  test("selectionOrder formdata follows a name and form assigned after init", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(() => {
+      const select = document.createElement("select");
+      select.multiple = true;
+      for (const value of ["a", "b", "c"]) select.add(new Option(value, value, true, true));
+      document.body.append(select);
+      const combo = new Combobox(select, { selectionOrder: "selected" });
+      combo.move("c", 0);
+
+      const form = document.createElement("form");
+      document.body.append(form);
+      select.name = "late[]";
+      form.append(select);
+      return {
+        values: combo.getSelectedValues(),
+        submitted: new FormData(form).getAll("late[]"),
+      };
+    });
+    expect(state).toEqual({ values: ["c", "a", "b"], submitted: ["c", "a", "b"] });
+  });
+
   test("form validation focuses the first invalid combobox, not the last", async ({ page }) => {
     test.skip(!(await modernSupported(page)), MODERN);
     const state = await page.evaluate(() => {

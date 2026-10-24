@@ -104,6 +104,8 @@ export class ComboBoxElement extends HTMLElement {
     this._options = {};
     /** @type {MutationObserver | null} */
     this._sourceObserver = null;
+    /** @type {HTMLOptionElement[] | null} */
+    this._selectionOrder = null;
     this._revision = 0;
     this._rebuildQueued = false;
     /** @type {Array<(combobox: Combobox) => void>} */
@@ -219,6 +221,22 @@ export class ComboBoxElement extends HTMLElement {
     if (previous) previous.dispose();
 
     const combobox = new Combobox(source, this.#resolvedOptions());
+    if (
+      this._selectionOrder &&
+      source instanceof HTMLSelectElement &&
+      combobox.isMultiple &&
+      combobox.options.selectionOrder === "selected"
+    ) {
+      const selected = new Set(source.selectedOptions);
+      combobox.selectionOrder = this._selectionOrder.filter(
+        (option) => selected.has(option) && option.closest("select") === source,
+      );
+      for (const option of source.selectedOptions) {
+        if (!combobox.selectionOrder.includes(option)) combobox.selectionOrder.push(option);
+      }
+      combobox.refresh();
+    }
+    this._selectionOrder = null;
     this._combobox = combobox;
     this._source = source;
 
@@ -313,6 +331,10 @@ export class ComboBoxElement extends HTMLElement {
       this._rebuildQueued = false;
       if (!this.isConnected || !this._combobox) return;
       const source = this._source;
+      this._selectionOrder =
+        this._combobox.isMultiple && this._combobox.options.selectionOrder === "selected"
+          ? [...this._combobox.selectionOrder]
+          : null;
       this._combobox.dispose();
       this._combobox = null;
       this._source = source;

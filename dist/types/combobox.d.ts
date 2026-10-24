@@ -346,6 +346,8 @@ export declare class Combobox {
             label: HTMLLabelElement;
             id: string;
         }>;
+        /** @type {Map<string, string | null> | null} */
+        inputAccessible: Map<string, string | null> | null;
         /** @type {WeakMap<HTMLOptionElement, { filtered: string | null, active: string | null }>} */
         optionMarkers: WeakMap<HTMLOptionElement, {
             filtered: string | null;

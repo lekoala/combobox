@@ -1104,4 +1104,28 @@ test.describe("Superseded remote responses", () => {
     });
     expect(state).toEqual({ closed: true, reopened: false, explicit: true, focus: "outside" });
   });
+
+  test("a close during debounce cancels the pending opening intent", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      document.body.append(source);
+      const combo = new Combobox(source, {
+        debounce: 30,
+        load: async (query) => [{ value: query, label: query }],
+      });
+
+      const pendingClosed = combo.search("closed", { show: true, reason: "input" });
+      const hideResult = combo.hide();
+      await pendingClosed;
+      const afterClosedHide = combo.isOpen();
+
+      combo.show();
+      const pendingExternal = combo.search("external", { show: true, reason: "input" });
+      combo.popover.hidePopover();
+      await pendingExternal;
+      return { hideResult, afterClosedHide, afterExternalHide: combo.isOpen() };
+    });
+    expect(state).toEqual({ hideResult: false, afterClosedHide: false, afterExternalHide: false });
+  });
 });

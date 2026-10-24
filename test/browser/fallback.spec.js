@@ -557,4 +557,28 @@ test.describe("Fallback Add control state", () => {
     });
     expect(state).toEqual({ calls: 1, values: ["new"] });
   });
+
+  test("remove and clear guards receive the fallback Add input", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const source = document.createElement("select");
+      source.multiple = true;
+      source.add(new Option("A", "a", true, true));
+      source.add(new Option("B", "b", true, true));
+      document.body.append(source);
+      const inputs = [];
+      const combo = new Combobox(source, {
+        mode: "fallback",
+        create: true,
+        guards: {
+          remove: (_payload, context) => inputs.push(context.input),
+          clear: (_payload, context) => inputs.push(context.input),
+        },
+      });
+      await combo.remove("a");
+      await combo.clear();
+      const input = combo.fallbackControl.querySelector("input");
+      return inputs.map((candidate) => candidate === input);
+    });
+    expect(state).toEqual([true, true]);
+  });
 });

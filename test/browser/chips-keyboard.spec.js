@@ -59,6 +59,38 @@ test("ArrowLeft on an empty input focuses the last chip", async ({ page }) => {
   expect(active.kind).toContain("cb-chip");
 });
 
+test("IME composition leaves input navigation and chip removal to the browser", async ({ page }) => {
+  const state = await page.evaluate(() => {
+    const source = document.getElementById("overlimit");
+    const combo = Combobox.getInstance(source);
+    combo.input.focus();
+    combo.hide();
+    combo.input.dispatchEvent(new CompositionEvent("compositionstart"));
+    const native = [];
+    for (const key of ["ArrowDown", "PageDown", "ArrowLeft", "Backspace"]) {
+      native.push(
+        combo.input.dispatchEvent(
+          new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, isComposing: true }),
+        ),
+      );
+    }
+    return {
+      native,
+      open: combo.isOpen(),
+      active: combo.activeIndex,
+      focusedInput: document.activeElement === combo.input,
+      selected: [...source.selectedOptions].map((option) => option.value),
+    };
+  });
+  expect(state).toEqual({
+    native: [true, true, true, true],
+    open: false,
+    active: -1,
+    focusedInput: true,
+    selected: ["1", "2", "3"],
+  });
+});
+
 test("chips navigate with ArrowLeft/Right and hand focus back to the input", async ({ page }) => {
   const input = page.locator(inputLocator("overlimit"));
   await input.focus();
