@@ -7,7 +7,10 @@ test.beforeEach(async ({ page }) => {
   await setup(page, TAB_HTML);
 });
 
-test("default tabSelect (false): Tab moves focus out without selecting", async ({ page }) => {
+test("default tabSelect (false): Tab leaves the value untouched and does not block native traversal", async ({
+  page,
+  browserName,
+}) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   await page.evaluate(() => {
@@ -27,8 +30,11 @@ test("default tabSelect (false): Tab moves focus out without selecting", async (
       pickerClosed: !document.querySelector(".cb-popover")?.matches(":popover-open"),
     };
   });
+  // macOS WebKit leaves Tab traversal to the user's Safari preference: the
+  // component still must not select, must close, and must not preventDefault.
+  const tabTraversal = !(browserName === "webkit" && process.platform === "darwin");
   expect(state.value).toBe("");
-  expect(state.focusLeft).toBe(true);
+  expect(state.focusLeft).toBe(tabTraversal);
   expect(state.pickerClosed).toBe(true);
 });
 
@@ -69,7 +75,10 @@ test("tabSelect true: Tab commits the active option, keeps focus, hides, and fir
   expect(state.events).toEqual(["input", "change"]);
 });
 
-test("tabSelect true: Tab with nothing to commit keeps native traversal", async ({ page }) => {
+test("tabSelect true: Tab with nothing to commit keeps the value and native traversal policy", async ({
+  page,
+  browserName,
+}) => {
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   await page.evaluate(() => {
@@ -87,8 +96,9 @@ test("tabSelect true: Tab with nothing to commit keeps native traversal", async 
       focusLeft: document.activeElement?.id === "tab-after",
     };
   });
+  const tabTraversal = !(browserName === "webkit" && process.platform === "darwin");
   expect(state.value).toBe("");
-  expect(state.focusLeft).toBe(true);
+  expect(state.focusLeft).toBe(tabTraversal);
 });
 
 test("tabSelect true: preventDefault only when a commit is possible", async ({ page }) => {

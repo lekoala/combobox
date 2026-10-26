@@ -15,7 +15,7 @@ test.describe("Picker keyboard interaction", () => {
     test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   });
 
-  test("Home/End move the input caret and never hijack picker navigation", async ({ page }) => {
+  test("Home/End stay native and never hijack picker navigation", async ({ page, browserName }) => {
     await setup(page, FEATURES);
     await page.evaluate(() => {
       Combobox.getOrCreateInstance(document.getElementById("capped"));
@@ -24,6 +24,11 @@ test.describe("Picker keyboard interaction", () => {
     const input = page.locator(filter("capped"));
     await input.click();
     await input.fill("apple pineapple");
+    const length = await input.evaluate((el) => el.value.length);
+    // macOS Firefox/WebKit map Home/End to document scrolling rather than the
+    // input caret. The engine contract is that it never intercepts the key;
+    // assert the caret only where the platform moves it natively.
+    const nativeCaret = browserName === "chromium" || process.platform !== "darwin";
 
     await input.press("Home");
     const homeStart = await page.evaluate(() => {
@@ -42,10 +47,9 @@ test.describe("Picker keyboard interaction", () => {
       };
     });
 
-    expect(homeStart.start).toBe(0);
+    expect(homeStart.start).toBe(nativeCaret ? 0 : length);
     expect(homeStart.active).toBe(-1);
     expect(homeStart.open).toBe(true);
-    const length = await input.evaluate((el) => el.value.length);
     expect(endStart.start).toBe(length);
     expect(endStart.active).toBe(-1);
     expect(endStart.open).toBe(true);
