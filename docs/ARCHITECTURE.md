@@ -58,6 +58,46 @@ A native multiple select has selected values but does not naturally model “cho
 
 This avoids the common workaround of detaching and appending `<option>` elements merely to encode display order.
 
+### Ownership, authority and validity
+
+Every mutation path answers two questions: **who owns the state** and **which
+intent may still commit**.
+
+| State | Owner | Lifetime |
+|---|---|---|
+| Value (`selected`, input value, `FormData`) | the native source | durable |
+| Catalogue (`<option>`/`<optgroup>`, datalist) | the native source | durable |
+| Result store (remote candidates) | the engine | transient |
+| Selection order (`selectionOrder`) | the engine | durable by option identity |
+| Query, active row, open picker, pending creation | the engine | transient |
+
+The engine never keeps a shadow value. `select()`/`remove()`/`clear()` and
+creation write native state and then dispatch native events; `input+datalist`
+and `<select multiple>` keep their own value models.
+
+Three validity epochs name the authorities an asynchronous operation depends
+on:
+
+- `#editEpoch` — the user's typed intent (input value);
+- `#commitEpoch` — selection/value authority (native value events, programmatic
+  selection, effective form reset);
+- `#searchEpoch` / `#closeEpoch` — picker search and close intent.
+
+An operation captures the epochs of the authority it acts on and revalidates
+exactly after every `await`. Epochs answer "is this still the same intent?", not
+"how many commits happened": never compare unrelated epochs with arithmetic
+(an event handler may commit again).
+
+A **form reset is a selection-authority change**. An effective reset invalidates
+pending search, creation, removal and clear even when the restored selection is
+identical; a reset cancelled by `preventDefault()` invalidates nothing.
+A **rebuild** abandons transient state and preserves durable state (see the
+lifecycle table below); `dispose()` restores the native source and settles
+`whenReady()`.
+
+The active row is interaction state: it lives on generated rows and in ARIA,
+never on source options. `data-filtered` is the only option-level mirror.
+
 ## 3. DOM shape
 
 ### Input combobox
