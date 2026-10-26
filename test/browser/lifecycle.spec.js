@@ -334,10 +334,13 @@ test.describe("Pending operations and attribute restoration", () => {
     expect(state.ariaInvalid).toBe("true");
   });
 
-  test("dispose restores markers authored post-init and on datalist options", async ({ page }) => {
+  test("dispose restores data-filtered and leaves authored data-active-option untouched", async ({
+    page,
+  }) => {
     test.skip(!(await modernSupported(page)), MODERN);
     const state = await page.evaluate(async () => {
-      // Select: an option added after init with authored markers keeps them.
+      // Select: an option added after init with authored markers keeps both;
+      // data-filtered is restored, data-active-option is never written.
       const form = document.createElement("form");
       form.innerHTML = `<select name="choice" multiple><option value="a">A</option></select>`;
       document.body.append(form);

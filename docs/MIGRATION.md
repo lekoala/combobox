@@ -17,6 +17,15 @@ For migrations from other libraries, see [Tom Select](MIGRATION_FROM_TOM_SELECT.
 <combo-box create>
 ```
 
+## Upgrading to 0.8
+
+- The engine no longer writes `data-active-option` on source `<option>`s. The
+  active row is interaction state exposed through ARIA (`aria-activedescendant`,
+  `aria-selected`) and the generated `.cb-option[data-active]` rows. An
+  application-authored `data-active-option` is left untouched.
+- `data-filtered` remains the only option-level state mirror. It is still
+  restored exactly by `dispose()`.
+
 ## Migration is documentation, not runtime compatibility
 
 The new API is exactly two surfaces — the JavaScript engine and the `<combo-box>`

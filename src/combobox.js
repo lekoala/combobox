@@ -520,12 +520,6 @@ export class Combobox {
   #separatorKey = "";
   #splitTokens = prepareTokenSplitter([]);
 
-  /** @type {HTMLOptionElement | null} */
-  #activeOption = null;
-
-  /** @type {WeakSet<HTMLOptionElement>} */
-  #initializedActiveMarkers = new WeakSet();
-
   /**
    * Read the current default UI messages. Returns a shallow copy; mutating
    * the result does not affect the engine.
@@ -736,10 +730,10 @@ export class Combobox {
       // restores this baseline before resolving the source's current name.
       /** @type {Map<string, string | null> | null} */
       inputAccessible: null,
-      // native options whose mirror markers the engine overwrites; the
-      // authored values are snapshotted lazily on first write so datalist
+      // native options whose `data-filtered` marker the engine overwrites; the
+      // authored value is snapshotted lazily on first write so datalist
       // options and post-init additions are covered too
-      /** @type {WeakMap<HTMLOptionElement, { filtered: string | null, active: string | null }>} */
+      /** @type {WeakMap<HTMLOptionElement, { filtered: string | null }>} */
       optionMarkers: new WeakMap(),
     };
     /** @type {HTMLLabelElement[]} */
@@ -2182,22 +2176,23 @@ export class Combobox {
   }
 
   /**
-   * Write a presence marker mirroring picker state on a native option. The
-   * authored attribute values are snapshotted on the first write per option —
-   * lazily, so datalist options and options added after init (setOptions,
-   * observeSource, app mutations) are restored exactly by dispose() too.
+   * Write the `data-filtered` presence marker mirroring the picker's proposed
+   * filter state on a native option. The authored value is snapshotted on the
+   * first write per option — lazily, so datalist options and options added
+   * after init (setOptions, observeSource, app mutations) are restored exactly
+   * by dispose() too. The active row is deliberately *not* projected onto
+   * native options: it is interaction state owned by the picker and exposed
+   * through ARIA (`aria-activedescendant`, `aria-selected`).
    * @param {HTMLOptionElement} option
-   * @param {"data-filtered" | "data-active-option"} attribute
-   * @param {boolean} on
+   * @param {boolean} filtered
    */
-  #writeOptionMarker(option, attribute, on) {
+  #writeFilteredMarker(option, filtered) {
     if (!this.original.optionMarkers.has(option)) {
       this.original.optionMarkers.set(option, {
         filtered: option.getAttribute("data-filtered"),
-        active: option.getAttribute("data-active-option"),
       });
     }
-    if (option.hasAttribute(attribute) !== on) option.toggleAttribute(attribute, on);
+    if (option.hasAttribute("data-filtered") !== filtered) option.toggleAttribute("data-filtered", filtered);
   }
 
   /**
@@ -2213,11 +2208,7 @@ export class Combobox {
     const visibleOptions = new Set(visible.map((item) => item.option));
     for (const item of items) {
       if (!item.option) continue;
-      this.#writeOptionMarker(item.option, "data-filtered", !visibleOptions.has(item.option));
-      if (!this.#initializedActiveMarkers.has(item.option)) {
-        this.#writeOptionMarker(item.option, "data-active-option", false);
-        this.#initializedActiveMarkers.add(item.option);
-      }
+      this.#writeFilteredMarker(item.option, !visibleOptions.has(item.option));
     }
 
     this.#renderList();
@@ -2630,13 +2621,6 @@ export class Combobox {
     const visible = this.visibleItems;
     if (index >= visible.length) index = -1;
     this.activeIndex = index;
-
-    const activeOption = index >= 0 ? (visible[index]?.option ?? null) : null;
-    if (this.#activeOption !== activeOption) {
-      if (this.#activeOption) this.#writeOptionMarker(this.#activeOption, "data-active-option", false);
-      if (activeOption) this.#writeOptionMarker(activeOption, "data-active-option", true);
-      this.#activeOption = activeOption;
-    }
 
     const previous = this.#listEl().querySelector(".cb-option[data-active]");
     const next = index >= 0 ? this.#listEl().querySelector(`.cb-option[data-index="${index}"]`) : null;
@@ -3723,8 +3707,6 @@ export class Combobox {
         if (!marker) continue;
         if (marker.filtered === null) option.removeAttribute("data-filtered");
         else option.setAttribute("data-filtered", marker.filtered);
-        if (marker.active === null) option.removeAttribute("data-active-option");
-        else option.setAttribute("data-active-option", marker.active);
       }
     }
 

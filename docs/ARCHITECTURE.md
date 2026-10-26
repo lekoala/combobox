@@ -277,12 +277,15 @@ render
 
 If `beforefilter` is cancelled, the application owns filtering. It can asynchronously obtain data, call `setResults()`, then call `applyFilter()` without recursively firing `beforefilter`.
 
-Mirror Open UI-like future states today with data attributes (`data-filtered`, `data-active-option`). When interoperable native primitives ship, the adapter boundary can delegate more work to the platform without changing the public model.
+Mirror Open UI-like future states today with `data-filtered` on native options. When interoperable native primitives ship, the adapter boundary can delegate more work to the platform without changing the public model.
 
 `data-filtered` mirrors the dataset's *filtered* state, not the popup's
 *visibility*: it is present while a filter query is active, removed when the
 query becomes empty and on `dispose()`. Opening or closing the popup never
-touches it.
+touches it. The **active row** is picker interaction state and is deliberately
+not projected onto native options: it lives on the generated rows
+(`data-active`) and in ARIA (`aria-activedescendant`, `aria-selected`). An
+application-authored `data-active-option` is therefore never read or written.
 
 ## 6. Remote loading
 

@@ -910,8 +910,6 @@
     #boundLabelClicks = new WeakSet;
     #separatorKey = "";
     #splitTokens = prepareTokenSplitter([]);
-    #activeOption = null;
-    #initializedActiveMarkers = new WeakSet;
     static getDefaultMessages() {
       return getDefaultMessages();
     }
@@ -1968,15 +1966,14 @@
           this.loading = false;
       }
     }
-    #writeOptionMarker(option, attribute, on) {
+    #writeFilteredMarker(option, filtered) {
       if (!this.original.optionMarkers.has(option)) {
         this.original.optionMarkers.set(option, {
-          filtered: option.getAttribute("data-filtered"),
-          active: option.getAttribute("data-active-option")
+          filtered: option.getAttribute("data-filtered")
         });
       }
-      if (option.hasAttribute(attribute) !== on)
-        option.toggleAttribute(attribute, on);
+      if (option.hasAttribute("data-filtered") !== filtered)
+        option.toggleAttribute("data-filtered", filtered);
     }
     #applyFilter(query) {
       const items = this.#items();
@@ -1986,11 +1983,7 @@
       for (const item of items) {
         if (!item.option)
           continue;
-        this.#writeOptionMarker(item.option, "data-filtered", !visibleOptions.has(item.option));
-        if (!this.#initializedActiveMarkers.has(item.option)) {
-          this.#writeOptionMarker(item.option, "data-active-option", false);
-          this.#initializedActiveMarkers.add(item.option);
-        }
+        this.#writeFilteredMarker(item.option, !visibleOptions.has(item.option));
       }
       this.#renderList();
       this.#setActive(this.options.autoselectFirst ? this.visibleItems.findIndex((item) => !item.disabled) : -1);
@@ -2278,14 +2271,6 @@
       if (index >= visible.length)
         index = -1;
       this.activeIndex = index;
-      const activeOption = index >= 0 ? visible[index]?.option ?? null : null;
-      if (this.#activeOption !== activeOption) {
-        if (this.#activeOption)
-          this.#writeOptionMarker(this.#activeOption, "data-active-option", false);
-        if (activeOption)
-          this.#writeOptionMarker(activeOption, "data-active-option", true);
-        this.#activeOption = activeOption;
-      }
       const previous = this.#listEl().querySelector(".cb-option[data-active]");
       const next = index >= 0 ? this.#listEl().querySelector(`.cb-option[data-index="${index}"]`) : null;
       if (previous !== next) {
@@ -3026,10 +3011,6 @@
             option.removeAttribute("data-filtered");
           else
             option.setAttribute("data-filtered", marker.filtered);
-          if (marker.active === null)
-            option.removeAttribute("data-active-option");
-          else
-            option.setAttribute("data-active-option", marker.active);
         }
       }
       for (const { label, id } of this.original.inventedLabels) {

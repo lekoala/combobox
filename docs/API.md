@@ -409,6 +409,9 @@ match carry the attribute; it is removed as soon as the query is empty and on
 `dispose()`. Opening or closing the popup does **not** touch it: visibility and
 filtering are orthogonal. Apps may style or query `[data-filtered]` as their
 temporary `:filtered` while the native primitive is not yet interoperable.
+The active row is picker interaction state, exposed only through ARIA on the
+interaction input and the generated rows; the engine never writes an
+application-authored `data-active-option` on source options.
 
 ### `search(query, options)`
 
@@ -849,7 +852,7 @@ combo.refresh();
 combo.dispose();
 ```
 
-`dispose()` must restore everything the enhancer changed, including datalist linkage and explicit sibling filter-input placement/visibility. That covers `disabled`/`readonly` driven onto an authored filter input, `aria-invalid` cleared by value commits, and preexisting `data-filtered`/`data-active-option` markers on native options. Operations still pending at dispose time (guard, create, load) resolve without mutating the source.
+`dispose()` must restore everything the enhancer changed, including datalist linkage and explicit sibling filter-input placement/visibility. That covers `disabled`/`readonly` driven onto an authored filter input, `aria-invalid` cleared by value commits, and preexisting `data-filtered` markers on native options. Operations still pending at dispose time (guard, create, load) resolve without mutating the source.
 
 Disposal is idempotent: a stale reference cannot unregister or restore over a
 newer instance. On a disposed instance, `refresh()` and `applyFilter()` return the

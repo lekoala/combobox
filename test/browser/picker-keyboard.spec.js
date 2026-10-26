@@ -415,12 +415,10 @@ test.describe("Picker keyboard interaction", () => {
   }
 });
 
-test.describe("Active option markers and navigation cost", () => {
+test.describe("Filtered markers and navigation cost", () => {
   const FIXTURE = "/test/fixtures/elements.html";
 
-  test("keyboard activation avoids catalogue reads and restores authored markers on dispose", async ({
-    page,
-  }) => {
+  test("navigation never projects the active row and authored markers survive dispose", async ({ page }) => {
     await setup(page, FIXTURE);
     const state = await page.evaluate(async () => {
       const select = document.createElement("select");
@@ -447,21 +445,22 @@ test.describe("Active option markers and navigation cost", () => {
           new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
         );
       }
-      const active = Array.from(select.options, (option) => option.hasAttribute("data-active-option"));
+      const active = Array.from(select.options, (option) => option.getAttribute("data-active-option"));
       const descendant = document.getElementById(
         combo.input.getAttribute("aria-activedescendant"),
       )?.textContent;
       const navigationReads = reads;
       await combo.search("Gamma");
-      const cleared = Array.from(select.options).every(
-        (option) => !option.hasAttribute("data-active-option"),
-      );
+      const during = Array.from(select.options, (option) => [
+        option.getAttribute("data-active-option"),
+        option.getAttribute("data-filtered"),
+      ]);
       combo.dispose();
       return {
         active,
         descendant,
         navigationReads,
-        cleared,
+        during,
         markers: Array.from(select.options, (option) => [
           option.getAttribute("data-active-option"),
           option.getAttribute("data-filtered"),
@@ -469,10 +468,17 @@ test.describe("Active option markers and navigation cost", () => {
         selected: Array.from(select.selectedOptions, (option) => option.value),
       };
     });
-    expect(state.active).toEqual([false, true, false]);
+    // The active row lives in the picker (data-active on generated rows) and in
+    // ARIA; it is never written back onto native options.
+    expect(state.active).toEqual(["authored", null, null]);
     expect(state.descendant).toBe("Beta");
     expect(state.navigationReads).toBe(0);
-    expect(state.cleared).toBe(true);
+    // Authored data-active-option stays untouched by filtering too.
+    expect(state.during).toEqual([
+      ["authored", ""],
+      [null, ""],
+      [null, null],
+    ]);
     expect(state.markers).toEqual([
       ["authored", "original"],
       [null, null],
