@@ -2416,7 +2416,11 @@
         this.hide();
         this.refresh();
       }
+      if (!this.#alive())
+        return true;
       emit(this.source, "combobox:select", { combobox: this, item });
+      if (!this.#alive())
+        return true;
       this.#markEngineMutation();
       return true;
     }
@@ -2583,6 +2587,8 @@
         option.remove();
         return null;
       }
+      if (!this.#alive())
+        return null;
       const item = {
         ...created,
         option,
@@ -2789,7 +2795,11 @@
       option.selected = false;
       this.#forgetSelection(option);
       this.#commit();
+      if (!this.#alive())
+        return true;
       emit(this.source, "combobox:remove", { combobox: this, item });
+      if (!this.#alive())
+        return true;
       this.#markEngineMutation();
       return true;
     }
@@ -2817,7 +2827,11 @@
         this.source.value = "";
         this.#dispatchNativeValueEvents();
         this.refresh();
+        if (!this.#alive())
+          return true;
         emit(this.source, "combobox:clear", { combobox: this });
+        if (!this.#alive())
+          return true;
         this.#markEngineMutation();
         return true;
       }
@@ -2845,7 +2859,11 @@
         option.selected = false;
       this.selectionOrder = this.selectionOrder.filter((option) => option.selected);
       this.#commit();
+      if (!this.#alive())
+        return true;
       emit(this.source, "combobox:clear", { combobox: this });
+      if (!this.#alive())
+        return true;
       this.#markEngineMutation();
       return true;
     }
@@ -2878,6 +2896,8 @@
       this.#renderChips();
       if (valueChanged)
         this.#dispatchNativeValueEvents();
+      if (!this.#alive())
+        return true;
       emit(this.source, "combobox:reorder", {
         combobox: this,
         value: option.value,

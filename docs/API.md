@@ -857,6 +857,10 @@ combo.dispose();
 Disposal is idempotent: a stale reference cannot unregister or restore over a
 newer instance. On a disposed instance, `refresh()` and `applyFilter()` return the
 instance without rendering or mutating the source; `show()` returns `false`.
+A disposed instance emits no lifecycle or error event: if native `input`/`change`
+delivery disposes it, the commit still happened but the following
+`combobox:select`, `combobox:remove`, `combobox:clear`, `combobox:reorder` or
+`combobox:create` is not emitted.
 
 ## Events
 

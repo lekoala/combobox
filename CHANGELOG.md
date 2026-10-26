@@ -22,7 +22,7 @@ The changelog highlights user-facing changes rather than listing every build, de
 ### Fixed
 
 - An effective `form.reset()` now invalidates pending search, creation, removal and clear operations even when it restores the same native selection; a cancelled reset invalidates nothing.
-- A superseded asynchronous creation can no longer overwrite a newer edit, selection or reset, and a disposed instance emits no late `guarderror`, `createerror` or `select`.
+- A superseded asynchronous creation can no longer overwrite a newer edit, selection or reset, and a disposed instance emits no late lifecycle or error event (`select`, `create`, `remove`, `clear`, `reorder`, `guarderror`, `createerror`), including when disposed from a native `input`/`change` handler.
 
 ## [0.7.3] - 2026-10-24
 

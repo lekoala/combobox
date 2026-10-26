@@ -2866,7 +2866,13 @@ export class Combobox {
       this.refresh();
     }
 
+    // Native input/change handlers run before combobox:select and may dispose
+    // the instance. The native commit already happened, so the operation still
+    // reports success, but a dead engine must not emit or touch its observer.
+    if (!this.#alive()) return true;
     emit(this.source, "combobox:select", { combobox: this, item });
+    // A combobox:select handler may dispose synchronously too.
+    if (!this.#alive()) return true;
     this.#markEngineMutation();
     return true;
   }
@@ -3112,6 +3118,9 @@ export class Combobox {
       option.remove();
       return null;
     }
+    // A native change handler may have disposed the instance. The native
+    // commit stands, but no creation event belongs to a dead engine.
+    if (!this.#alive()) return null;
     const item = /** @type {import("./helpers.js").ComboboxItem & { option: HTMLOptionElement }} */ ({
       ...created,
       option,
@@ -3436,7 +3445,12 @@ export class Combobox {
     option.selected = false;
     this.#forgetSelection(option);
     this.#commit();
+    // A native change handler may dispose the instance. The native removal
+    // already happened and the call reports success, but a dead engine emits
+    // nothing.
+    if (!this.#alive()) return true;
     emit(this.source, "combobox:remove", { combobox: this, item });
+    if (!this.#alive()) return true;
     this.#markEngineMutation();
     return true;
   }
@@ -3471,7 +3485,9 @@ export class Combobox {
       this.#dispatchNativeValueEvents();
       // The source is the interaction input: the emptied text is the query.
       this.refresh();
+      if (!this.#alive()) return true;
       emit(this.source, "combobox:clear", { combobox: this });
+      if (!this.#alive()) return true;
       this.#markEngineMutation();
       return true;
     }
@@ -3498,7 +3514,9 @@ export class Combobox {
     for (const option of selected) option.selected = false;
     this.selectionOrder = this.selectionOrder.filter((option) => option.selected);
     this.#commit();
+    if (!this.#alive()) return true;
     emit(this.source, "combobox:clear", { combobox: this });
+    if (!this.#alive()) return true;
     this.#markEngineMutation();
     return true;
   }
@@ -3563,6 +3581,9 @@ export class Combobox {
     this.selectionOrder = nextOrder;
     this.#renderChips();
     if (valueChanged) this.#dispatchNativeValueEvents();
+    // A native change handler may dispose the instance; the reordered order is
+    // already committed, but a dead engine emits nothing.
+    if (!this.#alive()) return true;
     emit(this.source, "combobox:reorder", {
       combobox: this,
       value: option.value,
