@@ -395,7 +395,45 @@ Multiple chips:
 
 No virtual caret positions between chips. Reordering chip keyboard support landed together with ordered mode (`Alt+Arrow/Home/End`, live position announcement).
 
-## 10. Fallback policy
+## 10. Creation pipeline
+
+The enhanced picker, the native fallback and separator tokens run one pipeline
+(`#create`). Resolution is contractual: an existing native option always wins
+over materializing a new one.
+
+```text
+eligibility (Enter/Tab/create row/createOnBlur: #mayConsume)
+→ wait for the creation in flight
+→ revalidate the intent (alive, lock, reset, edit, commit, exact selection)
+→ existing match
+    · already selected → idempotent success: consume the text, no value event
+    · not selected     → #selectItem (maxItems, disabled, beforeselect)
+→ canCreate (create, createFilter, maxItems)
+→ guards.add
+→ combobox:beforecreate
+→ async create
+→ revalidate (alive, intent, maxItems, option appeared meanwhile)
+→ addOption
+→ combobox:beforeselect
+→ native commit (input, change, combobox:select)
+→ combobox:create + UI cleanup
+```
+
+Entry eligibility (`#mayConsume`) accepts an already-selected match even at
+`maxItems`, because consuming it is not an addition. Selecting an existing
+unselected option still requires creation to be allowed; tokenization is the
+one exception (a token may select any existing match without `create`).
+`guards.add` therefore runs for brand-new creations only, and a refused
+selection, guard or `beforecreate` leaves the typed text editable.
+
+One creation runs at a time. A repeated intent waits for the creation in
+flight, then revalidates the intent it captured at entry: a newer edit,
+selection, effective reset or disposal wins and nothing is committed. The
+fallback Add control shares this primitive and only owns its own input
+cleanup; the token queue stays separate because tokens are sequenced, not
+mutually exclusive.
+
+## 11. Fallback policy
 
 Fallback is not a second combobox engine.
 
@@ -411,7 +449,7 @@ Not allowed:
 - modal parent hacks;
 - partial recreation of advanced enhanced behavior.
 
-## 11. Target implementation split
+## 12. Target implementation split
 
 Do not split merely for file count. The stabilized split keeps the pure seams
 isolated and the orchestration in one place:

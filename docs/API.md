@@ -556,6 +556,12 @@ vetoed by `combobox:beforeselect`, the loading row is replaced with the normal
 search rows. Input text and native selection remain editable and unchanged by
 the refused creation. Errors emit `combobox:createerror`; an `AbortError` is
 silent. Completion never opens a closed picker merely to clear loading state.
+An existing option always wins over creating a new one. A match that is already
+selected is an idempotent success — the typed text is consumed, native selection
+and `FormData` do not change, and no `input`, `change` or `combobox:select`
+fires (even at `maxItems`). A match that is not selected is selected through the
+normal `beforeselect`/native commit path, and selecting it is still gated by
+`create`/`createFilter` outside tokenization.
 Only one creation runs at a time: a repeated Enter/Tab/blur (or Add click) while
 `create()` is pending waits for it and then resolves the term against the option
 just created, so it never creates a twin.

@@ -482,7 +482,7 @@ export class Combobox {
   /** @type {Promise<void>} Serialized token-batch queue (see #enqueueTokens). */
   #tokenQueue = Promise.resolve();
 
-  /** @type {Promise<unknown> | null} The creation in flight (see #createItem). */
+  /** @type {Promise<unknown> | null} The creation in flight (see #create). */
   #pendingCreation = null;
 
   // Validity has three separate levels; never merge them:
@@ -904,7 +904,7 @@ export class Combobox {
       // The input is cleared only on a real selection or creation (an existing
       // native match by normalized value or label now selects instead of
       // creating a duplicate native option). On refusal the text stays editable.
-      const option = await this.#createFallbackOption(label, input);
+      const option = await this.#create(label, { input, fallback: true });
       if (!this.#alive() || this.#isLocked() || this.#resetPending || input.value !== value) return;
       if (edit !== this.#editEpoch || this.#commitEpoch > commit + 1) return;
       if (option) input.value = "";
@@ -946,50 +946,6 @@ export class Combobox {
     for (const control of this.fallbackControl.querySelectorAll("input, button")) {
       mirrorDisabled(/** @type {HTMLInputElement | HTMLButtonElement} */ (control), disabled);
     }
-  }
-
-  /**
-   * Native-fallback creation. Runs the same decision pipeline as the enhanced
-   * path: existing native match by value **or** label is selected, else the
-   * shared `#materializeCreated` guard/create pipeline runs with the fallback
-   * Add control as the context input (never `null`).
-   * @param {string} label
-   * @param {HTMLInputElement} input The fallback Add control
-   * @returns {Promise<HTMLOptionElement | null>}
-   */
-  async #createFallbackOption(label, input) {
-    const isCurrent = this.#creationIntent(input);
-    if (this.#pendingCreation && !(await this.#creationSettled())) return null;
-    if (!isCurrent()) return null;
-    if (!this.#canCreate(label, input)) return null;
-
-    const existing = this.#findCreateMatch(label);
-    if (existing) {
-      const option = existing.option;
-      if (option && !isOptionDisabled(option)) {
-        // No-op re-entries are idempotent and must not fire value events.
-        // A fresh selection runs the same beforeselect gate as the enhanced
-        // path, so one rule covers every addition on both paths.
-        if (!option.selected) {
-          const item = { ...existing, option, selected: true };
-          const before = emit(
-            this.source,
-            "combobox:beforeselect",
-            { combobox: this, item },
-            { cancelable: true },
-          );
-          if (before.defaultPrevented || !this.#alive()) return null;
-          option.selected = true;
-          this.#rememberSelection(option);
-          this.#dispatchNativeValueEvents();
-          emit(this.source, "combobox:select", { combobox: this, item });
-        }
-      }
-      return option && !isOptionDisabled(option) ? option : null;
-    }
-
-    const item = await this.#materializeCreated(label, input, { fallback: true });
-    return item?.option ?? null;
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1769,7 +1725,9 @@ export class Combobox {
       if (!option) return;
       if (option.classList.contains("cb-create")) {
         const query = this.#inputEl().value.trim();
-        if (query) void this.#createItem(query);
+        if (query && this.#mayConsume(query)) {
+          void this.#create(query, { input: this.#inputEl() });
+        }
         return;
       }
       const item = this.visibleItems[Number(/** @type {HTMLElement} */ (option).dataset.index)];
@@ -1864,11 +1822,11 @@ export class Combobox {
                   this.#inputEl().value = result.rest;
                 }
               });
-            } else if (value.trim()) {
+            } else if (value.trim() && this.#mayConsume(value.trim())) {
               // The input clears only once the creation actually landed:
               // a refused guard, a cancelled beforecreate or a vetoed
               // beforeselect leaves the typed text editable.
-              await this.#createItem(value.trim());
+              await this.#create(value.trim(), { input: this.#inputEl() });
             }
           } finally {
             this.#suppressReopen = false;
@@ -1943,9 +1901,9 @@ export class Combobox {
         if (!this.#toggleSelected(active)) {
           this.#selectItem(active, { keepQuery: this.isMultiple && this.options.toggleSelected });
         }
-      } else if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
+      } else if (this.#mayConsume(this.#inputEl().value)) {
         event.preventDefault();
-        void this.#createItem(this.#inputEl().value.trim());
+        void this.#create(this.#inputEl().value.trim(), { input: this.#inputEl() });
       }
       return;
     }
@@ -1976,9 +1934,9 @@ export class Combobox {
           }
           return;
         }
-        if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
+        if (this.#mayConsume(this.#inputEl().value)) {
           event.preventDefault();
-          void this.#createItem(this.#inputEl().value.trim());
+          void this.#create(this.#inputEl().value.trim(), { input: this.#inputEl() });
           return;
         }
         this.hide();
@@ -2287,6 +2245,22 @@ export class Combobox {
       return this.options.createFilter(value, { combobox: this, source: this.source, input }) !== false;
     }
     return true;
+  }
+
+  /**
+   * Entry eligibility for the enhanced interaction points (Enter, Tab, create
+   * row, createOnBlur). An already-selected native match is always consumable
+   * — even at `maxItems` — because it is an idempotent success, not an
+   * addition. Everything else still requires creation to be allowed.
+   * @param {string | null | undefined} label
+   * @returns {boolean}
+   */
+  #mayConsume(label) {
+    const value = String(label ?? "").trim();
+    if (!value) return false;
+    const existing = this.#findCreateMatch(value);
+    if (existing && !existing.disabled && existing.option?.selected) return true;
+    return this.#canCreate(value, this.#inputEl());
   }
 
   /* ---------------------------------------------------------------------- */
@@ -2914,44 +2888,88 @@ export class Combobox {
   }
 
   /**
+   * The single creation pipeline shared by the enhanced picker, the native
+   * fallback and tokenization. Resolution is contractual: an existing native
+   * match always wins over materializing a new option.
+   *
+   *   eligibility (callers use `#mayConsume` for Enter/Tab/create row/blur)
+   *   → wait for the creation in flight
+   *   → revalidate the intent
+   *   → existing match (already selected: idempotent success; otherwise select)
+   *   → canCreate → guards.add → combobox:beforecreate → async create
+   *   → revalidate (alive, intent, maxItems, match appeared meanwhile)
+   *   → addOption → combobox:beforeselect → native commit → events/UI cleanup
+   *
+   * An existing match that is already selected consumes the text without any
+   * value event, and `maxItems` never turns that idempotent success into a
+   * refusal. Tokenization is the one exception to the `create` gate: a token
+   * may select any existing native match even when creation is disabled.
    * @param {string} label
-   * @param {{ token?: boolean }} [options]
+   * @param {{ input?: HTMLInputElement, token?: boolean, fallback?: boolean }} [options]
    * @returns {Promise<HTMLOptionElement | null>}
    */
-  async #createItem(label, { token = false } = {}) {
-    const isCurrent = this.#creationIntent(this.#inputEl(), { token });
-    if (this.#pendingCreation && !(await this.#creationSettled())) return null;
-    if (!isCurrent()) return null;
-    if (!this.#canCreate(label, this.#inputEl())) return null;
+  async #create(label, { input = this.#inputEl(), token = false, fallback = false } = {}) {
+    const term = String(label ?? "").trim();
+    if (!term) return null;
 
-    const existing = this.#findCreateMatch(label);
-    if (existing) {
-      // An already-selected match is an idempotent success; a refused
-      // selection fails the creation so callers keep the text editable.
-      if (existing.disabled) return null;
-      if (existing.option?.selected) return existing.option;
-      return this.#selectItem(existing) ? (existing.option ?? null) : null;
-    }
-
-    // guards.add is about creating a brand-new item; existing matches are
-    // selected above without running it.
-    const commit = this.#commitEpoch;
     const edit = this.#editEpoch;
-    const item = await this.#materializeCreated(label, this.#inputEl(), { token });
-    if (!item || !this.#alive()) return null;
-    if (token) return item.option;
-    // Selection already updates the input. Event handlers may have started a
-    // newer edit, selection or reset before this continuation gets to clean up.
-    if (
-      this.#isLocked() ||
-      this.#resetPending ||
-      this.#commitEpoch !== commit + 1 ||
-      this.#editEpoch !== edit
-    )
-      return item.option;
-    if (this.#inputEl().value !== (this.isMultiple ? "" : item.label)) return item.option;
+    const commit = this.#commitEpoch;
+    const value = input.value;
+    // Captured before settling a concurrent creation so an edit or selection
+    // that lands while this intent waits invalidates it.
+    const isCurrent = this.#creationIntent(input, { token });
 
-    this.#inputEl().value = "";
+    const result = await this.#serializeCreation(async () => {
+      if (!isCurrent()) return null;
+
+      const existing = this.#findCreateMatch(term);
+      if (existing) {
+        if (existing.disabled) return null;
+        if (existing.option?.selected) {
+          // Idempotent success: consume the text, mutate nothing, emit nothing.
+          return { option: existing.option, item: existing, committed: false, idempotent: true };
+        }
+        // Outside tokenization, creation stays the gate for selecting an
+        // existing option (a disabled `create` and a `createFilter` refusal
+        // both block it). A token may select any available native match.
+        if (!token && !this.#canCreate(term, input)) return null;
+        // #selectItem owns the full UI for a fresh selection.
+        if (!this.#selectItem(existing, { keepQuery: token })) return null;
+        return { option: existing.option ?? null, item: existing, committed: true };
+      }
+
+      if (!this.#canCreate(term, input)) return null;
+      const item = await this.#runCreation(term, input, { token, fallback });
+      return item ? { option: item.option, item, committed: true, created: true } : null;
+    });
+
+    if (!result) return null;
+    // Token batches and the fallback Add control own their text cleanup.
+    if (token || fallback) return result.option;
+    // #selectItem already performed the commit and the UI transition.
+    if (!result.created && !result.idempotent) return result.option;
+
+    // Enhanced cleanup is part of the pipeline outcome. Selection already
+    // updates the input; an event handler may have started a newer edit,
+    // selection or reset before this continuation gets to clean up.
+    if (!this.#alive() || this.#isLocked() || this.#resetPending) return result.option;
+    if (this.#editEpoch !== edit) return result.option;
+    // A fresh creation commits exactly one value event; an idempotent match
+    // commits none.
+    if (this.#commitEpoch !== commit + (result.committed ? 1 : 0)) return result.option;
+    const expected = result.committed ? (this.isMultiple ? "" : result.item.label) : value;
+    if (input.value !== expected) return result.option;
+
+    input.value = "";
+    if (result.idempotent) {
+      // No native mutation: reflect the emptied query without a new search
+      // (a remote load must not run for a no-op).
+      if (!this.#suppressReopen) {
+        if (this.isMultiple) this.refresh();
+        else this.hide();
+      }
+      return result.option;
+    }
     if (this.isMultiple) {
       if (this.#suppressReopen) this.refresh();
       else if (this.#closeOnSelect()) this.hide();
@@ -2960,7 +2978,7 @@ export class Combobox {
       this.hide();
     }
     this.#markEngineMutation();
-    return item.option;
+    return result.option;
   }
 
   /**
@@ -2993,23 +3011,21 @@ export class Combobox {
   }
 
   /**
-   * Shared create pipeline for the enhanced picker and the native fallback:
-   * guard → `combobox:beforecreate` → async `create` → materialize → native
-   * events → `combobox:create`. Keeping both paths on one primitive guarantees
-   * the same contract — same guard context input, same existing-value
-   * resolution, same created-option shape.
-   *
-   * The caller already ruled out an existing native match and ran
-   * `#canCreate`. Materialization goes through `addOption` so group/disabled/
-   * `allowEmptyOption` rules are identical on both paths.
-   * @param {string} label
-   * @param {HTMLInputElement} input The interaction input exposed on the
-   *   `create` and guard contexts.
-   * @param {{ fallback?: boolean, token?: boolean }} [options]
-   * @returns {Promise<import("./helpers.js").ComboboxItem & { option: HTMLOptionElement } | null>}
+   * Serialize creation per instance: a repeated Enter/Tab/blur/Add (or a token)
+   * while a creation is pending waits for it instead of racing a second node
+   * into the catalogue. The caller revalidates its intent after the wait, so a
+   * stale intent never wins over a newer edit, selection or reset.
+   * Intentional catalogue duplicates are untouched.
+   * @template T
+   * @param {() => Promise<T>} operation
+   * @returns {Promise<T | null>} Null when the instance died meanwhile.
    */
-  async #materializeCreated(label, input, options = {}) {
-    const pending = this.#runCreation(label, input, options);
+  async #serializeCreation(operation) {
+    while (this.#pendingCreation) {
+      await this.#pendingCreation;
+      if (!this.#alive()) return null;
+    }
+    const pending = operation();
     this.#pendingCreation = pending.catch(() => {});
     try {
       return await pending;
@@ -3019,21 +3035,9 @@ export class Combobox {
   }
 
   /**
-   * One creation at a time: a repeated Enter/Tab/blur/Add while a creation is
-   * pending waits for it, so the caller's match lookup then selects (or
-   * idempotently accepts) the option just created instead of creating a twin.
-   * Intentional catalogue duplicates are untouched.
-   * @returns {Promise<boolean>} False when the instance died meanwhile.
-   */
-  async #creationSettled() {
-    while (this.#pendingCreation) {
-      await this.#pendingCreation;
-      if (!this.#alive()) return false;
-    }
-    return true;
-  }
-
-  /**
+   * Guard/create half of the pipeline, run once the caller resolved the match
+   * and allowed creation. Materialization goes through `addOption` so group/
+   * disabled/`allowEmptyOption` rules are identical on every path.
    * @param {string} label
    * @param {HTMLInputElement} input
    * @param {{ fallback?: boolean, token?: boolean }} [options]
@@ -3264,9 +3268,9 @@ export class Combobox {
     return { consumed: true, rest };
   }
 
-  /** Apply one token: existing option wins, otherwise guarded creation. A
-   * refused selection is not consumed: the token text stays in the input.
-   * An already-selected option is a no-op success and is consumed. */
+  /** Apply one token through the shared creation pipeline. A refused
+   * selection is not consumed: the token text stays in the input. An
+   * already-selected option is a no-op success and is consumed. */
   /**
    * @param {string | null | undefined} text
    * @returns {Promise<boolean>}
@@ -3274,15 +3278,7 @@ export class Combobox {
   async #applyToken(text) {
     const term = String(text ?? "").trim();
     if (!term) return true;
-
-    const existing = this.#findCreateMatch(term);
-    if (existing) {
-      if (existing.disabled) return false;
-      if (existing.option?.selected) return true;
-      return this.#selectItem(existing, { keepQuery: true });
-    }
-    if (!this.#canCreate(term, this.#inputEl())) return false;
-    const created = await this.#createItem(term, { token: true });
+    const created = await this.#create(term, { input: this.#inputEl(), token: true });
     return created !== null;
   }
 

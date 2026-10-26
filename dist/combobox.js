@@ -1088,7 +1088,7 @@
         const commit = this.#commitEpoch;
         const edit = this.#editEpoch;
         const value = input.value;
-        const option = await this.#createFallbackOption(label, input);
+        const option = await this.#create(label, { input, fallback: true });
         if (!this.#alive() || this.#isLocked() || this.#resetPending || input.value !== value)
           return;
         if (edit !== this.#editEpoch || this.#commitEpoch > commit + 1)
@@ -1122,34 +1122,6 @@
       for (const control of this.fallbackControl.querySelectorAll("input, button")) {
         mirrorDisabled(control, disabled);
       }
-    }
-    async#createFallbackOption(label, input) {
-      const isCurrent = this.#creationIntent(input);
-      if (this.#pendingCreation && !await this.#creationSettled())
-        return null;
-      if (!isCurrent())
-        return null;
-      if (!this.#canCreate(label, input))
-        return null;
-      const existing = this.#findCreateMatch(label);
-      if (existing) {
-        const option = existing.option;
-        if (option && !isOptionDisabled(option)) {
-          if (!option.selected) {
-            const item = { ...existing, option, selected: true };
-            const before = emit(this.source, "combobox:beforeselect", { combobox: this, item }, { cancelable: true });
-            if (before.defaultPrevented || !this.#alive())
-              return null;
-            option.selected = true;
-            this.#rememberSelection(option);
-            this.#dispatchNativeValueEvents();
-            emit(this.source, "combobox:select", { combobox: this, item });
-          }
-        }
-        return option && !isOptionDisabled(option) ? option : null;
-      }
-      const item = await this.#materializeCreated(label, input, { fallback: true });
-      return item?.option ?? null;
     }
     #enhanceInput(source) {
       const listId = source.getAttribute("list");
@@ -1667,8 +1639,9 @@
           return;
         if (option.classList.contains("cb-create")) {
           const query = this.#inputEl().value.trim();
-          if (query)
-            this.#createItem(query);
+          if (query && this.#mayConsume(query)) {
+            this.#create(query, { input: this.#inputEl() });
+          }
           return;
         }
         const item = this.visibleItems[Number(option.dataset.index)];
@@ -1735,8 +1708,8 @@
                     this.#inputEl().value = result.rest;
                   }
                 });
-              } else if (value.trim()) {
-                await this.#createItem(value.trim());
+              } else if (value.trim() && this.#mayConsume(value.trim())) {
+                await this.#create(value.trim(), { input: this.#inputEl() });
               }
             } finally {
               this.#suppressReopen = false;
@@ -1803,9 +1776,9 @@
           if (!this.#toggleSelected(active)) {
             this.#selectItem(active, { keepQuery: this.isMultiple && this.options.toggleSelected });
           }
-        } else if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
+        } else if (this.#mayConsume(this.#inputEl().value)) {
           event.preventDefault();
-          this.#createItem(this.#inputEl().value.trim());
+          this.#create(this.#inputEl().value.trim(), { input: this.#inputEl() });
         }
         return;
       }
@@ -1827,9 +1800,9 @@
             }
             return;
           }
-          if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
+          if (this.#mayConsume(this.#inputEl().value)) {
             event.preventDefault();
-            this.#createItem(this.#inputEl().value.trim());
+            this.#create(this.#inputEl().value.trim(), { input: this.#inputEl() });
             return;
           }
           this.hide();
@@ -2032,6 +2005,15 @@
         return this.options.createFilter(value, { combobox: this, source: this.source, input }) !== false;
       }
       return true;
+    }
+    #mayConsume(label) {
+      const value = String(label ?? "").trim();
+      if (!value)
+        return false;
+      const existing = this.#findCreateMatch(value);
+      if (existing && !existing.disabled && existing.option?.selected)
+        return true;
+      return this.#canCreate(value, this.#inputEl());
     }
     #renderList() {
       this.#listEl().replaceChildren();
@@ -2453,34 +2435,60 @@
       this.#markEngineMutation();
       return true;
     }
-    async#createItem(label, { token = false } = {}) {
-      const isCurrent = this.#creationIntent(this.#inputEl(), { token });
-      if (this.#pendingCreation && !await this.#creationSettled())
+    async#create(label, { input = this.#inputEl(), token = false, fallback = false } = {}) {
+      const term = String(label ?? "").trim();
+      if (!term)
         return null;
-      if (!isCurrent())
-        return null;
-      if (!this.#canCreate(label, this.#inputEl()))
-        return null;
-      const existing = this.#findCreateMatch(label);
-      if (existing) {
-        if (existing.disabled)
-          return null;
-        if (existing.option?.selected)
-          return existing.option;
-        return this.#selectItem(existing) ? existing.option ?? null : null;
-      }
-      const commit = this.#commitEpoch;
       const edit = this.#editEpoch;
-      const item = await this.#materializeCreated(label, this.#inputEl(), { token });
-      if (!item || !this.#alive())
+      const commit = this.#commitEpoch;
+      const value = input.value;
+      const isCurrent = this.#creationIntent(input, { token });
+      const result = await this.#serializeCreation(async () => {
+        if (!isCurrent())
+          return null;
+        const existing = this.#findCreateMatch(term);
+        if (existing) {
+          if (existing.disabled)
+            return null;
+          if (existing.option?.selected) {
+            return { option: existing.option, item: existing, committed: false, idempotent: true };
+          }
+          if (!token && !this.#canCreate(term, input))
+            return null;
+          if (!this.#selectItem(existing, { keepQuery: token }))
+            return null;
+          return { option: existing.option ?? null, item: existing, committed: true };
+        }
+        if (!this.#canCreate(term, input))
+          return null;
+        const item = await this.#runCreation(term, input, { token, fallback });
+        return item ? { option: item.option, item, committed: true, created: true } : null;
+      });
+      if (!result)
         return null;
-      if (token)
-        return item.option;
-      if (this.#isLocked() || this.#resetPending || this.#commitEpoch !== commit + 1 || this.#editEpoch !== edit)
-        return item.option;
-      if (this.#inputEl().value !== (this.isMultiple ? "" : item.label))
-        return item.option;
-      this.#inputEl().value = "";
+      if (token || fallback)
+        return result.option;
+      if (!result.created && !result.idempotent)
+        return result.option;
+      if (!this.#alive() || this.#isLocked() || this.#resetPending)
+        return result.option;
+      if (this.#editEpoch !== edit)
+        return result.option;
+      if (this.#commitEpoch !== commit + (result.committed ? 1 : 0))
+        return result.option;
+      const expected = result.committed ? this.isMultiple ? "" : result.item.label : value;
+      if (input.value !== expected)
+        return result.option;
+      input.value = "";
+      if (result.idempotent) {
+        if (!this.#suppressReopen) {
+          if (this.isMultiple)
+            this.refresh();
+          else
+            this.hide();
+        }
+        return result.option;
+      }
       if (this.isMultiple) {
         if (this.#suppressReopen)
           this.refresh();
@@ -2492,7 +2500,7 @@
         this.hide();
       }
       this.#markEngineMutation();
-      return item.option;
+      return result.option;
     }
     #creationIntent(input, { token = false } = {}) {
       const edit = this.#editEpoch;
@@ -2510,22 +2518,19 @@
         return current.length === selected.length && current.every((option, index) => option === selected[index]);
       };
     }
-    async#materializeCreated(label, input, options = {}) {
-      const pending = this.#runCreation(label, input, options);
+    async#serializeCreation(operation) {
+      while (this.#pendingCreation) {
+        await this.#pendingCreation;
+        if (!this.#alive())
+          return null;
+      }
+      const pending = operation();
       this.#pendingCreation = pending.catch(() => {});
       try {
         return await pending;
       } finally {
         this.#pendingCreation = null;
       }
-    }
-    async#creationSettled() {
-      while (this.#pendingCreation) {
-        await this.#pendingCreation;
-        if (!this.#alive())
-          return false;
-      }
-      return true;
     }
     async#runCreation(label, input, { fallback = false, token = false } = {}) {
       const isCurrent = this.#creationIntent(input, { token });
@@ -2688,17 +2693,7 @@
       const term = String(text ?? "").trim();
       if (!term)
         return true;
-      const existing = this.#findCreateMatch(term);
-      if (existing) {
-        if (existing.disabled)
-          return false;
-        if (existing.option?.selected)
-          return true;
-        return this.#selectItem(existing, { keepQuery: true });
-      }
-      if (!this.#canCreate(term, this.#inputEl()))
-        return false;
-      const created = await this.#createItem(term, { token: true });
+      const created = await this.#create(term, { input: this.#inputEl(), token: true });
       return created !== null;
     }
     #enqueueTokens(batch) {

@@ -284,6 +284,90 @@ test.describe("Declarative fallback and creation parity", () => {
     expect(state.inputCleared).toBe(true);
   });
 
+  test("fallback existing match selects natively, clears aria-invalid and no-ops silently", async ({
+    page,
+  }) => {
+    await setup(page, ELEMENTS_HTML);
+
+    const state = await page.evaluate(async () => {
+      const select = document.createElement("select");
+      select.multiple = true;
+      select.innerHTML = `<option value="be">Belgium</option>`;
+      document.body.append(select);
+
+      let creates = 0;
+      let guards = 0;
+      Combobox.getOrCreateInstance(select, {
+        mode: "fallback",
+        create: () => {
+          creates++;
+          return { value: "created", label: "Created" };
+        },
+        guards: {
+          add: () => {
+            guards++;
+            return true;
+          },
+        },
+      });
+
+      const events = [];
+      for (const type of ["input", "change", "combobox:select", "combobox:create"]) {
+        select.addEventListener(type, () => events.push(type));
+      }
+      const input = select.nextElementSibling.querySelector(".cb-fallback-input");
+      const add = async (label) => {
+        input.value = label;
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      };
+
+      select.setAttribute("aria-invalid", "true");
+      await add("Belgium");
+      const selected = {
+        events: [...events],
+        ariaInvalid: select.getAttribute("aria-invalid"),
+        selected: Array.from(select.selectedOptions, (o) => o.value),
+        inputCleared: input.value === "",
+      };
+
+      // Same already-selected match: idempotent, no value event, text consumed.
+      events.length = 0;
+      await add("Belgium");
+      return {
+        selected,
+        noop: {
+          events: [...events],
+          ariaInvalid: select.getAttribute("aria-invalid"),
+          selected: Array.from(select.selectedOptions, (o) => o.value),
+          inputCleared: input.value === "",
+        },
+        creates,
+        guards,
+        options: Array.from(select.options, (o) => o.value),
+      };
+    });
+
+    // Selecting an existing match goes through the shared selection commit:
+    // one native event pair plus combobox:select, aria-invalid cleared, no
+    // creation, no guard.
+    expect(state.selected).toEqual({
+      events: ["input", "change", "combobox:select"],
+      ariaInvalid: null,
+      selected: ["be"],
+      inputCleared: true,
+    });
+    expect(state.noop).toEqual({
+      events: [],
+      ariaInvalid: null,
+      selected: ["be"],
+      inputCleared: true,
+    });
+    expect(state.creates).toBe(0);
+    expect(state.guards).toBe(0);
+    expect(state.options).toEqual(["be"]);
+  });
+
   test("fallback create/createFilter/guards receive the real Add input on their context", async ({
     page,
   }) => {
