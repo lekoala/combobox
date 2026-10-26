@@ -118,6 +118,47 @@ test.describe("Remote loading", () => {
     });
   });
 
+  test("form reset during the debounce prevents the load from starting or reopening", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+
+    const state = await page.evaluate(async () => {
+      const form = document.getElementById("remote-form");
+      const source = document.getElementById("remote-input");
+      form.append(source, document.getElementById("remote-input-list"));
+      const calls = [];
+      const combo = Combobox.getOrCreateInstance(source, {
+        debounce: 60,
+        load: async (query) => {
+          calls.push(query);
+          return [{ value: query, label: query }];
+        },
+      });
+      source.focus();
+      source.value = "remote";
+      source.dispatchEvent(new Event("input", { bubbles: true }));
+      // The reset lands while the debounce timer is still pending.
+      form.reset();
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      return {
+        calls,
+        loading: combo.loading,
+        query: combo.query,
+        value: source.value,
+        results: combo.results,
+        rows: combo.filteredItems.map((item) => item.value),
+      };
+    });
+
+    expect(state).toEqual({
+      calls: [],
+      loading: false,
+      query: "",
+      value: "",
+      results: null,
+      rows: ["Local Alpha"],
+    });
+  });
+
   test("debounce coalesces rapid input into a single load", async ({ page }) => {
     test.skip(!(await modernSupported(page)), MODERN);
     const state = await page.evaluate(async () => {

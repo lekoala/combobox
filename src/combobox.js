@@ -482,29 +482,43 @@ export class Combobox {
   /** @type {Promise<void>} Serialized token-batch queue (see #enqueueTokens). */
   #tokenQueue = Promise.resolve();
 
-  /** @type {Promise<unknown> | null} The creation in flight (see #createItem). */
+  /** @type {Promise<unknown> | null} The creation in flight (see #create). */
   #pendingCreation = null;
 
+  // Validity has three separate levels; never merge them:
+  // - #alive(): the instance still owns its source (lifecycle);
+  // - epochs: this intent is still the newest one (edit, commit, search, close);
+  // - #isLocked(), the selected-option snapshot and maxItems: the action is
+  //   still allowed at commit time.
+  // Serialization (the token queue, one creation in flight) is a fourth,
+  // independent responsibility.
+  //
   // User edits and value commits invalidate older asynchronous intentions.
-  #interactionGeneration = 0;
-  #editGeneration = 0;
+  // `#editEpoch` tracks typing only; `#commitEpoch` tracks every change of
+  // authority over the selection (engine commit, programmatic change,
+  // effective form reset). See #creationIntent().
+  #editEpoch = 0;
+  #commitEpoch = 0;
+
+  // Set synchronously when a form reset starts and cleared once the reset has
+  // either been cancelled or re-read the native state. While pending, no
+  // asynchronous operation may commit or reopen the picker.
+  #resetPending = false;
 
   // Bumped by every close intent (including one while still debouncing) and
   // every externally observed popover close. A pending search whose `show`
   // intent predates either must not reopen the picker.
-  #hideGeneration = 0;
+  #closeEpoch = 0;
+
+  // Identifies the newest search intent. A remote response or local apply from
+  // an older epoch must never overwrite newer results.
+  #searchEpoch = 0;
 
   /** @type {WeakSet<HTMLLabelElement>} */
   #boundLabelClicks = new WeakSet();
 
   #separatorKey = "";
   #splitTokens = prepareTokenSplitter([]);
-
-  /** @type {HTMLOptionElement | null} */
-  #activeOption = null;
-
-  /** @type {WeakSet<HTMLOptionElement>} */
-  #initializedActiveMarkers = new WeakSet();
 
   /**
    * Read the current default UI messages. Returns a shallow copy; mutating
@@ -663,7 +677,6 @@ export class Combobox {
     this.selectionOrder = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
     /** @type {WeakMap<HTMLElement, HTMLOptionElement>} */
     this._chipOptions = new WeakMap();
-    this.searchGeneration = 0;
     /** @type {string | null} */
     this.nextCursor = null;
     this.loading = false;
@@ -717,10 +730,10 @@ export class Combobox {
       // restores this baseline before resolving the source's current name.
       /** @type {Map<string, string | null> | null} */
       inputAccessible: null,
-      // native options whose mirror markers the engine overwrites; the
-      // authored values are snapshotted lazily on first write so datalist
+      // native options whose `data-filtered` marker the engine overwrites; the
+      // authored value is snapshotted lazily on first write so datalist
       // options and post-init additions are covered too
-      /** @type {WeakMap<HTMLOptionElement, { filtered: string | null, active: string | null }>} */
+      /** @type {WeakMap<HTMLOptionElement, { filtered: string | null }>} */
       optionMarkers: new WeakMap(),
     };
     /** @type {HTMLLabelElement[]} */
@@ -879,15 +892,15 @@ export class Combobox {
       // control currently reflects.
       const label = input.value.trim();
       if (!label || this.#isLocked()) return;
-      const generation = this.#interactionGeneration;
-      const edit = this.#editGeneration;
+      const commit = this.#commitEpoch;
+      const edit = this.#editEpoch;
       const value = input.value;
       // The input is cleared only on a real selection or creation (an existing
       // native match by normalized value or label now selects instead of
       // creating a duplicate native option). On refusal the text stays editable.
-      const option = await this.#createFallbackOption(label, input);
-      if (!this.#alive() || this.#isLocked() || input.value !== value) return;
-      if (edit !== this.#editGeneration || this.#interactionGeneration > generation + 1) return;
+      const option = await this.#create(label, { input, fallback: true });
+      if (!this.#alive() || this.#isLocked() || this.#resetPending || input.value !== value) return;
+      if (edit !== this.#editEpoch || this.#commitEpoch > commit + 1) return;
       if (option) input.value = "";
       input.focus();
     };
@@ -895,8 +908,7 @@ export class Combobox {
     input.addEventListener(
       "input",
       () => {
-        this.#interactionGeneration++;
-        this.#editGeneration++;
+        this.#editEpoch++;
       },
       {
         signal: this.abortController.signal,
@@ -928,50 +940,6 @@ export class Combobox {
     for (const control of this.fallbackControl.querySelectorAll("input, button")) {
       mirrorDisabled(/** @type {HTMLInputElement | HTMLButtonElement} */ (control), disabled);
     }
-  }
-
-  /**
-   * Native-fallback creation. Runs the same decision pipeline as the enhanced
-   * path: existing native match by value **or** label is selected, else the
-   * shared `#materializeCreated` guard/create pipeline runs with the fallback
-   * Add control as the context input (never `null`).
-   * @param {string} label
-   * @param {HTMLInputElement} input The fallback Add control
-   * @returns {Promise<HTMLOptionElement | null>}
-   */
-  async #createFallbackOption(label, input) {
-    const isCurrent = this.#creationIntent(input);
-    if (this.#pendingCreation && !(await this.#creationSettled())) return null;
-    if (!isCurrent()) return null;
-    if (!this.#canCreate(label, input)) return null;
-
-    const existing = this.#findCreateMatch(label);
-    if (existing) {
-      const option = existing.option;
-      if (option && !isOptionDisabled(option)) {
-        // No-op re-entries are idempotent and must not fire value events.
-        // A fresh selection runs the same beforeselect gate as the enhanced
-        // path, so one rule covers every addition on both paths.
-        if (!option.selected) {
-          const item = { ...existing, option, selected: true };
-          const before = emit(
-            this.source,
-            "combobox:beforeselect",
-            { combobox: this, item },
-            { cancelable: true },
-          );
-          if (before.defaultPrevented || !this.#alive()) return null;
-          option.selected = true;
-          this.#rememberSelection(option);
-          this.#dispatchNativeValueEvents();
-          emit(this.source, "combobox:select", { combobox: this, item });
-        }
-      }
-      return option && !isOptionDisabled(option) ? option : null;
-    }
-
-    const item = await this.#materializeCreated(label, input, { fallback: true });
-    return item?.option ?? null;
   }
 
   /* ---------------------------------------------------------------------- */
@@ -1233,7 +1201,7 @@ export class Combobox {
   }
 
   clearResults() {
-    this.searchGeneration++;
+    this.#searchEpoch++;
     this.loadController?.abort();
     this.loading = false;
     this.nextCursor = null;
@@ -1542,7 +1510,7 @@ export class Combobox {
         this.#inputEl().setAttribute("aria-expanded", String(open));
         emit(this.source, open ? "combobox:open" : "combobox:close", { combobox: this });
         if (!open) {
-          this.#hideGeneration++;
+          this.#closeEpoch++;
           if (openCombobox === this) openCombobox = null;
           this.stopAutoUpdate?.();
           this.stopAutoUpdate = null;
@@ -1625,22 +1593,40 @@ export class Combobox {
       "reset",
       (event) => {
         if (event.target !== this.source.form) return;
-        // A real task, not a microtask: when the reset event returns to the
-        // button's native activation code the JS stack is empty, so a
-        // microtask would run *before* the browser restores defaultSelected.
-        setTimeout(() => {
-          if (event.defaultPrevented || !this.#alive()) return;
-          this.searchGeneration++;
-          this.loadController?.abort();
-          this.loading = false;
-          this.nextCursor = null;
+
+        // 1. Synchronous gate: no asynchronous intent may commit while the
+        // reset is still being evaluated, even if the resulting selection is
+        // identical (the reset restores A while a creation of B is pending).
+        this.#resetPending = true;
+
+        // 2. `defaultPrevented` is only final once the event dispatch has
+        // completed, so a microtask is the first point where a cancelled reset
+        // can be distinguished from an effective one.
+        queueMicrotask(() => {
+          if (!this.#alive()) return;
+          if (event.defaultPrevented) {
+            this.#resetPending = false;
+            return;
+          }
+          this.#commitEpoch++;
+          // Also bumps #searchEpoch and aborts any in-flight load.
           this.clearResults();
+        });
+
+        // 3. A real task, not a microtask: when the reset event returns to the
+        // button's native activation code the JS stack is empty, so a microtask
+        // would run *before* the browser restores defaultSelected. Only a task
+        // can re-read the effective native selection.
+        setTimeout(() => {
+          if (!this.#alive()) return;
+          if (event.defaultPrevented) return;
           if (this.isSelect) {
             this.selectionOrder = Array.from(this.#selectSource().selectedOptions);
             this.#inputEl().value = "";
           }
           this.query = this.isSelect ? "" : this.source.value;
           this.refresh();
+          this.#resetPending = false;
         });
       },
       { capture: true, signal },
@@ -1684,8 +1670,7 @@ export class Combobox {
         // engine's own value-event dispatch reenters this handler. That
         // synthetic event is not a search intent.
         if (this.#suppressInputEvent) return;
-        this.#interactionGeneration++;
-        this.#editGeneration++;
+        this.#editEpoch++;
         // Separator tokens are consumed as they complete (typing or paste).
         // IME composition feeds search but never tokenizes/creates.
         const inputEvent = /** @type {InputEvent} */ (event);
@@ -1734,7 +1719,9 @@ export class Combobox {
       if (!option) return;
       if (option.classList.contains("cb-create")) {
         const query = this.#inputEl().value.trim();
-        if (query) void this.#createItem(query);
+        if (query && this.#mayConsume(query)) {
+          void this.#create(query, { input: this.#inputEl() });
+        }
         return;
       }
       const item = this.visibleItems[Number(/** @type {HTMLElement} */ (option).dataset.index)];
@@ -1815,7 +1802,7 @@ export class Combobox {
           !this.#isLocked()
         ) {
           const value = this.#inputEl().value;
-          const edit = this.#editGeneration;
+          const edit = this.#editEpoch;
           this.#suppressReopen = true;
           try {
             if (this.#separatorsActive()) {
@@ -1825,20 +1812,20 @@ export class Combobox {
               await this.#enqueueTokens(async () => {
                 if (!this.#alive()) return;
                 const result = await this.#processTokens(this.#inputEl().value, { final: true });
-                if (this.#alive() && edit === this.#editGeneration && result) {
+                if (this.#alive() && edit === this.#editEpoch && result) {
                   this.#inputEl().value = result.rest;
                 }
               });
-            } else if (value.trim()) {
+            } else if (value.trim() && this.#mayConsume(value.trim())) {
               // The input clears only once the creation actually landed:
               // a refused guard, a cancelled beforecreate or a vetoed
               // beforeselect leaves the typed text editable.
-              await this.#createItem(value.trim());
+              await this.#create(value.trim(), { input: this.#inputEl() });
             }
           } finally {
             this.#suppressReopen = false;
           }
-          if (!this.#alive() || edit !== this.#editGeneration) return;
+          if (!this.#alive() || edit !== this.#editEpoch) return;
           this.refresh();
         }
         if (this.isSelect && !this.isMultiple) this.#syncSingleLabel();
@@ -1908,9 +1895,9 @@ export class Combobox {
         if (!this.#toggleSelected(active)) {
           this.#selectItem(active, { keepQuery: this.isMultiple && this.options.toggleSelected });
         }
-      } else if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
+      } else if (this.#mayConsume(this.#inputEl().value)) {
         event.preventDefault();
-        void this.#createItem(this.#inputEl().value.trim());
+        void this.#create(this.#inputEl().value.trim(), { input: this.#inputEl() });
       }
       return;
     }
@@ -1941,9 +1928,9 @@ export class Combobox {
           }
           return;
         }
-        if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
+        if (this.#mayConsume(this.#inputEl().value)) {
           event.preventDefault();
-          void this.#createItem(this.#inputEl().value.trim());
+          void this.#create(this.#inputEl().value.trim(), { input: this.#inputEl() });
           return;
         }
         this.hide();
@@ -1995,10 +1982,10 @@ export class Combobox {
   async search(query = "", { show = false, reason = "api" } = {}) {
     if (this.mode !== "enhanced" || !this.#alive()) return;
 
-    const generation = ++this.searchGeneration;
+    const searchEpoch = ++this.#searchEpoch;
     this.query = String(query ?? "");
-    const hideGeneration = this.#hideGeneration;
-    const canShow = () => show && hideGeneration === this.#hideGeneration;
+    const closeEpoch = this.#closeEpoch;
+    const canShow = () => show && closeEpoch === this.#closeEpoch && !this.#resetPending;
     // A new search intent supersedes any pending remote one, even when
     // beforefilter is cancelled below: a stale response must never overwrite
     // results the application supplies from its handler.
@@ -2018,11 +2005,11 @@ export class Combobox {
     );
 
     // Open UI semantics: cancel beforefilter and script fully owns filtering.
-    if (before.defaultPrevented || !this.#alive()) return;
+    if (before.defaultPrevented || !this.#alive() || this.#resetPending) return;
 
     if (this.#shouldLoad(this.query)) {
       await this.#load(this.query, { debounce: reason === "input", show: canShow });
-      if (!this.#alive() || generation !== this.searchGeneration) return;
+      if (!this.#alive() || searchEpoch !== this.#searchEpoch || this.#resetPending) return;
     } else {
       // A local query should not keep stale remote results around.
       if (typeof this.options.load === "function") this.clearResults();
@@ -2138,7 +2125,7 @@ export class Combobox {
       },
       { cancelable: true },
     );
-    if (before.defaultPrevented || signal.aborted || !this.#alive()) return false;
+    if (before.defaultPrevented || signal.aborted || !this.#alive() || this.#resetPending) return false;
 
     this.loading = true;
     this.#renderLoading();
@@ -2152,7 +2139,7 @@ export class Combobox {
         source: this.source,
         input: this.#inputEl(),
       });
-      if (signal.aborted || !this.#alive()) return false;
+      if (signal.aborted || !this.#alive() || this.#resetPending) return false;
 
       const items = Array.isArray(result) ? result : result?.items;
       if (items) {
@@ -2171,7 +2158,8 @@ export class Combobox {
       return true;
     } catch (error) {
       const caught = /** @type {any} */ (error);
-      if (signal.aborted || !this.#alive() || caught?.name === "AbortError") return false;
+      if (signal.aborted || !this.#alive() || this.#resetPending || caught?.name === "AbortError")
+        return false;
       // The error row mirrors loading: it replaces the list for this query and
       // is cleared by the next successful load or local search. Long-lived
       // selection lives on the native source and is untouched by a failed load.
@@ -2188,22 +2176,23 @@ export class Combobox {
   }
 
   /**
-   * Write a presence marker mirroring picker state on a native option. The
-   * authored attribute values are snapshotted on the first write per option —
-   * lazily, so datalist options and options added after init (setOptions,
-   * observeSource, app mutations) are restored exactly by dispose() too.
+   * Write the `data-filtered` presence marker mirroring the picker's proposed
+   * filter state on a native option. The authored value is snapshotted on the
+   * first write per option — lazily, so datalist options and options added
+   * after init (setOptions, observeSource, app mutations) are restored exactly
+   * by dispose() too. The active row is deliberately *not* projected onto
+   * native options: it is interaction state owned by the picker and exposed
+   * through ARIA (`aria-activedescendant`, `aria-selected`).
    * @param {HTMLOptionElement} option
-   * @param {"data-filtered" | "data-active-option"} attribute
-   * @param {boolean} on
+   * @param {boolean} filtered
    */
-  #writeOptionMarker(option, attribute, on) {
+  #writeFilteredMarker(option, filtered) {
     if (!this.original.optionMarkers.has(option)) {
       this.original.optionMarkers.set(option, {
         filtered: option.getAttribute("data-filtered"),
-        active: option.getAttribute("data-active-option"),
       });
     }
-    if (option.hasAttribute(attribute) !== on) option.toggleAttribute(attribute, on);
+    if (option.hasAttribute("data-filtered") !== filtered) option.toggleAttribute("data-filtered", filtered);
   }
 
   /**
@@ -2219,11 +2208,7 @@ export class Combobox {
     const visibleOptions = new Set(visible.map((item) => item.option));
     for (const item of items) {
       if (!item.option) continue;
-      this.#writeOptionMarker(item.option, "data-filtered", !visibleOptions.has(item.option));
-      if (!this.#initializedActiveMarkers.has(item.option)) {
-        this.#writeOptionMarker(item.option, "data-active-option", false);
-        this.#initializedActiveMarkers.add(item.option);
-      }
+      this.#writeFilteredMarker(item.option, !visibleOptions.has(item.option));
     }
 
     this.#renderList();
@@ -2251,6 +2236,22 @@ export class Combobox {
       return this.options.createFilter(value, { combobox: this, source: this.source, input }) !== false;
     }
     return true;
+  }
+
+  /**
+   * Entry eligibility for the enhanced interaction points (Enter, Tab, create
+   * row, createOnBlur). An already-selected native match is always consumable
+   * — even at `maxItems` — because it is an idempotent success, not an
+   * addition. Everything else still requires creation to be allowed.
+   * @param {string | null | undefined} label
+   * @returns {boolean}
+   */
+  #mayConsume(label) {
+    const value = String(label ?? "").trim();
+    if (!value) return false;
+    const existing = this.#findCreateMatch(value);
+    if (existing && !existing.disabled && existing.option?.selected) return true;
+    return this.#canCreate(value, this.#inputEl());
   }
 
   /* ---------------------------------------------------------------------- */
@@ -2621,13 +2622,6 @@ export class Combobox {
     if (index >= visible.length) index = -1;
     this.activeIndex = index;
 
-    const activeOption = index >= 0 ? (visible[index]?.option ?? null) : null;
-    if (this.#activeOption !== activeOption) {
-      if (this.#activeOption) this.#writeOptionMarker(this.#activeOption, "data-active-option", false);
-      if (activeOption) this.#writeOptionMarker(activeOption, "data-active-option", true);
-      this.#activeOption = activeOption;
-    }
-
     const previous = this.#listEl().querySelector(".cb-option[data-active]");
     const next = index >= 0 ? this.#listEl().querySelector(`.cb-option[data-index="${index}"]`) : null;
     if (previous !== next) {
@@ -2872,69 +2866,135 @@ export class Combobox {
       this.refresh();
     }
 
+    // Native input/change handlers run before combobox:select and may dispose
+    // the instance. The native commit already happened, so the operation still
+    // reports success, but a dead engine must not emit or touch its observer.
+    if (!this.#alive()) return true;
     emit(this.source, "combobox:select", { combobox: this, item });
+    // A combobox:select handler may dispose synchronously too.
+    if (!this.#alive()) return true;
     this.#markEngineMutation();
     return true;
   }
 
   /**
+   * The single creation pipeline shared by the enhanced picker, the native
+   * fallback and tokenization. Resolution is contractual: an existing native
+   * match always wins over materializing a new option.
+   *
+   *   eligibility (callers use `#mayConsume` for Enter/Tab/create row/blur)
+   *   → wait for the creation in flight
+   *   → revalidate the intent
+   *   → existing match (already selected: idempotent success; otherwise select)
+   *   → canCreate → guards.add → combobox:beforecreate → async create
+   *   → revalidate (alive, intent, maxItems, match appeared meanwhile)
+   *   → addOption → combobox:beforeselect → native commit → events/UI cleanup
+   *
+   * An existing match that is already selected consumes the text without any
+   * value event, and `maxItems` never turns that idempotent success into a
+   * refusal. Tokenization is the one exception to the `create` gate: a token
+   * may select any existing native match even when creation is disabled.
    * @param {string} label
-   * @param {{ token?: boolean }} [options]
+   * @param {{ input?: HTMLInputElement, token?: boolean, fallback?: boolean }} [options]
    * @returns {Promise<HTMLOptionElement | null>}
    */
-  async #createItem(label, { token = false } = {}) {
-    const isCurrent = this.#creationIntent(this.#inputEl(), { token });
-    if (this.#pendingCreation && !(await this.#creationSettled())) return null;
-    if (!isCurrent()) return null;
-    if (!this.#canCreate(label, this.#inputEl())) return null;
+  async #create(label, { input = this.#inputEl(), token = false, fallback = false } = {}) {
+    const term = String(label ?? "").trim();
+    if (!term) return null;
 
-    const existing = this.#findCreateMatch(label);
-    if (existing) {
-      // An already-selected match is an idempotent success; a refused
-      // selection fails the creation so callers keep the text editable.
-      if (existing.disabled) return null;
-      if (existing.option?.selected) return existing.option;
-      return this.#selectItem(existing) ? (existing.option ?? null) : null;
+    const edit = this.#editEpoch;
+    const commit = this.#commitEpoch;
+    const value = input.value;
+    // Captured before settling a concurrent creation so an edit or selection
+    // that lands while this intent waits invalidates it.
+    const isCurrent = this.#creationIntent(input, { token });
+
+    const result = await this.#serializeCreation(async () => {
+      if (!isCurrent()) return null;
+
+      const existing = this.#findCreateMatch(term);
+      if (existing) {
+        if (existing.disabled) return null;
+        if (existing.option?.selected) {
+          // Idempotent success: consume the text, mutate nothing, emit nothing.
+          return { option: existing.option, item: existing, committed: false, idempotent: true };
+        }
+        // Outside tokenization, creation stays the gate for selecting an
+        // existing option (a disabled `create` and a `createFilter` refusal
+        // both block it). A token may select any available native match.
+        if (!token && !this.#canCreate(term, input)) return null;
+        // #selectItem owns the full UI for a fresh selection.
+        if (!this.#selectItem(existing, { keepQuery: token })) return null;
+        return { option: existing.option ?? null, item: existing, committed: true };
+      }
+
+      if (!this.#canCreate(term, input)) return null;
+      const item = await this.#runCreation(term, input, { token, fallback });
+      return item ? { option: item.option, item, committed: true, created: true } : null;
+    });
+
+    if (!result) return null;
+    // Token batches and the fallback Add control own their text cleanup.
+    if (token || fallback) return result.option;
+    // #selectItem already performed the commit and the UI transition.
+    if (!result.created && !result.idempotent) return result.option;
+
+    // Enhanced cleanup is part of the pipeline outcome. Selection already
+    // updates the input; an event handler may have started a newer edit,
+    // selection or reset before this continuation gets to clean up.
+    if (!this.#alive() || this.#isLocked() || this.#resetPending) return result.option;
+    if (this.#editEpoch !== edit) return result.option;
+    // A fresh creation commits exactly one value event; an idempotent match
+    // commits none.
+    if (this.#commitEpoch !== commit + (result.committed ? 1 : 0)) return result.option;
+    const expected = result.committed ? (this.isMultiple ? "" : result.item.label) : value;
+    if (input.value !== expected) return result.option;
+
+    input.value = "";
+    if (result.idempotent) {
+      // No native mutation: reflect the emptied query without a new search
+      // (a remote load must not run for a no-op).
+      if (!this.#suppressReopen) {
+        if (this.isMultiple) this.refresh();
+        else this.hide();
+      }
+      return result.option;
     }
-
-    // guards.add is about creating a brand-new item; existing matches are
-    // selected above without running it.
-    const generation = this.#interactionGeneration;
-    const item = await this.#materializeCreated(label, this.#inputEl(), { token });
-    if (!item || !this.#alive()) return null;
-    if (token) return item.option;
-    // Selection already updates the input. Event handlers may have started a
-    // newer edit or selection before this continuation gets to clean up.
-    if (this.#isLocked() || this.#interactionGeneration !== generation + 1) return item.option;
-    if (this.#inputEl().value !== (this.isMultiple ? "" : item.label)) return item.option;
-
-    this.#inputEl().value = "";
     if (this.isMultiple) {
+      // #commitItemSelection already ran the post-commit transition: it
+      // searched the emptied query or closed the picker. Only a blur-created
+      // commit suppresses that transition and needs a local refresh, so no
+      // second search is started here.
       if (this.#suppressReopen) this.refresh();
-      else if (this.#closeOnSelect()) this.hide();
-      else this.search("", { show: true, reason: "create" });
     } else {
       this.hide();
     }
     this.#markEngineMutation();
-    return item.option;
+    return result.option;
   }
 
   /**
-   * Capture the edit and exact native selection that requested a creation.
-   * Tokens capture their own intent in sequence, after the preceding commit.
+   * Capture the edit and the selection authority that requested a creation.
+   * `#commitEpoch` covers every authority change (native value events,
+   * programmatic selection, effective form reset), so a reset invalidates a
+   * pending creation even when it restores the same selected options.
+   * Tokens capture their own intent in sequence, after the preceding commit,
+   * and tolerate later typing.
    * @param {HTMLInputElement} input
    * @param {{ token?: boolean }} [options] Complete tokens survive subsequent typing.
    * @returns {() => boolean}
    */
   #creationIntent(input, { token = false } = {}) {
-    const generation = this.#interactionGeneration - (token ? this.#editGeneration : 0);
+    const edit = this.#editEpoch;
+    const commit = this.#commitEpoch;
     const value = input.value;
     const selected = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
     return () => {
-      if (!this.#alive() || this.#isLocked()) return false;
-      const currentGeneration = this.#interactionGeneration - (token ? this.#editGeneration : 0);
-      if (generation !== currentGeneration || (!token && input.value !== value)) return false;
+      if (!this.#alive() || this.#isLocked() || this.#resetPending) return false;
+      if (this.#commitEpoch !== commit) return false;
+      // A later edit never invalidates an already complete token; it does
+      // invalidate an ordinary creation whose text is still the intent.
+      if (!token && (this.#editEpoch !== edit || input.value !== value)) return false;
       const current = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
       return (
         current.length === selected.length && current.every((option, index) => option === selected[index])
@@ -2943,23 +3003,21 @@ export class Combobox {
   }
 
   /**
-   * Shared create pipeline for the enhanced picker and the native fallback:
-   * guard → `combobox:beforecreate` → async `create` → materialize → native
-   * events → `combobox:create`. Keeping both paths on one primitive guarantees
-   * the same contract — same guard context input, same existing-value
-   * resolution, same created-option shape.
-   *
-   * The caller already ruled out an existing native match and ran
-   * `#canCreate`. Materialization goes through `addOption` so group/disabled/
-   * `allowEmptyOption` rules are identical on both paths.
-   * @param {string} label
-   * @param {HTMLInputElement} input The interaction input exposed on the
-   *   `create` and guard contexts.
-   * @param {{ fallback?: boolean, token?: boolean }} [options]
-   * @returns {Promise<import("./helpers.js").ComboboxItem & { option: HTMLOptionElement } | null>}
+   * Serialize creation per instance: a repeated Enter/Tab/blur/Add (or a token)
+   * while a creation is pending waits for it instead of racing a second node
+   * into the catalogue. The caller revalidates its intent after the wait, so a
+   * stale intent never wins over a newer edit, selection or reset.
+   * Intentional catalogue duplicates are untouched.
+   * @template T
+   * @param {() => Promise<T>} operation
+   * @returns {Promise<T | null>} Null when the instance died meanwhile.
    */
-  async #materializeCreated(label, input, options = {}) {
-    const pending = this.#runCreation(label, input, options);
+  async #serializeCreation(operation) {
+    while (this.#pendingCreation) {
+      await this.#pendingCreation;
+      if (!this.#alive()) return null;
+    }
+    const pending = operation();
     this.#pendingCreation = pending.catch(() => {});
     try {
       return await pending;
@@ -2969,21 +3027,9 @@ export class Combobox {
   }
 
   /**
-   * One creation at a time: a repeated Enter/Tab/blur/Add while a creation is
-   * pending waits for it, so the caller's match lookup then selects (or
-   * idempotently accepts) the option just created instead of creating a twin.
-   * Intentional catalogue duplicates are untouched.
-   * @returns {Promise<boolean>} False when the instance died meanwhile.
-   */
-  async #creationSettled() {
-    while (this.#pendingCreation) {
-      await this.#pendingCreation;
-      if (!this.#alive()) return false;
-    }
-    return true;
-  }
-
-  /**
+   * Guard/create half of the pipeline, run once the caller resolved the match
+   * and allowed creation. Materialization goes through `addOption` so group/
+   * disabled/`allowEmptyOption` rules are identical on every path.
    * @param {string} label
    * @param {HTMLInputElement} input
    * @param {{ fallback?: boolean, token?: boolean }} [options]
@@ -3022,7 +3068,8 @@ export class Combobox {
         if (!result) return null;
         created = /** @type {import("./helpers.js").ComboboxItem} */ (toItem(result, this.#fields()));
       } catch (/** @type {any} */ error) {
-        if (error?.name !== "AbortError")
+        // A destroyed instance emits nothing: the operation is already void.
+        if (error?.name !== "AbortError" && this.#alive())
           emit(this.source, "combobox:createerror", { combobox: this, label, error });
         return null;
       } finally {
@@ -3073,6 +3120,9 @@ export class Combobox {
       option.remove();
       return null;
     }
+    // A native change handler may have disposed the instance. The native
+    // commit stands, but no creation event belongs to a dead engine.
+    if (!this.#alive()) return null;
     const item = /** @type {import("./helpers.js").ComboboxItem & { option: HTMLOptionElement }} */ ({
       ...created,
       option,
@@ -3106,7 +3156,9 @@ export class Combobox {
       });
       return { ok: result !== false, refused: result === false };
     } catch (error) {
-      emit(this.source, "combobox:guarderror", { combobox: this, guard: name, error });
+      // A guard rejecting after dispose() must not emit on a dead instance;
+      // the programmatic caller still receives the error (see remove/clear).
+      if (this.#alive()) emit(this.source, "combobox:guarderror", { combobox: this, guard: name, error });
       return { ok: false, refused: false, error };
     }
   }
@@ -3211,9 +3263,9 @@ export class Combobox {
     return { consumed: true, rest };
   }
 
-  /** Apply one token: existing option wins, otherwise guarded creation. A
-   * refused selection is not consumed: the token text stays in the input.
-   * An already-selected option is a no-op success and is consumed. */
+  /** Apply one token through the shared creation pipeline. A refused
+   * selection is not consumed: the token text stays in the input. An
+   * already-selected option is a no-op success and is consumed. */
   /**
    * @param {string | null | undefined} text
    * @returns {Promise<boolean>}
@@ -3221,15 +3273,7 @@ export class Combobox {
   async #applyToken(text) {
     const term = String(text ?? "").trim();
     if (!term) return true;
-
-    const existing = this.#findCreateMatch(term);
-    if (existing) {
-      if (existing.disabled) return false;
-      if (existing.option?.selected) return true;
-      return this.#selectItem(existing, { keepQuery: true });
-    }
-    if (!this.#canCreate(term, this.#inputEl())) return false;
-    const created = await this.#createItem(term, { token: true });
+    const created = await this.#create(term, { input: this.#inputEl(), token: true });
     return created !== null;
   }
 
@@ -3255,16 +3299,16 @@ export class Combobox {
     // Completed tokens survive later typing, but only the latest edit may
     // write its remainder back to the interaction input.
     const value = this.#inputEl().value;
-    const edit = this.#editGeneration;
+    const edit = this.#editEpoch;
     return this.#enqueueTokens(async () => {
-      if (!this.#alive() || edit !== this.#editGeneration || this.#isLocked()) return;
+      if (!this.#alive() || edit !== this.#editEpoch || this.#isLocked()) return;
       const result = await this.#processTokens(value);
       // #processTokens always returns the computed remainder (`rest`): the
       // trailing incomplete token on a full consumption, or the unconsumed tail
       // (including a refused token) on a refusal/maxItems stop. Keep that
       // remainder editable without overwriting a newer edit.
       if (!this.#alive()) return;
-      if (edit !== this.#editGeneration || this.#isLocked()) return;
+      if (edit !== this.#editEpoch || this.#isLocked()) return;
       if (result) this.#inputEl().value = result.rest;
       this.search(this.#inputEl().value, { show: true, reason: "input" });
     });
@@ -3273,12 +3317,12 @@ export class Combobox {
   /** @param {{ entries: Array<{ text: string, sep: string }>, rest: string }} resolved */
   async #commitEnterTokens(resolved) {
     const value = this.#inputEl().value;
-    const edit = this.#editGeneration;
+    const edit = this.#editEpoch;
     return this.#enqueueTokens(async () => {
-      if (!this.#alive() || edit !== this.#editGeneration || this.#isLocked()) return;
+      if (!this.#alive() || edit !== this.#editEpoch || this.#isLocked()) return;
       const result = await this.#processTokens(value, { final: true, resolved });
       if (!this.#alive()) return;
-      if (edit !== this.#editGeneration || this.#isLocked()) return;
+      if (edit !== this.#editEpoch || this.#isLocked()) return;
       if (result) {
         this.#inputEl().value = result.rest;
         this.search(result.rest, { show: true, reason: "create" });
@@ -3287,7 +3331,7 @@ export class Combobox {
   }
 
   #dispatchNativeValueEvents() {
-    this.#interactionGeneration++;
+    this.#commitEpoch++;
     // The events must stay trustworthy for native form listeners, so suppress
     // only our own reentrant handling of them (see #suppressInputEvent).
     this.#suppressInputEvent = true;
@@ -3376,19 +3420,39 @@ export class Combobox {
         : this.#selectedOptionsInOrder().find((entry) => entry.value === String(valueOrOption));
     if (!option || !this.#isRemovable(option)) return false;
     const item = optionToItem(option);
+    const commit = this.#commitEpoch;
     const guard = await this.#runGuard("remove", { item });
-    if (guard.error) throw guard.error;
+    if (guard.error) {
+      // A dead instance is a no-op, even if its guard rejected meanwhile.
+      if (this.#alive()) throw guard.error;
+      return false;
+    }
     if (!guard.ok) return false;
     // Revalidate after the await: the option may have moved, been deselected
-    // (a concurrent remove()) or disabled meanwhile.
-    if (!this.#alive() || !this.#isRemovable(option)) return false;
+    // (a concurrent remove()) or disabled meanwhile. An effective form reset
+    // invalidates the intent even when the option is still selected.
+    if (!this.#alive() || this.#resetPending || this.#commitEpoch !== commit || !this.#isRemovable(option))
+      return false;
     const before = emit(this.source, "combobox:beforeremove", { combobox: this, item }, { cancelable: true });
-    // A synchronous beforeremove handler may have disposed the instance.
-    if (before.defaultPrevented || !this.#alive() || !this.#isRemovable(option)) return false;
+    // A synchronous beforeremove handler may have disposed the instance or
+    // started a reset.
+    if (
+      before.defaultPrevented ||
+      !this.#alive() ||
+      this.#resetPending ||
+      this.#commitEpoch !== commit ||
+      !this.#isRemovable(option)
+    )
+      return false;
     option.selected = false;
     this.#forgetSelection(option);
     this.#commit();
+    // A native change handler may dispose the instance. The native removal
+    // already happened and the call reports success, but a dead engine emits
+    // nothing.
+    if (!this.#alive()) return true;
     emit(this.source, "combobox:remove", { combobox: this, item });
+    if (!this.#alive()) return true;
     this.#markEngineMutation();
     return true;
   }
@@ -3407,17 +3471,25 @@ export class Combobox {
   async clear() {
     if (!this.isSelect) {
       if (!this.source.value) return false;
+      const commit = this.#commitEpoch;
       const inputGuard = await this.#runGuard("clear", {});
-      if (inputGuard.error) throw inputGuard.error;
+      if (inputGuard.error) {
+        if (this.#alive()) throw inputGuard.error;
+        return false;
+      }
       if (!inputGuard.ok) return false;
-      if (!this.#alive() || !this.source.value) return false;
+      if (!this.#alive() || this.#resetPending || this.#commitEpoch !== commit || !this.source.value)
+        return false;
       const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive()) return false;
+      if (before.defaultPrevented || !this.#alive() || this.#resetPending || this.#commitEpoch !== commit)
+        return false;
       this.source.value = "";
       this.#dispatchNativeValueEvents();
       // The source is the interaction input: the emptied text is the query.
       this.refresh();
+      if (!this.#alive()) return true;
       emit(this.source, "combobox:clear", { combobox: this });
+      if (!this.#alive()) return true;
       this.#markEngineMutation();
       return true;
     }
@@ -3425,12 +3497,18 @@ export class Combobox {
     const clearable = () =>
       Array.from(this.#selectSource().selectedOptions).filter((option) => !isOptionDisabled(option));
     if (!clearable().length) return false;
+    const commit = this.#commitEpoch;
     const guard = await this.#runGuard("clear", {});
-    if (guard.error) throw guard.error;
+    if (guard.error) {
+      if (this.#alive()) throw guard.error;
+      return false;
+    }
     if (!guard.ok) return false;
-    if (!this.#alive() || !clearable().length) return false;
+    if (!this.#alive() || this.#resetPending || this.#commitEpoch !== commit || !clearable().length)
+      return false;
     const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
-    if (before.defaultPrevented || !this.#alive()) return false;
+    if (before.defaultPrevented || !this.#alive() || this.#resetPending || this.#commitEpoch !== commit)
+      return false;
     // Re-read at commit time: the selection may have changed during the guard
     // or the beforeclear handler, and only a real change fires value events.
     const selected = clearable();
@@ -3438,7 +3516,9 @@ export class Combobox {
     for (const option of selected) option.selected = false;
     this.selectionOrder = this.selectionOrder.filter((option) => option.selected);
     this.#commit();
+    if (!this.#alive()) return true;
     emit(this.source, "combobox:clear", { combobox: this });
+    if (!this.#alive()) return true;
     this.#markEngineMutation();
     return true;
   }
@@ -3470,7 +3550,8 @@ export class Combobox {
       this.mode !== "enhanced" ||
       !this.isMultiple ||
       this.options.selectionOrder !== "selected" ||
-      !this.#alive()
+      !this.#alive() ||
+      this.#resetPending
     )
       return false;
     // Work on the reconciled model, exactly what getSelectedValues() reports.
@@ -3493,14 +3574,18 @@ export class Combobox {
       { combobox: this, value: option.value, from, to },
       { cancelable: true },
     );
-    // A synchronous beforereorder handler may have disposed the instance.
-    if (before.defaultPrevented || !this.#alive()) return false;
+    // A synchronous beforereorder handler may have disposed the instance or
+    // started a reset.
+    if (before.defaultPrevented || !this.#alive() || this.#resetPending) return false;
     const valueChanged = nextOrder.some(
       (entry, position) => entry.value !== this.selectionOrder[position]?.value,
     );
     this.selectionOrder = nextOrder;
     this.#renderChips();
     if (valueChanged) this.#dispatchNativeValueEvents();
+    // A native change handler may dispose the instance; the reordered order is
+    // already committed, but a dead engine emits nothing.
+    if (!this.#alive()) return true;
     emit(this.source, "combobox:reorder", {
       combobox: this,
       value: option.value,
@@ -3514,13 +3599,14 @@ export class Combobox {
   async loadMore() {
     if (!this.#alive() || !this.nextCursor || typeof this.options.load !== "function") return false;
     const cursor = this.nextCursor;
-    const generation = this.searchGeneration;
+    const searchEpoch = this.#searchEpoch;
     const pending = this.#load(this.query, { cursor, append: true, debounce: false });
     const controller = this.loadController;
     const loaded = await pending;
     if (
       !this.#alive() ||
-      generation !== this.searchGeneration ||
+      this.#resetPending ||
+      searchEpoch !== this.#searchEpoch ||
       controller !== this.loadController ||
       controller?.signal.aborted
     )
@@ -3566,13 +3652,13 @@ export class Combobox {
   }
 
   show() {
-    if (this.mode !== "enhanced" || !this.#alive() || this.isOpen()) return false;
+    if (this.mode !== "enhanced" || !this.#alive() || this.#resetPending || this.isOpen()) return false;
     if (openCombobox && openCombobox !== this) {
       openCombobox.hide();
       if (openCombobox?.isOpen()) return false;
     }
     const before = emit(this.source, "combobox:beforeopen", { combobox: this }, { cancelable: true });
-    if (before.defaultPrevented || !this.#alive()) return false;
+    if (before.defaultPrevented || !this.#alive() || this.#resetPending) return false;
 
     try {
       this.#popoverEl().showPopover({ source: this.#inputEl() });
@@ -3594,12 +3680,12 @@ export class Combobox {
   hide() {
     if (this.mode !== "enhanced" || !this.#alive()) return false;
     if (!this.isOpen()) {
-      this.#hideGeneration++;
+      this.#closeEpoch++;
       return false;
     }
     const before = emit(this.source, "combobox:beforeclose", { combobox: this }, { cancelable: true });
     if (before.defaultPrevented) return false;
-    this.#hideGeneration++;
+    this.#closeEpoch++;
     this.#popoverEl().hidePopover();
     if (openCombobox === this) openCombobox = null;
     return true;
@@ -3644,8 +3730,6 @@ export class Combobox {
         if (!marker) continue;
         if (marker.filtered === null) option.removeAttribute("data-filtered");
         else option.setAttribute("data-filtered", marker.filtered);
-        if (marker.active === null) option.removeAttribute("data-active-option");
-        else option.setAttribute("data-active-option", marker.active);
       }
     }
 

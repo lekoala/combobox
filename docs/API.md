@@ -65,9 +65,9 @@ customElements.define("app-combobox", class extends ComboBoxElement {});
 
 - `box.upgrade()` enhances the first direct child `<select>`, else the first direct child `<input list="…">`. Safe to call repeatedly; returns the `Combobox` instance or `null` until a source child exists.
 - `box.combobox` is the underlying `Combobox` instance (or `null`).
-- `box.whenReady()` returns a promise resolving to the `Combobox` instance once upgraded.
+- `box.whenReady()` returns a promise resolving to the `Combobox` instance once upgraded. If the element is disposed before it ever upgrades, the promise rejects with an `AbortError`; a rebuild does not reject it.
 - `box.configure(options)` merges JavaScript-only options (remote `load`, `create`, renderers); JS options always win over attributes.
-- `box.dispose()` tears the engine down and restores the native source.
+- `box.dispose()` tears the engine down, restores the native source, and settles a still-pending `whenReady()` (rejection with `AbortError`).
 
 Child lookup is **direct children only**: a source nested inside another element is not found.
 
@@ -77,9 +77,10 @@ Child lookup is **direct children only**: a source nested inside another element
 - element removed → teardown is deferred until a microtask confirms the element is truly gone, so a simple DOM move does not destroy state;
 - attribute changes on observed attributes rebuild the instance.
 
-**A rebuild is a full teardown.** `box.configure(options)` and any change to an
-observed attribute dispose the current engine and construct a new one on a
-microtask (`dispose()` → `upgrade()`). Consequences:
+**A rebuild is a full engine replacement, not a disposal of the wrapper.**
+`box.configure(options)` and any change to an observed attribute capture the
+durable state, tear the current engine down on a microtask, and construct a new
+one for the same source. Consequences:
 
 - a `Combobox` reference obtained before the rebuild is **stale** — it is not
   updated in place, and its state/listeners are gone;
@@ -94,7 +95,18 @@ microtask (`dispose()` → `upgrade()`). Consequences:
 - `box.configure()` merges options **shallowly** (`{ ...current, ...options }`);
   replacing a nested object (e.g. `render`) replaces the whole object;
 - `combobox:ready` fires with `detail.combobox` on every upgrade, including
-  rebuilds — it is the reliable hook to (re)wire per-instance behavior.
+  rebuilds — it is the reliable hook to (re)wire per-instance behavior;
+- if the new engine cannot be constructed (for example a missing `<datalist>`),
+  the element stays inert but native: `box.combobox` is `null`, no
+  `combobox:ready` is emitted, and the error is not swallowed. A later
+  `upgrade()` recovers it, and `whenReady()` remains pending until then.
+
+A **form reset** follows the native contract and is also an authority change:
+an effective reset invalidates pending searches, creations, removals and
+clears, even when the selection it restores is identical to the current one. A
+reset cancelled by `preventDefault()` invalidates nothing. The picker may stay
+open, but it is repainted from the restored native state and never receives a
+late remote result.
 
 ### Observed attributes
 
@@ -397,6 +409,9 @@ match carry the attribute; it is removed as soon as the query is empty and on
 `dispose()`. Opening or closing the popup does **not** touch it: visibility and
 filtering are orthogonal. Apps may style or query `[data-filtered]` as their
 temporary `:filtered` while the native primitive is not yet interoperable.
+The active row is picker interaction state, exposed only through ARIA on the
+interaction input and the generated rows; the engine never writes an
+application-authored `data-active-option` on source options.
 
 ### `search(query, options)`
 
@@ -544,9 +559,17 @@ vetoed by `combobox:beforeselect`, the loading row is replaced with the normal
 search rows. Input text and native selection remain editable and unchanged by
 the refused creation. Errors emit `combobox:createerror`; an `AbortError` is
 silent. Completion never opens a closed picker merely to clear loading state.
+An existing option always wins over creating a new one. A match that is already
+selected is an idempotent success — the typed text is consumed, native selection
+and `FormData` do not change, and no `input`, `change` or `combobox:select`
+fires (even at `maxItems`). A match that is not selected is selected through the
+normal `beforeselect`/native commit path, and selecting it is still gated by
+`create`/`createFilter` outside tokenization.
 Only one creation runs at a time: a repeated Enter/Tab/blur (or Add click) while
 `create()` is pending waits for it and then resolves the term against the option
-just created, so it never creates a twin.
+just created, so it never creates a twin. A successful materialized creation
+runs a single post-commit search (owned by the selection commit), so it triggers
+one `beforefilter`/`filter` pair and at most one remote load, not two.
 After each asynchronous guard or create callback, creation rechecks the original
 edit and exact native selection. A newer edit or selection, disposal, or a source
 that has become readonly or disabled (including through a fieldset) discards the
@@ -615,6 +638,7 @@ Contract:
 - `false` is a **voluntary refusal**: the operation is blocked and nothing mutates.
 - A **rejection is an application error**: `combobox:guarderror` (detail `{ guard, error }`) fires and the operation is blocked. `remove()`/`clear()` additionally **reject their returned promise** with that error, so a programmatic caller can distinguish refusal (`false`) from failure (throw) — interaction paths (chip click, keyboard) swallow the rejection after the event. Do not reject for a user cancelling a dialog — that must resolve `false`.
 - Guards run on both user and programmatic paths. `before` events still fire (synchronously, cancellable) only after a guard has passed.
+- A guard that settles after `dispose()` mutates nothing and emits no `guarderror`; `remove()`/`clear()` resolve `false` instead of throwing the late error.
 - `guards.add` applies to brand-new items only: an existing match is selected without running it.
 - `createOnBlur` means genuinely leaving the combobox. Blur caused by internal interaction (picker click, adornment, chip removal, clear) never creates, and IME composition also blocks it.
 - Switching tabs or windows does not count as leaving when `document.activeElement`
@@ -830,11 +854,15 @@ combo.refresh();
 combo.dispose();
 ```
 
-`dispose()` must restore everything the enhancer changed, including datalist linkage and explicit sibling filter-input placement/visibility. That covers `disabled`/`readonly` driven onto an authored filter input, `aria-invalid` cleared by value commits, and preexisting `data-filtered`/`data-active-option` markers on native options. Operations still pending at dispose time (guard, create, load) resolve without mutating the source.
+`dispose()` must restore everything the enhancer changed, including datalist linkage and explicit sibling filter-input placement/visibility. That covers `disabled`/`readonly` driven onto an authored filter input, `aria-invalid` cleared by value commits, and preexisting `data-filtered` markers on native options. Operations still pending at dispose time (guard, create, load) resolve without mutating the source.
 
 Disposal is idempotent: a stale reference cannot unregister or restore over a
 newer instance. On a disposed instance, `refresh()` and `applyFilter()` return the
 instance without rendering or mutating the source; `show()` returns `false`.
+A disposed instance emits no lifecycle or error event: if native `input`/`change`
+delivery disposes it, the commit still happened but the following
+`combobox:select`, `combobox:remove`, `combobox:clear`, `combobox:reorder` or
+`combobox:create` is not emitted.
 
 ## Events
 

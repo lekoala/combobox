@@ -4,6 +4,27 @@ All notable changes to `@lekoala/combobox` are documented here.
 
 The changelog highlights user-facing changes rather than listing every build, dependency, or test commit. Versions and dates follow the GitHub releases.
 
+## [0.8.0] - 2026-10-26
+
+### Added
+
+- One documented creation pipeline shared by the enhanced picker, the native fallback and separator tokens, with the resolution rule "existing option first".
+- A transition catalogue in `TESTING.md` and a state-ownership section in `ARCHITECTURE.md` covering authority, validity epochs and rebuild/dispose boundaries.
+
+### Changed
+
+- Selecting an already-selected match is now an idempotent creation success: the typed text is consumed, no value event or `combobox:select` fires, and `maxItems` no longer turns it into a refusal. `guards.add` still runs for brand-new items only.
+- Rebuilding an instance from `<combo-box>` configuration keeps native selection, option identity and explicit selection order, and abandons only transient state (query, remote results, pending creation, open picker).
+- Pending `whenReady()` promises reject with `AbortError` on public `dispose()`; a rebuild never rejects them.
+- The native fallback selects an existing match through the shared commit path, clearing `aria-invalid` and emitting `combobox:select` consistently with the enhanced picker.
+- The engine no longer writes `data-active-option` on source options. Use `.cb-option[data-active]` or `aria-activedescendant`; `data-filtered` remains the only option-level state mirror.
+
+### Fixed
+
+- An effective `form.reset()` now invalidates pending search, creation, removal and clear operations even when it restores the same native selection; a cancelled reset invalidates nothing.
+- A materialized creation now runs exactly one post-commit search, avoiding duplicate `beforefilter`/`filter` events and duplicate remote loads.
+- A superseded asynchronous creation can no longer overwrite a newer edit, selection or reset, and a disposed instance emits no late lifecycle or error event (`select`, `create`, `remove`, `clear`, `reorder`, `guarderror`, `createerror`), including when disposed from a native `input`/`change` handler.
+
 ## [0.7.3] - 2026-10-24
 
 ### Fixed

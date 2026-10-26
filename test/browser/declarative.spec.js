@@ -52,6 +52,80 @@ test("declarative rebuild preserves selected order by option identity", async ({
   expect(state.identities).toBe(true);
 });
 
+test("declarative rebuild preserves duplicate-value identities and their explicit order", async ({
+  page,
+}) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  const state = await page.evaluate(async () => {
+    const form = document.createElement("form");
+    const wrap = document.createElement("combo-box");
+    wrap.setAttribute("selection-order", "selected");
+    wrap.innerHTML = `
+      <select multiple name="dup[]">
+        <optgroup label="Left">
+          <option id="dup-a" value="2" selected>Two A</option>
+          <option id="dup-b" value="1" selected>One</option>
+        </optgroup>
+        <optgroup label="Right">
+          <option id="dup-c" value="2" selected>Two B</option>
+        </optgroup>
+      </select>`;
+    form.append(wrap);
+    document.body.append(form);
+    const before = await wrap.whenReady();
+    before.move(document.getElementById("dup-c"), 0);
+    const identities = [...before.selectionOrder];
+    wrap.setAttribute("chip-class", "updated");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const after = wrap.combobox;
+    return {
+      rebuilt: after !== before,
+      sameOrder:
+        after.selectionOrder.length === identities.length &&
+        after.selectionOrder.every((option, index) => option === identities[index]),
+      ids: after.selectionOrder.map((option) => option.id),
+      values: after.getSelectedValues(),
+      formValues: new FormData(form).getAll("dup[]"),
+      chips: Array.from(wrap.querySelectorAll(".cb-chip"), (chip) => chip.dataset.value),
+    };
+  });
+  expect(state).toEqual({
+    rebuilt: true,
+    sameOrder: true,
+    ids: ["dup-c", "dup-a", "dup-b"],
+    values: ["2", "2", "1"],
+    formValues: ["2", "2", "1"],
+    chips: ["2", "2", "1"],
+  });
+});
+
+test("declarative rebuild drops a selected option removed from the source", async ({ page }) => {
+  test.skip(!(await modernSupported(page)), "Modern Popover support is required");
+  const state = await page.evaluate(async () => {
+    const wrap = document.createElement("combo-box");
+    wrap.setAttribute("selection-order", "selected");
+    wrap.innerHTML = `
+      <select multiple name="gone[]">
+        <option id="gone-a" value="a" selected>Alpha</option>
+        <option id="gone-b" value="b" selected>Beta</option>
+        <option id="gone-c" value="c" selected>Gamma</option>
+      </select>`;
+    document.body.append(wrap);
+    const before = await wrap.whenReady();
+    before.move(document.getElementById("gone-c"), 0);
+    document.getElementById("gone-b").remove();
+    wrap.setAttribute("chip-class", "updated");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const after = wrap.combobox;
+    return {
+      ids: after.selectionOrder.map((option) => option.id),
+      values: after.getSelectedValues(),
+      chips: Array.from(wrap.querySelectorAll(".cb-chip"), (chip) => chip.dataset.value),
+    };
+  });
+  expect(state).toEqual({ ids: ["gone-c", "gone-a"], values: ["c", "a"], chips: ["c", "a"] });
+});
+
 test.beforeEach(async ({ page }) => {
   await setup(page, HTML);
 });

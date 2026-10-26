@@ -15,7 +15,7 @@ test.describe("Picker keyboard interaction", () => {
     test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
   });
 
-  test("Home/End move the input caret and never hijack picker navigation", async ({ page }) => {
+  test("Home/End stay native and never hijack picker navigation", async ({ page, browserName }) => {
     await setup(page, FEATURES);
     await page.evaluate(() => {
       Combobox.getOrCreateInstance(document.getElementById("capped"));
@@ -24,6 +24,11 @@ test.describe("Picker keyboard interaction", () => {
     const input = page.locator(filter("capped"));
     await input.click();
     await input.fill("apple pineapple");
+    const length = await input.evaluate((el) => el.value.length);
+    // macOS Firefox/WebKit map Home/End to document scrolling rather than the
+    // input caret. The engine contract is that it never intercepts the key;
+    // assert the caret only where the platform moves it natively.
+    const nativeCaret = browserName === "chromium" || process.platform !== "darwin";
 
     await input.press("Home");
     const homeStart = await page.evaluate(() => {
@@ -42,10 +47,9 @@ test.describe("Picker keyboard interaction", () => {
       };
     });
 
-    expect(homeStart.start).toBe(0);
+    expect(homeStart.start).toBe(nativeCaret ? 0 : length);
     expect(homeStart.active).toBe(-1);
     expect(homeStart.open).toBe(true);
-    const length = await input.evaluate((el) => el.value.length);
     expect(endStart.start).toBe(length);
     expect(endStart.active).toBe(-1);
     expect(endStart.open).toBe(true);
@@ -415,12 +419,10 @@ test.describe("Picker keyboard interaction", () => {
   }
 });
 
-test.describe("Active option markers and navigation cost", () => {
+test.describe("Filtered markers and navigation cost", () => {
   const FIXTURE = "/test/fixtures/elements.html";
 
-  test("keyboard activation avoids catalogue reads and restores authored markers on dispose", async ({
-    page,
-  }) => {
+  test("navigation never projects the active row and authored markers survive dispose", async ({ page }) => {
     await setup(page, FIXTURE);
     const state = await page.evaluate(async () => {
       const select = document.createElement("select");
@@ -447,21 +449,22 @@ test.describe("Active option markers and navigation cost", () => {
           new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
         );
       }
-      const active = Array.from(select.options, (option) => option.hasAttribute("data-active-option"));
+      const active = Array.from(select.options, (option) => option.getAttribute("data-active-option"));
       const descendant = document.getElementById(
         combo.input.getAttribute("aria-activedescendant"),
       )?.textContent;
       const navigationReads = reads;
       await combo.search("Gamma");
-      const cleared = Array.from(select.options).every(
-        (option) => !option.hasAttribute("data-active-option"),
-      );
+      const during = Array.from(select.options, (option) => [
+        option.getAttribute("data-active-option"),
+        option.getAttribute("data-filtered"),
+      ]);
       combo.dispose();
       return {
         active,
         descendant,
         navigationReads,
-        cleared,
+        during,
         markers: Array.from(select.options, (option) => [
           option.getAttribute("data-active-option"),
           option.getAttribute("data-filtered"),
@@ -469,10 +472,17 @@ test.describe("Active option markers and navigation cost", () => {
         selected: Array.from(select.selectedOptions, (option) => option.value),
       };
     });
-    expect(state.active).toEqual([false, true, false]);
+    // The active row lives in the picker (data-active on generated rows) and in
+    // ARIA; it is never written back onto native options.
+    expect(state.active).toEqual(["authored", null, null]);
     expect(state.descendant).toBe("Beta");
     expect(state.navigationReads).toBe(0);
-    expect(state.cleared).toBe(true);
+    // Authored data-active-option stays untouched by filtering too.
+    expect(state.during).toEqual([
+      ["authored", ""],
+      [null, ""],
+      [null, null],
+    ]);
     expect(state.markers).toEqual([
       ["authored", "original"],
       [null, null],

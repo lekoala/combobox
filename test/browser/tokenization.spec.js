@@ -355,6 +355,29 @@ test.describe("Separator and custom tokenizer input", () => {
     expect(state.selected).toEqual(["1", "zap"]);
   });
 
+  test("separator tokens select existing options even when creation is disabled", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    const state = await page.evaluate(async () => {
+      const select = document.getElementById("tags");
+      const combo = Combobox.getOrCreateInstance(select, { separators: [","] });
+      const input = combo.input;
+      input.focus();
+      input.value = "Banana,Kiwi,";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      return {
+        selected: Array.from(select.selectedOptions, (o) => o.value),
+        options: Array.from(select.options, (o) => o.value),
+        inputValue: input.value,
+      };
+    });
+    // Token eligibility keeps its own rule: an existing native match is
+    // selectable without `create`, while a brand-new term is not consumed.
+    expect(state.selected).toEqual(["1", "2"]);
+    expect(state.options).not.toContain("Kiwi");
+    expect(state.inputValue).toBe("Kiwi,");
+  });
+
   test("separated text is not tokenized mid-IME-composition", async ({ page }) => {
     test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
     const during = await page.evaluate(async () => {
@@ -490,13 +513,18 @@ test.describe("Queued and vetoed tokens", () => {
       combo.input.dispatchEvent(new InputEvent("input", { bubbles: true }));
       await tick();
       await tick();
-      const result = { selected: combo.getSelectedValues(), text: combo.input.value };
+      const result = {
+        selected: combo.getSelectedValues(),
+        options: [...select.options].map((option) => option.value),
+        text: combo.input.value,
+      };
       combo.dispose();
       form.remove();
       return result;
     });
 
     expect(state.selected).toEqual([]);
+    expect(state.options).toEqual(["a"]);
     expect(state.text).toBe("Alpha,tail");
   });
 });

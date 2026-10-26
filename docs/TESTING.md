@@ -67,6 +67,27 @@ browser support/skip conditions when reorganizing a suite.
 
 ---
 
+# Transition catalogue
+
+Most regressions live between two moments. This catalogue lists the cross-cutting
+transitions the suite must exercise; add a row when a new authority or lifecycle
+boundary appears, and keep the covering file next to it.
+
+| Transition | Invariant | Suites |
+|---|---|---|
+| Newer edit / selection while guard or create is pending | Stale intent commits nothing and emits nothing | `creation`, `guards` |
+| Effective `form.reset()` while search/create/remove/clear is pending | Reset invalidates every pending value intent, even at identical selection | `forms`, `creation`, `guards`, `remote` |
+| `preventDefault()` on reset | Nothing is invalidated; the pending operation may still commit | `forms` |
+| Two creation intents (Enter/Tab/blur/Add/token) | One catalogue option, no twin; the second resolves or drops | `creation`, `fallback`, `tokenization` |
+| `dispose()` during guard/create/load | No mutation, no late `guarderror`/`createerror`/`loaderror`/`select` | `lifecycle`, `creation`, `guards`, `remote` |
+| Rebuild (`configure`/`upgrade`) while an operation is pending | Transient intent dropped; native selection and explicit order preserved | `lifecycle`, `combobox-element`, `declarative` |
+| External source mutation during an await | Result never overwrites newer native state; matching option selected instead of a twin | `sync`, `catalogue`, `guards`, `creation` |
+| Reset vs external native `selected` change | Native state re-read at the authority boundary, not inferred from the IDL property | `forms`, `sync` |
+| Duplicate values / labels | Every selection, chip, `remove` and `move` keys on the exact option identity | `identity`, `order`, `chips-remove`, `selection` |
+| `data-filtered` vs authored option markers | Only `data-filtered` is written and exactly restored; active row stays in ARIA | `picker-keyboard`, `lifecycle`, `filter-modes` |
+
+---
+
 # Coverage matrix
 
 ## A. Initialization / lifecycle

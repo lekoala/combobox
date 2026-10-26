@@ -1,4 +1,4 @@
-/*** @lekoala/combobox v0.7.3 - https://github.com/lekoala/combobox ***/
+/*** @lekoala/combobox v0.8.0 - https://github.com/lekoala/combobox ***/
 (() => {
   // node_modules/@lekoala/floating/src/floating.js
   function crossAxisFor(side) {
@@ -902,14 +902,14 @@
     #resolvedCoordinateSpace = "viewport";
     #tokenQueue = Promise.resolve();
     #pendingCreation = null;
-    #interactionGeneration = 0;
-    #editGeneration = 0;
-    #hideGeneration = 0;
+    #editEpoch = 0;
+    #commitEpoch = 0;
+    #resetPending = false;
+    #closeEpoch = 0;
+    #searchEpoch = 0;
     #boundLabelClicks = new WeakSet;
     #separatorKey = "";
     #splitTokens = prepareTokenSplitter([]);
-    #activeOption = null;
-    #initializedActiveMarkers = new WeakSet;
     static getDefaultMessages() {
       return getDefaultMessages();
     }
@@ -970,7 +970,6 @@
       this.results = null;
       this.selectionOrder = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
       this._chipOptions = new WeakMap;
-      this.searchGeneration = 0;
       this.nextCursor = null;
       this.loading = false;
       this.loadError = null;
@@ -1084,21 +1083,20 @@
         const label = input.value.trim();
         if (!label || this.#isLocked())
           return;
-        const generation = this.#interactionGeneration;
-        const edit = this.#editGeneration;
+        const commit = this.#commitEpoch;
+        const edit = this.#editEpoch;
         const value = input.value;
-        const option = await this.#createFallbackOption(label, input);
-        if (!this.#alive() || this.#isLocked() || input.value !== value)
+        const option = await this.#create(label, { input, fallback: true });
+        if (!this.#alive() || this.#isLocked() || this.#resetPending || input.value !== value)
           return;
-        if (edit !== this.#editGeneration || this.#interactionGeneration > generation + 1)
+        if (edit !== this.#editEpoch || this.#commitEpoch > commit + 1)
           return;
         if (option)
           input.value = "";
         input.focus();
       };
       input.addEventListener("input", () => {
-        this.#interactionGeneration++;
-        this.#editGeneration++;
+        this.#editEpoch++;
       }, {
         signal: this.abortController.signal
       });
@@ -1122,34 +1120,6 @@
       for (const control of this.fallbackControl.querySelectorAll("input, button")) {
         mirrorDisabled(control, disabled);
       }
-    }
-    async#createFallbackOption(label, input) {
-      const isCurrent = this.#creationIntent(input);
-      if (this.#pendingCreation && !await this.#creationSettled())
-        return null;
-      if (!isCurrent())
-        return null;
-      if (!this.#canCreate(label, input))
-        return null;
-      const existing = this.#findCreateMatch(label);
-      if (existing) {
-        const option = existing.option;
-        if (option && !isOptionDisabled(option)) {
-          if (!option.selected) {
-            const item = { ...existing, option, selected: true };
-            const before = emit(this.source, "combobox:beforeselect", { combobox: this, item }, { cancelable: true });
-            if (before.defaultPrevented || !this.#alive())
-              return null;
-            option.selected = true;
-            this.#rememberSelection(option);
-            this.#dispatchNativeValueEvents();
-            emit(this.source, "combobox:select", { combobox: this, item });
-          }
-        }
-        return option && !isOptionDisabled(option) ? option : null;
-      }
-      const item = await this.#materializeCreated(label, input, { fallback: true });
-      return item?.option ?? null;
     }
     #enhanceInput(source) {
       const listId = source.getAttribute("list");
@@ -1320,7 +1290,7 @@
       return this;
     }
     clearResults() {
-      this.searchGeneration++;
+      this.#searchEpoch++;
       this.loadController?.abort();
       this.loading = false;
       this.nextCursor = null;
@@ -1502,7 +1472,7 @@
         this.#inputEl().setAttribute("aria-expanded", String(open));
         emit(this.source, open ? "combobox:open" : "combobox:close", { combobox: this });
         if (!open) {
-          this.#hideGeneration++;
+          this.#closeEpoch++;
           if (openCombobox === this)
             openCombobox = null;
           this.stopAutoUpdate?.();
@@ -1572,20 +1542,29 @@
       document.addEventListener("reset", (event) => {
         if (event.target !== this.source.form)
           return;
-        setTimeout(() => {
-          if (event.defaultPrevented || !this.#alive())
+        this.#resetPending = true;
+        queueMicrotask(() => {
+          if (!this.#alive())
             return;
-          this.searchGeneration++;
-          this.loadController?.abort();
-          this.loading = false;
-          this.nextCursor = null;
+          if (event.defaultPrevented) {
+            this.#resetPending = false;
+            return;
+          }
+          this.#commitEpoch++;
           this.clearResults();
+        });
+        setTimeout(() => {
+          if (!this.#alive())
+            return;
+          if (event.defaultPrevented)
+            return;
           if (this.isSelect) {
             this.selectionOrder = Array.from(this.#selectSource().selectedOptions);
             this.#inputEl().value = "";
           }
           this.query = this.isSelect ? "" : this.source.value;
           this.refresh();
+          this.#resetPending = false;
         });
       }, { capture: true, signal });
     }
@@ -1615,8 +1594,7 @@
         case "input": {
           if (this.#suppressInputEvent)
             return;
-          this.#interactionGeneration++;
-          this.#editGeneration++;
+          this.#editEpoch++;
           const inputEvent = event;
           if (this.isMultiple && !inputEvent.isComposing && this.#separatorsActive()) {
             this.#handleTokenInput();
@@ -1659,8 +1637,9 @@
           return;
         if (option.classList.contains("cb-create")) {
           const query = this.#inputEl().value.trim();
-          if (query)
-            this.#createItem(query);
+          if (query && this.#mayConsume(query)) {
+            this.#create(query, { input: this.#inputEl() });
+          }
           return;
         }
         const item = this.visibleItems[Number(option.dataset.index)];
@@ -1715,7 +1694,7 @@
         if (this.isOpen() || this.options.createOnBlur) {
           if (this.isSelect && this.isMultiple && this.options.createOnBlur && !this.composing && !this.#isLocked()) {
             const value = this.#inputEl().value;
-            const edit = this.#editGeneration;
+            const edit = this.#editEpoch;
             this.#suppressReopen = true;
             try {
               if (this.#separatorsActive()) {
@@ -1723,17 +1702,17 @@
                   if (!this.#alive())
                     return;
                   const result = await this.#processTokens(this.#inputEl().value, { final: true });
-                  if (this.#alive() && edit === this.#editGeneration && result) {
+                  if (this.#alive() && edit === this.#editEpoch && result) {
                     this.#inputEl().value = result.rest;
                   }
                 });
-              } else if (value.trim()) {
-                await this.#createItem(value.trim());
+              } else if (value.trim() && this.#mayConsume(value.trim())) {
+                await this.#create(value.trim(), { input: this.#inputEl() });
               }
             } finally {
               this.#suppressReopen = false;
             }
-            if (!this.#alive() || edit !== this.#editGeneration)
+            if (!this.#alive() || edit !== this.#editEpoch)
               return;
             this.refresh();
           }
@@ -1795,9 +1774,9 @@
           if (!this.#toggleSelected(active)) {
             this.#selectItem(active, { keepQuery: this.isMultiple && this.options.toggleSelected });
           }
-        } else if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
+        } else if (this.#mayConsume(this.#inputEl().value)) {
           event.preventDefault();
-          this.#createItem(this.#inputEl().value.trim());
+          this.#create(this.#inputEl().value.trim(), { input: this.#inputEl() });
         }
         return;
       }
@@ -1819,9 +1798,9 @@
             }
             return;
           }
-          if (this.#canCreate(this.#inputEl().value, this.#inputEl())) {
+          if (this.#mayConsume(this.#inputEl().value)) {
             event.preventDefault();
-            this.#createItem(this.#inputEl().value.trim());
+            this.#create(this.#inputEl().value.trim(), { input: this.#inputEl() });
             return;
           }
           this.hide();
@@ -1855,10 +1834,10 @@
     async search(query = "", { show = false, reason = "api" } = {}) {
       if (this.mode !== "enhanced" || !this.#alive())
         return;
-      const generation = ++this.searchGeneration;
+      const searchEpoch = ++this.#searchEpoch;
       this.query = String(query ?? "");
-      const hideGeneration = this.#hideGeneration;
-      const canShow = () => show && hideGeneration === this.#hideGeneration;
+      const closeEpoch = this.#closeEpoch;
+      const canShow = () => show && closeEpoch === this.#closeEpoch && !this.#resetPending;
       this.loadController?.abort();
       this.loading = false;
       const before = emit(this.#inputEl(), "beforefilter", {
@@ -1867,11 +1846,11 @@
         source: this.source,
         reason
       }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive())
+      if (before.defaultPrevented || !this.#alive() || this.#resetPending)
         return;
       if (this.#shouldLoad(this.query)) {
         await this.#load(this.query, { debounce: reason === "input", show: canShow });
-        if (!this.#alive() || generation !== this.searchGeneration)
+        if (!this.#alive() || searchEpoch !== this.#searchEpoch || this.#resetPending)
           return;
       } else {
         if (typeof this.options.load === "function")
@@ -1943,7 +1922,7 @@
         combobox: this,
         signal
       }, { cancelable: true });
-      if (before.defaultPrevented || signal.aborted || !this.#alive())
+      if (before.defaultPrevented || signal.aborted || !this.#alive() || this.#resetPending)
         return false;
       this.loading = true;
       this.#renderLoading();
@@ -1957,7 +1936,7 @@
           source: this.source,
           input: this.#inputEl()
         });
-        if (signal.aborted || !this.#alive())
+        if (signal.aborted || !this.#alive() || this.#resetPending)
           return false;
         const items = Array.isArray(result) ? result : result?.items;
         if (items) {
@@ -1973,7 +1952,7 @@
         return true;
       } catch (error) {
         const caught = error;
-        if (signal.aborted || !this.#alive() || caught?.name === "AbortError")
+        if (signal.aborted || !this.#alive() || this.#resetPending || caught?.name === "AbortError")
           return false;
         this.loadError = caught;
         emit(this.source, "combobox:loaderror", {
@@ -1987,15 +1966,14 @@
           this.loading = false;
       }
     }
-    #writeOptionMarker(option, attribute, on) {
+    #writeFilteredMarker(option, filtered) {
       if (!this.original.optionMarkers.has(option)) {
         this.original.optionMarkers.set(option, {
-          filtered: option.getAttribute("data-filtered"),
-          active: option.getAttribute("data-active-option")
+          filtered: option.getAttribute("data-filtered")
         });
       }
-      if (option.hasAttribute(attribute) !== on)
-        option.toggleAttribute(attribute, on);
+      if (option.hasAttribute("data-filtered") !== filtered)
+        option.toggleAttribute("data-filtered", filtered);
     }
     #applyFilter(query) {
       const items = this.#items();
@@ -2005,11 +1983,7 @@
       for (const item of items) {
         if (!item.option)
           continue;
-        this.#writeOptionMarker(item.option, "data-filtered", !visibleOptions.has(item.option));
-        if (!this.#initializedActiveMarkers.has(item.option)) {
-          this.#writeOptionMarker(item.option, "data-active-option", false);
-          this.#initializedActiveMarkers.add(item.option);
-        }
+        this.#writeFilteredMarker(item.option, !visibleOptions.has(item.option));
       }
       this.#renderList();
       this.#setActive(this.options.autoselectFirst ? this.visibleItems.findIndex((item) => !item.disabled) : -1);
@@ -2024,6 +1998,15 @@
         return this.options.createFilter(value, { combobox: this, source: this.source, input }) !== false;
       }
       return true;
+    }
+    #mayConsume(label) {
+      const value = String(label ?? "").trim();
+      if (!value)
+        return false;
+      const existing = this.#findCreateMatch(value);
+      if (existing && !existing.disabled && existing.option?.selected)
+        return true;
+      return this.#canCreate(value, this.#inputEl());
     }
     #renderList() {
       this.#listEl().replaceChildren();
@@ -2288,14 +2271,6 @@
       if (index >= visible.length)
         index = -1;
       this.activeIndex = index;
-      const activeOption = index >= 0 ? visible[index]?.option ?? null : null;
-      if (this.#activeOption !== activeOption) {
-        if (this.#activeOption)
-          this.#writeOptionMarker(this.#activeOption, "data-active-option", false);
-        if (activeOption)
-          this.#writeOptionMarker(activeOption, "data-active-option", true);
-        this.#activeOption = activeOption;
-      }
       const previous = this.#listEl().querySelector(".cb-option[data-active]");
       const next = index >= 0 ? this.#listEl().querySelector(`.cb-option[data-index="${index}"]`) : null;
       if (previous !== next) {
@@ -2441,80 +2416,106 @@
         this.hide();
         this.refresh();
       }
+      if (!this.#alive())
+        return true;
       emit(this.source, "combobox:select", { combobox: this, item });
+      if (!this.#alive())
+        return true;
       this.#markEngineMutation();
       return true;
     }
-    async#createItem(label, { token = false } = {}) {
-      const isCurrent = this.#creationIntent(this.#inputEl(), { token });
-      if (this.#pendingCreation && !await this.#creationSettled())
+    async#create(label, { input = this.#inputEl(), token = false, fallback = false } = {}) {
+      const term = String(label ?? "").trim();
+      if (!term)
         return null;
-      if (!isCurrent())
-        return null;
-      if (!this.#canCreate(label, this.#inputEl()))
-        return null;
-      const existing = this.#findCreateMatch(label);
-      if (existing) {
-        if (existing.disabled)
+      const edit = this.#editEpoch;
+      const commit = this.#commitEpoch;
+      const value = input.value;
+      const isCurrent = this.#creationIntent(input, { token });
+      const result = await this.#serializeCreation(async () => {
+        if (!isCurrent())
           return null;
-        if (existing.option?.selected)
-          return existing.option;
-        return this.#selectItem(existing) ? existing.option ?? null : null;
-      }
-      const generation = this.#interactionGeneration;
-      const item = await this.#materializeCreated(label, this.#inputEl(), { token });
-      if (!item || !this.#alive())
+        const existing = this.#findCreateMatch(term);
+        if (existing) {
+          if (existing.disabled)
+            return null;
+          if (existing.option?.selected) {
+            return { option: existing.option, item: existing, committed: false, idempotent: true };
+          }
+          if (!token && !this.#canCreate(term, input))
+            return null;
+          if (!this.#selectItem(existing, { keepQuery: token }))
+            return null;
+          return { option: existing.option ?? null, item: existing, committed: true };
+        }
+        if (!this.#canCreate(term, input))
+          return null;
+        const item = await this.#runCreation(term, input, { token, fallback });
+        return item ? { option: item.option, item, committed: true, created: true } : null;
+      });
+      if (!result)
         return null;
-      if (token)
-        return item.option;
-      if (this.#isLocked() || this.#interactionGeneration !== generation + 1)
-        return item.option;
-      if (this.#inputEl().value !== (this.isMultiple ? "" : item.label))
-        return item.option;
-      this.#inputEl().value = "";
+      if (token || fallback)
+        return result.option;
+      if (!result.created && !result.idempotent)
+        return result.option;
+      if (!this.#alive() || this.#isLocked() || this.#resetPending)
+        return result.option;
+      if (this.#editEpoch !== edit)
+        return result.option;
+      if (this.#commitEpoch !== commit + (result.committed ? 1 : 0))
+        return result.option;
+      const expected = result.committed ? this.isMultiple ? "" : result.item.label : value;
+      if (input.value !== expected)
+        return result.option;
+      input.value = "";
+      if (result.idempotent) {
+        if (!this.#suppressReopen) {
+          if (this.isMultiple)
+            this.refresh();
+          else
+            this.hide();
+        }
+        return result.option;
+      }
       if (this.isMultiple) {
         if (this.#suppressReopen)
           this.refresh();
-        else if (this.#closeOnSelect())
-          this.hide();
-        else
-          this.search("", { show: true, reason: "create" });
       } else {
         this.hide();
       }
       this.#markEngineMutation();
-      return item.option;
+      return result.option;
     }
     #creationIntent(input, { token = false } = {}) {
-      const generation = this.#interactionGeneration - (token ? this.#editGeneration : 0);
+      const edit = this.#editEpoch;
+      const commit = this.#commitEpoch;
       const value = input.value;
       const selected = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
       return () => {
-        if (!this.#alive() || this.#isLocked())
+        if (!this.#alive() || this.#isLocked() || this.#resetPending)
           return false;
-        const currentGeneration = this.#interactionGeneration - (token ? this.#editGeneration : 0);
-        if (generation !== currentGeneration || !token && input.value !== value)
+        if (this.#commitEpoch !== commit)
+          return false;
+        if (!token && (this.#editEpoch !== edit || input.value !== value))
           return false;
         const current = this.isSelect ? Array.from(this.#selectSource().selectedOptions) : [];
         return current.length === selected.length && current.every((option, index) => option === selected[index]);
       };
     }
-    async#materializeCreated(label, input, options = {}) {
-      const pending = this.#runCreation(label, input, options);
+    async#serializeCreation(operation) {
+      while (this.#pendingCreation) {
+        await this.#pendingCreation;
+        if (!this.#alive())
+          return null;
+      }
+      const pending = operation();
       this.#pendingCreation = pending.catch(() => {});
       try {
         return await pending;
       } finally {
         this.#pendingCreation = null;
       }
-    }
-    async#creationSettled() {
-      while (this.#pendingCreation) {
-        await this.#pendingCreation;
-        if (!this.#alive())
-          return false;
-      }
-      return true;
     }
     async#runCreation(label, input, { fallback = false, token = false } = {}) {
       const isCurrent = this.#creationIntent(input, { token });
@@ -2544,7 +2545,7 @@
             return null;
           created = toItem(result, this.#fields());
         } catch (error) {
-          if (error?.name !== "AbortError")
+          if (error?.name !== "AbortError" && this.#alive())
             emit(this.source, "combobox:createerror", { combobox: this, label, error });
           return null;
         } finally {
@@ -2582,6 +2583,8 @@
         option.remove();
         return null;
       }
+      if (!this.#alive())
+        return null;
       const item = {
         ...created,
         option,
@@ -2604,7 +2607,8 @@
         });
         return { ok: result !== false, refused: result === false };
       } catch (error) {
-        emit(this.source, "combobox:guarderror", { combobox: this, guard: name, error });
+        if (this.#alive())
+          emit(this.source, "combobox:guarderror", { combobox: this, guard: name, error });
         return { ok: false, refused: false, error };
       }
     }
@@ -2676,17 +2680,7 @@
       const term = String(text ?? "").trim();
       if (!term)
         return true;
-      const existing = this.#findCreateMatch(term);
-      if (existing) {
-        if (existing.disabled)
-          return false;
-        if (existing.option?.selected)
-          return true;
-        return this.#selectItem(existing, { keepQuery: true });
-      }
-      if (!this.#canCreate(term, this.#inputEl()))
-        return false;
-      const created = await this.#createItem(term, { token: true });
+      const created = await this.#create(term, { input: this.#inputEl(), token: true });
       return created !== null;
     }
     #enqueueTokens(batch) {
@@ -2697,14 +2691,14 @@
     }
     async#handleTokenInput() {
       const value = this.#inputEl().value;
-      const edit = this.#editGeneration;
+      const edit = this.#editEpoch;
       return this.#enqueueTokens(async () => {
-        if (!this.#alive() || edit !== this.#editGeneration || this.#isLocked())
+        if (!this.#alive() || edit !== this.#editEpoch || this.#isLocked())
           return;
         const result = await this.#processTokens(value);
         if (!this.#alive())
           return;
-        if (edit !== this.#editGeneration || this.#isLocked())
+        if (edit !== this.#editEpoch || this.#isLocked())
           return;
         if (result)
           this.#inputEl().value = result.rest;
@@ -2713,14 +2707,14 @@
     }
     async#commitEnterTokens(resolved) {
       const value = this.#inputEl().value;
-      const edit = this.#editGeneration;
+      const edit = this.#editEpoch;
       return this.#enqueueTokens(async () => {
-        if (!this.#alive() || edit !== this.#editGeneration || this.#isLocked())
+        if (!this.#alive() || edit !== this.#editEpoch || this.#isLocked())
           return;
         const result = await this.#processTokens(value, { final: true, resolved });
         if (!this.#alive())
           return;
-        if (edit !== this.#editGeneration || this.#isLocked())
+        if (edit !== this.#editEpoch || this.#isLocked())
           return;
         if (result) {
           this.#inputEl().value = result.rest;
@@ -2729,7 +2723,7 @@
       });
     }
     #dispatchNativeValueEvents() {
-      this.#interactionGeneration++;
+      this.#commitEpoch++;
       this.#suppressInputEvent = true;
       try {
         this.source.dispatchEvent(new Event("input", { bubbles: true }));
@@ -2780,20 +2774,28 @@
       if (!option || !this.#isRemovable(option))
         return false;
       const item = optionToItem(option);
+      const commit = this.#commitEpoch;
       const guard = await this.#runGuard("remove", { item });
-      if (guard.error)
-        throw guard.error;
+      if (guard.error) {
+        if (this.#alive())
+          throw guard.error;
+        return false;
+      }
       if (!guard.ok)
         return false;
-      if (!this.#alive() || !this.#isRemovable(option))
+      if (!this.#alive() || this.#resetPending || this.#commitEpoch !== commit || !this.#isRemovable(option))
         return false;
       const before = emit(this.source, "combobox:beforeremove", { combobox: this, item }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive() || !this.#isRemovable(option))
+      if (before.defaultPrevented || !this.#alive() || this.#resetPending || this.#commitEpoch !== commit || !this.#isRemovable(option))
         return false;
       option.selected = false;
       this.#forgetSelection(option);
       this.#commit();
+      if (!this.#alive())
+        return true;
       emit(this.source, "combobox:remove", { combobox: this, item });
+      if (!this.#alive())
+        return true;
       this.#markEngineMutation();
       return true;
     }
@@ -2804,35 +2806,47 @@
       if (!this.isSelect) {
         if (!this.source.value)
           return false;
+        const commit = this.#commitEpoch;
         const inputGuard = await this.#runGuard("clear", {});
-        if (inputGuard.error)
-          throw inputGuard.error;
+        if (inputGuard.error) {
+          if (this.#alive())
+            throw inputGuard.error;
+          return false;
+        }
         if (!inputGuard.ok)
           return false;
-        if (!this.#alive() || !this.source.value)
+        if (!this.#alive() || this.#resetPending || this.#commitEpoch !== commit || !this.source.value)
           return false;
         const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
-        if (before.defaultPrevented || !this.#alive())
+        if (before.defaultPrevented || !this.#alive() || this.#resetPending || this.#commitEpoch !== commit)
           return false;
         this.source.value = "";
         this.#dispatchNativeValueEvents();
         this.refresh();
+        if (!this.#alive())
+          return true;
         emit(this.source, "combobox:clear", { combobox: this });
+        if (!this.#alive())
+          return true;
         this.#markEngineMutation();
         return true;
       }
       const clearable = () => Array.from(this.#selectSource().selectedOptions).filter((option) => !isOptionDisabled(option));
       if (!clearable().length)
         return false;
+      const commit = this.#commitEpoch;
       const guard = await this.#runGuard("clear", {});
-      if (guard.error)
-        throw guard.error;
+      if (guard.error) {
+        if (this.#alive())
+          throw guard.error;
+        return false;
+      }
       if (!guard.ok)
         return false;
-      if (!this.#alive() || !clearable().length)
+      if (!this.#alive() || this.#resetPending || this.#commitEpoch !== commit || !clearable().length)
         return false;
       const before = emit(this.source, "combobox:beforeclear", { combobox: this }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive())
+      if (before.defaultPrevented || !this.#alive() || this.#resetPending || this.#commitEpoch !== commit)
         return false;
       const selected = clearable();
       if (!selected.length)
@@ -2841,7 +2855,11 @@
         option.selected = false;
       this.selectionOrder = this.selectionOrder.filter((option) => option.selected);
       this.#commit();
+      if (!this.#alive())
+        return true;
       emit(this.source, "combobox:clear", { combobox: this });
+      if (!this.#alive())
+        return true;
       this.#markEngineMutation();
       return true;
     }
@@ -2856,7 +2874,7 @@
       return this.#selectedOptionsInOrder().map((option) => optionToItem(option));
     }
     move(itemOrValue, index) {
-      if (this.mode !== "enhanced" || !this.isMultiple || this.options.selectionOrder !== "selected" || !this.#alive())
+      if (this.mode !== "enhanced" || !this.isMultiple || this.options.selectionOrder !== "selected" || !this.#alive() || this.#resetPending)
         return false;
       this.selectionOrder = this.#selectedOptionsInOrder();
       const option = itemOrValue instanceof HTMLOptionElement ? itemOrValue : this.selectionOrder.find((entry) => entry.value === String(itemOrValue));
@@ -2867,13 +2885,15 @@
         return false;
       const { order: nextOrder, from, to } = moved;
       const before = emit(this.source, "combobox:beforereorder", { combobox: this, value: option.value, from, to }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive())
+      if (before.defaultPrevented || !this.#alive() || this.#resetPending)
         return false;
       const valueChanged = nextOrder.some((entry, position) => entry.value !== this.selectionOrder[position]?.value);
       this.selectionOrder = nextOrder;
       this.#renderChips();
       if (valueChanged)
         this.#dispatchNativeValueEvents();
+      if (!this.#alive())
+        return true;
       emit(this.source, "combobox:reorder", {
         combobox: this,
         value: option.value,
@@ -2887,11 +2907,11 @@
       if (!this.#alive() || !this.nextCursor || typeof this.options.load !== "function")
         return false;
       const cursor = this.nextCursor;
-      const generation = this.searchGeneration;
+      const searchEpoch = this.#searchEpoch;
       const pending = this.#load(this.query, { cursor, append: true, debounce: false });
       const controller = this.loadController;
       const loaded = await pending;
-      if (!this.#alive() || generation !== this.searchGeneration || controller !== this.loadController || controller?.signal.aborted)
+      if (!this.#alive() || this.#resetPending || searchEpoch !== this.#searchEpoch || controller !== this.loadController || controller?.signal.aborted)
         return false;
       this.#applyFilter(this.query);
       return loaded;
@@ -2932,7 +2952,7 @@
       this.#inputEl().value = selected?.value ? selected.label : "";
     }
     show() {
-      if (this.mode !== "enhanced" || !this.#alive() || this.isOpen())
+      if (this.mode !== "enhanced" || !this.#alive() || this.#resetPending || this.isOpen())
         return false;
       if (openCombobox && openCombobox !== this) {
         openCombobox.hide();
@@ -2940,7 +2960,7 @@
           return false;
       }
       const before = emit(this.source, "combobox:beforeopen", { combobox: this }, { cancelable: true });
-      if (before.defaultPrevented || !this.#alive())
+      if (before.defaultPrevented || !this.#alive() || this.#resetPending)
         return false;
       try {
         this.#popoverEl().showPopover({ source: this.#inputEl() });
@@ -2959,13 +2979,13 @@
       if (this.mode !== "enhanced" || !this.#alive())
         return false;
       if (!this.isOpen()) {
-        this.#hideGeneration++;
+        this.#closeEpoch++;
         return false;
       }
       const before = emit(this.source, "combobox:beforeclose", { combobox: this }, { cancelable: true });
       if (before.defaultPrevented)
         return false;
-      this.#hideGeneration++;
+      this.#closeEpoch++;
       this.#popoverEl().hidePopover();
       if (openCombobox === this)
         openCombobox = null;
@@ -3007,10 +3027,6 @@
             option.removeAttribute("data-filtered");
           else
             option.setAttribute("data-filtered", marker.filtered);
-          if (marker.active === null)
-            option.removeAttribute("data-active-option");
-          else
-            option.setAttribute("data-active-option", marker.active);
         }
       }
       for (const { label, id } of this.original.inventedLabels) {
@@ -3079,7 +3095,6 @@
       this._source = null;
       this._options = {};
       this._sourceObserver = null;
-      this._selectionOrder = null;
       this._revision = 0;
       this._rebuildQueued = false;
       this._readyResolvers = [];
@@ -3129,6 +3144,9 @@
       return this;
     }
     upgrade() {
+      return this.#upgrade(null);
+    }
+    #upgrade(durable) {
       const source = this.#findSource();
       if (!source) {
         this.#watchForSource();
@@ -3144,20 +3162,11 @@
       if (previous)
         previous.dispose();
       const combobox = new Combobox(source, this.#resolvedOptions());
-      if (this._selectionOrder && source instanceof HTMLSelectElement && combobox.isMultiple && combobox.options.selectionOrder === "selected") {
-        const selected = new Set(source.selectedOptions);
-        combobox.selectionOrder = this._selectionOrder.filter((option) => selected.has(option) && option.closest("select") === source);
-        for (const option of source.selectedOptions) {
-          if (!combobox.selectionOrder.includes(option))
-            combobox.selectionOrder.push(option);
-        }
-        combobox.refresh();
-      }
-      this._selectionOrder = null;
+      this.#restoreDurableState(combobox, durable);
       this._combobox = combobox;
       this._source = source;
       const ready = this._readyResolvers.splice(0);
-      for (const resolve of ready)
+      for (const { resolve } of ready)
         resolve(combobox);
       this.dispatchEvent(new CustomEvent("combobox:ready", {
         bubbles: true,
@@ -3165,17 +3174,56 @@
       }));
       return combobox;
     }
+    #captureDurableState() {
+      const combobox = this._combobox;
+      if (!combobox?.isMultiple || combobox.options.selectionOrder !== "selected")
+        return null;
+      if (!(combobox.source instanceof HTMLSelectElement))
+        return null;
+      return { selectionOrder: [...combobox.selectionOrder] };
+    }
+    #restoreDurableState(combobox, durable) {
+      if (!durable?.selectionOrder.length)
+        return;
+      const source = combobox.source;
+      if (!(source instanceof HTMLSelectElement))
+        return;
+      if (!combobox.isMultiple || combobox.options.selectionOrder !== "selected")
+        return;
+      const selected = new Set(source.selectedOptions);
+      combobox.selectionOrder = durable.selectionOrder.filter((option) => selected.has(option) && option.closest("select") === source);
+      for (const option of source.selectedOptions) {
+        if (!combobox.selectionOrder.includes(option))
+          combobox.selectionOrder.push(option);
+      }
+      combobox.refresh();
+    }
+    #teardown() {
+      this._sourceObserver?.disconnect();
+      this._sourceObserver = null;
+      const combobox = this._combobox;
+      this._combobox = null;
+      this._source = null;
+      combobox?.dispose();
+    }
+    #rebuild() {
+      const durable = this.#captureDurableState();
+      this.#teardown();
+      this.#upgrade(durable);
+    }
     whenReady() {
       if (this._combobox)
         return Promise.resolve(this._combobox);
-      return new Promise((resolve) => this._readyResolvers.push(resolve));
+      return new Promise((resolve, reject) => this._readyResolvers.push({ resolve, reject }));
     }
     dispose() {
-      this._sourceObserver?.disconnect();
-      this._sourceObserver = null;
-      this._combobox?.dispose();
-      this._combobox = null;
-      this._source = null;
+      this.#teardown();
+      const pending = this._readyResolvers.splice(0);
+      if (!pending.length)
+        return;
+      const error = new DOMException("combo-box was disposed before it upgraded", "AbortError");
+      for (const { reject } of pending)
+        reject(error);
     }
     #findSource() {
       for (const child of this.children) {
@@ -3217,12 +3265,7 @@
         this._rebuildQueued = false;
         if (!this.isConnected || !this._combobox)
           return;
-        const source = this._source;
-        this._selectionOrder = this._combobox.isMultiple && this._combobox.options.selectionOrder === "selected" ? [...this._combobox.selectionOrder] : null;
-        this._combobox.dispose();
-        this._combobox = null;
-        this._source = source;
-        this.upgrade();
+        this.#rebuild();
       });
     }
     #upgradeProperty(name) {

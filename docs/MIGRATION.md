@@ -17,6 +17,35 @@ For migrations from other libraries, see [Tom Select](MIGRATION_FROM_TOM_SELECT.
 <combo-box create>
 ```
 
+## Upgrading to 0.8
+
+- **Rebuilds are non-destructive for the value.** Changing `<combo-box>`
+  attributes or calling `configure()` preserves native selection, option
+  identity and explicit selection order; it drops transient state (typed query,
+  remote results, pending creation, open picker). A failed rebuild leaves the
+  element inert but native and does not emit `combobox:ready`.
+- **`whenReady()` settles on `dispose()`.** A pending `whenReady()` now rejects
+  with an `AbortError` when the element is disposed; a rebuild never rejects it.
+  Await it before using `box.combobox` in application code if upgrade may be
+  deferred.
+- **An effective `form.reset()` invalidates pending operations.** It is a
+  selection-authority change: pending search, creation, removal and clear cannot
+  commit afterwards, even when the reset restores the same selection. A reset
+  cancelled by `preventDefault()` invalidates nothing.
+- **One creation pipeline.** An existing option always wins over creating a new
+  one. Selecting an already-selected match is an idempotent success: the text is
+  consumed, no `input`/`change`/`combobox:select` fires, and `maxItems` does not
+  reject it. `guards.add` still runs only for brand-new items. The native
+  fallback now uses the same selection commit, so it clears `aria-invalid` and
+  emits `combobox:select` for an existing match.
+- The engine no longer writes `data-active-option` on source `<option>`s. The
+  active row is interaction state exposed through ARIA (`aria-activedescendant`,
+  `aria-selected`) and the generated `.cb-option[data-active]` rows. Read
+  `.cb-option[data-active]` or `aria-activedescendant` instead; an
+  application-authored `data-active-option` is left untouched.
+- `data-filtered` remains the only option-level state mirror. It is still
+  restored exactly by `dispose()`.
+
 ## Migration is documentation, not runtime compatibility
 
 The new API is exactly two surfaces — the JavaScript engine and the `<combo-box>`

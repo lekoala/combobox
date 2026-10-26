@@ -102,12 +102,12 @@
             {
               "kind": "method",
               "name": "whenReady",
-              "description": "Resolves once the engine has upgraded the source child."
+              "description": "Resolves once the engine has upgraded the source child. Rejects with an `AbortError` if the element is disposed before it ever upgrades."
             },
             {
               "kind": "method",
               "name": "dispose",
-              "description": "Tear the engine down and restore the native source."
+              "description": "Tear the engine down and restore the native source. This is the public lifecycle end: a `whenReady()` still waiting for a first upgrade rejects."
             }
           ],
           "events": [

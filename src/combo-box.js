@@ -104,11 +104,9 @@ export class ComboBoxElement extends HTMLElement {
     this._options = {};
     /** @type {MutationObserver | null} */
     this._sourceObserver = null;
-    /** @type {HTMLOptionElement[] | null} */
-    this._selectionOrder = null;
     this._revision = 0;
     this._rebuildQueued = false;
-    /** @type {Array<(combobox: Combobox) => void>} */
+    /** @type {Array<{ resolve: (combobox: Combobox) => void, reject: (reason: any) => void }>} */
     this._readyResolvers = [];
 
     // Upgrade properties assigned while <combo-box> was still an unknown
@@ -199,6 +197,16 @@ export class ComboBoxElement extends HTMLElement {
    *   child exists.
    */
   upgrade() {
+    return this.#upgrade(null);
+  }
+
+  /**
+   * Build an engine for the current source. This never settles pending
+   * `whenReady()` promises: only the public `dispose()` does.
+   * @param {{ selectionOrder: HTMLOptionElement[] } | null} durable
+   * @returns {Combobox | null}
+   */
+  #upgrade(durable) {
     const source = this.#findSource();
     if (!source) {
       this.#watchForSource();
@@ -221,27 +229,12 @@ export class ComboBoxElement extends HTMLElement {
     if (previous) previous.dispose();
 
     const combobox = new Combobox(source, this.#resolvedOptions());
-    if (
-      this._selectionOrder &&
-      source instanceof HTMLSelectElement &&
-      combobox.isMultiple &&
-      combobox.options.selectionOrder === "selected"
-    ) {
-      const selected = new Set(source.selectedOptions);
-      combobox.selectionOrder = this._selectionOrder.filter(
-        (option) => selected.has(option) && option.closest("select") === source,
-      );
-      for (const option of source.selectedOptions) {
-        if (!combobox.selectionOrder.includes(option)) combobox.selectionOrder.push(option);
-      }
-      combobox.refresh();
-    }
-    this._selectionOrder = null;
+    this.#restoreDurableState(combobox, durable);
     this._combobox = combobox;
     this._source = source;
 
     const ready = this._readyResolvers.splice(0);
-    for (const resolve of ready) resolve(combobox);
+    for (const { resolve } of ready) resolve(combobox);
 
     this.dispatchEvent(
       new CustomEvent("combobox:ready", {
@@ -254,25 +247,83 @@ export class ComboBoxElement extends HTMLElement {
   }
 
   /**
-   * Resolves once the engine has upgraded the source child.
+   * State that survives a rebuild because the native source does. Only the
+   * explicit selection order is not represented by the DOM itself.
+   * @returns {{ selectionOrder: HTMLOptionElement[] } | null}
+   */
+  #captureDurableState() {
+    const combobox = this._combobox;
+    if (!combobox?.isMultiple || combobox.options.selectionOrder !== "selected") return null;
+    if (!(combobox.source instanceof HTMLSelectElement)) return null;
+    return { selectionOrder: [...combobox.selectionOrder] };
+  }
+
+  /**
+   * Reconcile the captured order with the options still selected in the same
+   * source, then append selections the DOM added meanwhile.
+   * @param {Combobox} combobox
+   * @param {{ selectionOrder: HTMLOptionElement[] } | null} durable
+   */
+  #restoreDurableState(combobox, durable) {
+    if (!durable?.selectionOrder.length) return;
+    const source = combobox.source;
+    if (!(source instanceof HTMLSelectElement)) return;
+    if (!combobox.isMultiple || combobox.options.selectionOrder !== "selected") return;
+    const selected = new Set(source.selectedOptions);
+    combobox.selectionOrder = durable.selectionOrder.filter(
+      (option) => selected.has(option) && option.closest("select") === source,
+    );
+    for (const option of source.selectedOptions) {
+      if (!combobox.selectionOrder.includes(option)) combobox.selectionOrder.push(option);
+    }
+    combobox.refresh();
+  }
+
+  /**
+   * The only engine teardown path. `#rebuild()` and the public `dispose()` both
+   * use it; only `dispose()` also settles pending `whenReady()` promises.
+   */
+  #teardown() {
+    this._sourceObserver?.disconnect();
+    this._sourceObserver = null;
+    const combobox = this._combobox;
+    this._combobox = null;
+    this._source = null;
+    combobox?.dispose();
+  }
+
+  /**
+   * Replace the engine while preserving durable state. This is not a public
+   * disposal, so pending `whenReady()` promises stay pending.
+   */
+  #rebuild() {
+    const durable = this.#captureDurableState();
+    this.#teardown();
+    this.#upgrade(durable);
+  }
+
+  /**
+   * Resolves once the engine has upgraded the source child. Rejects with an
+   * `AbortError` if the element is disposed before it ever upgrades.
    * @public
    * @returns {Promise<Combobox>}
    */
   whenReady() {
     if (this._combobox) return Promise.resolve(this._combobox);
-    return new Promise((resolve) => this._readyResolvers.push(resolve));
+    return new Promise((resolve, reject) => this._readyResolvers.push({ resolve, reject }));
   }
 
   /**
-   * Tear the engine down and restore the native source.
+   * Tear the engine down and restore the native source. This is the public
+   * lifecycle end: a `whenReady()` still waiting for a first upgrade rejects.
    * @public
    */
   dispose() {
-    this._sourceObserver?.disconnect();
-    this._sourceObserver = null;
-    this._combobox?.dispose();
-    this._combobox = null;
-    this._source = null;
+    this.#teardown();
+    const pending = this._readyResolvers.splice(0);
+    if (!pending.length) return;
+    const error = new DOMException("combo-box was disposed before it upgraded", "AbortError");
+    for (const { reject } of pending) reject(error);
   }
 
   /**
@@ -330,15 +381,7 @@ export class ComboBoxElement extends HTMLElement {
     queueMicrotask(() => {
       this._rebuildQueued = false;
       if (!this.isConnected || !this._combobox) return;
-      const source = this._source;
-      this._selectionOrder =
-        this._combobox.isMultiple && this._combobox.options.selectionOrder === "selected"
-          ? [...this._combobox.selectionOrder]
-          : null;
-      this._combobox.dispose();
-      this._combobox = null;
-      this._source = source;
-      this.upgrade();
+      this.#rebuild();
     });
   }
 

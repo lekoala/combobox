@@ -35,12 +35,13 @@ export declare class ComboBoxElement extends HTMLElement {
     _options: ComboboxOptions;
     /** @type {MutationObserver | null} */
     _sourceObserver: MutationObserver | null;
-    /** @type {HTMLOptionElement[] | null} */
-    _selectionOrder: HTMLOptionElement[] | null;
     _revision: number;
     _rebuildQueued: boolean;
-    /** @type {Array<(combobox: Combobox) => void>} */
-    _readyResolvers: Array<(combobox: Combobox) => void>;
+    /** @type {Array<{ resolve: (combobox: Combobox) => void, reject: (reason: any) => void }>} */
+    _readyResolvers: Array<{
+        resolve: (combobox: Combobox) => void;
+        reject: (reason: any) => void;
+    }>;
     /**
      * Read a copy of the shared default UI messages.
      * @returns {import("./messages.js").Messages}
@@ -104,13 +105,15 @@ export declare class ComboBoxElement extends HTMLElement {
      */
     upgrade(): Combobox | null;
     /**
-     * Resolves once the engine has upgraded the source child.
+     * Resolves once the engine has upgraded the source child. Rejects with an
+     * `AbortError` if the element is disposed before it ever upgrades.
      * @public
      * @returns {Promise<Combobox>}
      */
     whenReady(): Promise<Combobox>;
     /**
-     * Tear the engine down and restore the native source.
+     * Tear the engine down and restore the native source. This is the public
+     * lifecycle end: a `whenReady()` still waiting for a first upgrade rejects.
      * @public
      */
     dispose(): void;

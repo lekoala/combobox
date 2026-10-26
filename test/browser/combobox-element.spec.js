@@ -201,6 +201,68 @@ test.describe("Element registration and lifecycle", () => {
     expect(state.listRestored).toBe(true);
     expect(state.instanceRemoved).toBe(true);
   });
+
+  test("configure() during a pending create leaves no late catalogue write", async ({ page }) => {
+    await setup(page, ELEMENTS_HTML);
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+    const state = await page.evaluate(async () => {
+      const wrap = document.createElement("combo-box");
+      wrap.innerHTML = '<select multiple name="tags"><option value="a" selected>Alpha</option></select>';
+      document.body.append(wrap);
+      await wrap.whenReady();
+
+      let release;
+      let started;
+      const ready = new Promise((resolve) => {
+        started = resolve;
+      });
+      wrap.configure({
+        create: () =>
+          new Promise((resolve) => {
+            release = () => resolve({ value: "new", label: "New" });
+            started();
+          }),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const engine = wrap.combobox;
+      const events = [];
+      wrap.addEventListener("combobox:create", () => events.push("create"));
+      wrap.addEventListener("combobox:select", () => events.push("select"));
+      engine.input.value = "New";
+      await engine.search("New", { show: true });
+      engine.input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+      await ready;
+
+      // Rebuild while create() is still pending: the old engine is torn down.
+      wrap.configure({ minChars: 2 });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+
+      const select = wrap.querySelector("select");
+      return {
+        rebuilt: wrap.combobox !== engine,
+        staleRegistered: Combobox.getInstance(select) === engine,
+        options: Array.from(select.options, (option) => option.value),
+        selected: Array.from(select.selectedOptions, (option) => option.value),
+        events,
+        input: wrap.combobox.input.value,
+      };
+    });
+
+    expect(state).toEqual({
+      rebuilt: true,
+      staleRegistered: false,
+      options: ["a"],
+      selected: ["a"],
+      events: [],
+      input: "",
+    });
+  });
 });
 
 test.describe("Recovery after failed upgrade", () => {
@@ -252,5 +314,63 @@ test.describe("Recovery after failed upgrade", () => {
     expect(state.secondIsEngine).toBe(true);
     expect(state.registered).toBe(true);
     expect(state.engineMatches).toBe(true);
+  });
+
+  test("a failed internal rebuild leaves the element inert and recoverable", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+
+    const state = await page.evaluate(async () => {
+      const host = document.createElement("combo-box");
+      const input = document.createElement("input");
+      input.id = "rebuild-fail";
+      input.setAttribute("list", "rebuild-fail-list");
+      host.append(input);
+      document.body.append(host);
+
+      const datalist = document.createElement("datalist");
+      datalist.id = "rebuild-fail-list";
+      datalist.innerHTML = '<option value="a">A</option>';
+      document.body.append(datalist);
+      await host.whenReady();
+      const before = host.combobox;
+
+      // The rebuild's constructor throws after the old engine was torn down.
+      datalist.remove();
+      host.setAttribute("placeholder", "changed");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const inert = {
+        engine: host.combobox,
+        registered: Combobox.getInstance(input),
+        listStillAuthored: input.hasAttribute("list"),
+      };
+
+      // A later upgrade recovers the element and settles the waiting promise.
+      const pending = host.whenReady();
+      document.body.append(datalist);
+      const recovered = host.upgrade();
+      const resolved = await pending;
+      const result = {
+        inert,
+        recovered: recovered === host.combobox && resolved === host.combobox,
+        listRemoved: !input.hasAttribute("list"),
+        staleNotReused: host.combobox !== before,
+      };
+      host.dispose();
+      datalist.remove();
+      return result;
+    });
+
+    expect(state.inert).toEqual({
+      engine: null,
+      registered: null,
+      listStillAuthored: true,
+    });
+    expect(state.recovered).toBe(true);
+    expect(state.listRemoved).toBe(true);
+    expect(state.staleNotReused).toBe(true);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("No datalist found");
   });
 });

@@ -139,6 +139,9 @@ the `verify`/CI drift gate rejects out-of-sync generated files.
 
 Most regressions live between two moments, not inside one code path. Review and test every change against these:
 
+- **Authority and epochs**: `#editEpoch` (typed intent), `#commitEpoch` (selection/value authority), `#searchEpoch`/`#closeEpoch` (picker intent). Capture an epoch at intent creation, revalidate exactly after every `await`, and never compare unrelated epochs with arithmetic. An effective form reset is a selection-authority change (it invalidates even at identical selection); a cancelled reset invalidates nothing.
+- **One creation pipeline** (`#create`) for enhanced, fallback and tokens; entry points use `#mayConsume`; `guards.add` gates brand-new items only; an already-selected match is an idempotent success with no value event.
+- **Rebuild vs dispose**: a rebuild drops transient state (query, results, pending creation, open picker) and preserves durable state (native selection, option identity, explicit selection order); `dispose()` restores the native source exactly and rejects a pending `whenReady()`.
 - **After every `await`** (guard, `create`, `load`): re-check that the instance is alive and that the target (option, query, open state, existing match) is still what the operation started with. A stale intent never wins over a newer one and never emits a commit event.
 - **One helper per invariant** (`#isLocked()`, `#isRemovable()`, `#findCreateMatch()`…), applied on every path: keyboard, pointer, programmatic API, tokenization, blur, fallback. A per-path check is a future bug.
 - **Effective native state, not the IDL property**: `:disabled` (covers `<fieldset disabled>`), `defaultSelected`/`form.reset()`. When mirroring state onto a control the engine generates or drives, write only what it does not inherit natively, so the platform keeps it in sync when an ancestor changes.

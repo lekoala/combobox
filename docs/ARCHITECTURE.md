@@ -58,6 +58,46 @@ A native multiple select has selected values but does not naturally model “cho
 
 This avoids the common workaround of detaching and appending `<option>` elements merely to encode display order.
 
+### Ownership, authority and validity
+
+Every mutation path answers two questions: **who owns the state** and **which
+intent may still commit**.
+
+| State | Owner | Lifetime |
+|---|---|---|
+| Value (`selected`, input value, `FormData`) | the native source | durable |
+| Catalogue (`<option>`/`<optgroup>`, datalist) | the native source | durable |
+| Result store (remote candidates) | the engine | transient |
+| Selection order (`selectionOrder`) | the engine | durable by option identity |
+| Query, active row, open picker, pending creation | the engine | transient |
+
+The engine never keeps a shadow value. `select()`/`remove()`/`clear()` and
+creation write native state and then dispatch native events; `input+datalist`
+and `<select multiple>` keep their own value models.
+
+Three validity epochs name the authorities an asynchronous operation depends
+on:
+
+- `#editEpoch` — the user's typed intent (input value);
+- `#commitEpoch` — selection/value authority (native value events, programmatic
+  selection, effective form reset);
+- `#searchEpoch` / `#closeEpoch` — picker search and close intent.
+
+An operation captures the epochs of the authority it acts on and revalidates
+exactly after every `await`. Epochs answer "is this still the same intent?", not
+"how many commits happened": never compare unrelated epochs with arithmetic
+(an event handler may commit again).
+
+A **form reset is a selection-authority change**. An effective reset invalidates
+pending search, creation, removal and clear even when the restored selection is
+identical; a reset cancelled by `preventDefault()` invalidates nothing.
+A **rebuild** abandons transient state and preserves durable state (see the
+lifecycle table below); `dispose()` restores the native source and settles
+`whenReady()`.
+
+The active row is interaction state: it lives on generated rows and in ARIA,
+never on source options. `data-filtered` is the only option-level mirror.
+
 ## 3. DOM shape
 
 ### Input combobox
@@ -167,6 +207,44 @@ The wrapper owns only lifecycle (upgrade/dispose); the native source never chang
 
 Fallback: without JS or on unsupported browsers the browser sees an unknown element wrapping a fully functional native control.
 
+### Lifecycle and supported mutations
+
+`<combo-box>` owns the engine lifecycle; the engine owns interaction; the native source owns value and form semantics. A rebuild replaces the engine, not the source.
+
+| State | Rebuild on the same source |
+|---|---|
+| Selected native options | Preserved (the source is untouched) |
+| `<option>` node identity | Preserved as long as the nodes stay in the source |
+| `selectionOrder: "selected"` | Preserved and reconciled by option identity |
+| Name, form owner, native values | Preserved |
+| Typed query / temporary text | Abandoned |
+| Transient results and remote load | Invalidated |
+| Pending creation / guard | Invalidated |
+| Open picker, active row, chip focus | Abandoned |
+
+A failed rebuild (for example an `input[list]` whose `<datalist>` no longer resolves) leaves the element inert but native: `box.combobox` is `null`, no `combobox:ready` is emitted, the error is not swallowed, and a later successful `upgrade()` recovers the element. `whenReady()` stays pending until that successful upgrade; only the public `dispose()` rejects it.
+
+Supported mutations:
+
+| Mutation | Policy |
+|---|---|
+| Change `input[list]` to a select (or the reverse) | Not supported without a new instance |
+| Change `multiple` after initialization | Not supported; re-initialize |
+| Add, remove or move `<option>` elements | Explicit `sync()`, or `observeSource` when enabled |
+| Assign `option.selected` from JavaScript | Explicit `sync()` |
+| Change `disabled` / `required` / `readonly` | Native semantics respected; `refresh()`/`sync()` to update projections |
+| Change `name`, `form`, reset the form | Native contract at the relevant moment |
+| Add or replace remote results | `setResults()` without touching the catalogue |
+| Replace the catalogue | `setOptions()`; selected node preservation per its contract |
+| Change `<combo-box>` attributes or call `configure()` | Grouped engine rebuild |
+| Replace the child source element | Explicit `upgrade()` |
+| Other arbitrary structural mutations | No automatic resynchronization guarantee |
+
+A synchronous DOM move preserves the engine by deferring teardown to a microtask. A durable removal disposes it; a later reinsertion builds a new instance. This differs deliberately from Date-picker's "disconnect = destroy" rule.
+
+A **form reset is a selection-authority change**. An effective reset invalidates any pending search, creation, removal or clear, even when the resulting native selection is identical to the current one (for example restoring an option that was already selected). A reset cancelled by `preventDefault()` invalidates nothing. No asynchronous continuation may commit or reopen the picker between the reset event and the native state re-read. A disposed instance emits no event at all: lifecycle and error events (`select`, `create`, `createerror`, `remove`, `clear`, `reorder`, `guarderror`, `loaderror`) belong to a live engine, including when a native `input`/`change` handler disposes it.
+
+
 ## 4. Popover and positioning
 
 Use a manual popover:
@@ -239,12 +317,15 @@ render
 
 If `beforefilter` is cancelled, the application owns filtering. It can asynchronously obtain data, call `setResults()`, then call `applyFilter()` without recursively firing `beforefilter`.
 
-Mirror Open UI-like future states today with data attributes (`data-filtered`, `data-active-option`). When interoperable native primitives ship, the adapter boundary can delegate more work to the platform without changing the public model.
+Mirror Open UI-like future states today with `data-filtered` on native options. When interoperable native primitives ship, the adapter boundary can delegate more work to the platform without changing the public model.
 
 `data-filtered` mirrors the dataset's *filtered* state, not the popup's
 *visibility*: it is present while a filter query is active, removed when the
 query becomes empty and on `dispose()`. Opening or closing the popup never
-touches it.
+touches it. The **active row** is picker interaction state and is deliberately
+not projected onto native options: it lives on the generated rows
+(`data-active`) and in ARIA (`aria-activedescendant`, `aria-selected`). An
+application-authored `data-active-option` is therefore never read or written.
 
 ## 6. Remote loading
 
@@ -357,7 +438,47 @@ Multiple chips:
 
 No virtual caret positions between chips. Reordering chip keyboard support landed together with ordered mode (`Alt+Arrow/Home/End`, live position announcement).
 
-## 10. Fallback policy
+## 10. Creation pipeline
+
+The enhanced picker, the native fallback and separator tokens run one pipeline
+(`#create`). Resolution is contractual: an existing native option always wins
+over materializing a new one.
+
+```text
+eligibility (Enter/Tab/create row/createOnBlur: #mayConsume)
+→ wait for the creation in flight
+→ revalidate the intent (alive, lock, reset, edit, commit, exact selection)
+→ existing match
+    · already selected → idempotent success: consume the text, no value event
+    · not selected     → #selectItem (maxItems, disabled, beforeselect)
+→ canCreate (create, createFilter, maxItems)
+→ guards.add
+→ combobox:beforecreate
+→ async create
+→ revalidate (alive, intent, maxItems, option appeared meanwhile)
+→ addOption
+→ combobox:beforeselect
+→ native commit (input, change, combobox:select)
+→ combobox:create + UI cleanup
+```
+
+Entry eligibility (`#mayConsume`) accepts an already-selected match even at
+`maxItems`, because consuming it is not an addition. Selecting an existing
+unselected option still requires creation to be allowed; tokenization is the
+one exception (a token may select any existing match without `create`).
+`guards.add` therefore runs for brand-new creations only, and a refused
+selection, guard or `beforecreate` leaves the typed text editable.
+
+One creation runs at a time. A repeated intent waits for the creation in
+flight, then revalidates the intent it captured at entry: a newer edit,
+selection, effective reset or disposal wins and nothing is committed. The
+selection commit owns the post-commit picker transition (search or close); the
+creation cleanup only completes a blur-suppressed transition and never starts a
+second search. The fallback Add control shares this primitive and only owns its
+own input cleanup; the token queue stays separate because tokens are sequenced,
+not mutually exclusive.
+
+## 11. Fallback policy
 
 Fallback is not a second combobox engine.
 
@@ -373,7 +494,7 @@ Not allowed:
 - modal parent hacks;
 - partial recreation of advanced enhanced behavior.
 
-## 11. Target implementation split
+## 12. Target implementation split
 
 Do not split merely for file count. The stabilized split keeps the pure seams
 isolated and the orchestration in one place:

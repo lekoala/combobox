@@ -34,6 +34,20 @@ test.describe("Disposed instances and source ownership", () => {
     });
   }
 
+  test("whenReady() rejects when a source-less wrapper is disposed", async ({ page }) => {
+    const state = await page.evaluate(async () => {
+      const wrap = document.createElement("combo-box");
+      document.body.append(wrap);
+      const pending = wrap.whenReady().then(
+        () => ({ settled: "resolved" }),
+        (error) => ({ settled: "rejected", name: error.name }),
+      );
+      wrap.remove();
+      return pending;
+    });
+    expect(state).toEqual({ settled: "rejected", name: "AbortError" });
+  });
+
   for (const replacement of [false, true]) {
     test(`disposed rendering methods are harmless ${replacement ? "after replacement" : "after teardown"}`, async ({
       page,
@@ -222,6 +236,78 @@ test.describe("Pending operations and attribute restoration", () => {
     expect(state.selected).toEqual(["a"]);
   });
 
+  test("a guard rejecting after dispose emits no guarderror", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const form = document.createElement("form");
+      form.innerHTML = `<select name="choice" multiple><option value="a" selected>A</option></select>`;
+      document.body.append(form);
+      const select = form.querySelector("select");
+      const errors = [];
+      select.addEventListener("combobox:guarderror", () => errors.push("guarderror"));
+      let reject;
+      const combo = new Combobox(select, {
+        guards: {
+          remove: () =>
+            new Promise((_, rejectGuard) => {
+              reject = rejectGuard;
+            }),
+        },
+      });
+      const pending = combo.remove("a");
+      combo.dispose();
+      reject(new Error("late boom"));
+      const settled = await pending;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      form.remove();
+      return { settled, errors, selected: Array.from(select.selectedOptions, (o) => o.value) };
+    });
+
+    expect(state).toEqual({ settled: false, errors: [], selected: ["a"] });
+  });
+
+  test("a create rejecting after dispose emits no createerror", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const form = document.createElement("form");
+      form.innerHTML = `<select name="choice" multiple><option value="a" selected>A</option></select>`;
+      document.body.append(form);
+      const select = form.querySelector("select");
+      const errors = [];
+      select.addEventListener("combobox:createerror", () => errors.push("createerror"));
+      let reject;
+      let started;
+      const ready = new Promise((resolve) => {
+        started = resolve;
+      });
+      const combo = new Combobox(select, {
+        create: () =>
+          new Promise((_, rejectCreate) => {
+            reject = rejectCreate;
+            started();
+          }),
+      });
+      combo.input.value = "B";
+      await combo.search("B", { show: true });
+      combo.input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+      await ready;
+      combo.dispose();
+      reject(new Error("late boom"));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const result = {
+        errors,
+        options: Array.from(select.options, (option) => option.value),
+        selected: Array.from(select.selectedOptions, (option) => option.value),
+      };
+      form.remove();
+      return result;
+    });
+
+    expect(state).toEqual({ errors: [], options: ["a"], selected: ["a"] });
+  });
+
   test("dispose restores authored filter and source attributes", async ({ page }) => {
     test.skip(!(await modernSupported(page)), MODERN);
     const state = await page.evaluate(() => {
@@ -248,10 +334,13 @@ test.describe("Pending operations and attribute restoration", () => {
     expect(state.ariaInvalid).toBe("true");
   });
 
-  test("dispose restores markers authored post-init and on datalist options", async ({ page }) => {
+  test("dispose restores data-filtered and leaves authored data-active-option untouched", async ({
+    page,
+  }) => {
     test.skip(!(await modernSupported(page)), MODERN);
     const state = await page.evaluate(async () => {
-      // Select: an option added after init with authored markers keeps them.
+      // Select: an option added after init with authored markers keeps both;
+      // data-filtered is restored, data-active-option is never written.
       const form = document.createElement("form");
       form.innerHTML = `<select name="choice" multiple><option value="a">A</option></select>`;
       document.body.append(form);

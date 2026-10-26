@@ -243,6 +243,205 @@ test.describe("Cancellable value events", () => {
   });
 });
 
+test.describe("Disposal during native value events", () => {
+  const MODERN = "Modern Popover + floating placement support is required";
+
+  test("disposing from a native change handler suppresses combobox:select on every source mode", async ({
+    page,
+  }) => {
+    await setup(page, "/test/fixtures/identity.html");
+    test.skip(!(await modernSupported(page)), MODERN);
+
+    const state = await page.evaluate(() => {
+      const run = (source, options) => {
+        const events = [];
+        source.addEventListener("input", () => events.push("input"));
+        source.addEventListener("change", () => events.push("change"));
+        source.addEventListener("combobox:select", () => events.push("select"));
+        const combo = new Combobox(source, options);
+        source.addEventListener(
+          "change",
+          () => {
+            combo.dispose();
+          },
+          { once: true },
+        );
+        const result = combo.select("b");
+        return {
+          result,
+          events,
+          disposed: Combobox.getInstance(source) === null,
+          selected: source.value,
+          generatedControlRemoved: !source.nextElementSibling?.classList.contains("cb-control"),
+        };
+      };
+
+      const select = document.createElement("select");
+      select.innerHTML = `<option value="a" selected>A</option><option value="b">B</option>`;
+      document.body.append(select);
+      const enhanced = run(select);
+
+      const fallbackSelect = document.createElement("select");
+      fallbackSelect.innerHTML = `<option value="a" selected>A</option><option value="b">B</option>`;
+      document.body.append(fallbackSelect);
+      const fallback = run(fallbackSelect, { mode: "fallback" });
+
+      const input = document.createElement("input");
+      input.id = "dl-input";
+      input.setAttribute("list", "dl");
+      const datalist = document.createElement("datalist");
+      datalist.id = "dl";
+      datalist.innerHTML = '<option value="a">A</option><option value="b">B</option>';
+      document.body.append(input, datalist);
+      const text = run(input);
+
+      return { enhanced, fallback, text };
+    });
+
+    for (const scenario of [state.enhanced, state.fallback, state.text]) {
+      // The native commit happened (and reported success), then the listener
+      // disposed before the engine's own event could fire.
+      expect(scenario).toEqual({
+        result: true,
+        events: ["input", "change"],
+        disposed: true,
+        selected: "b",
+        generatedControlRemoved: true,
+      });
+    }
+  });
+
+  test("disposing from a native change handler during creation suppresses combobox:create", async ({
+    page,
+  }) => {
+    await setup(page, "/test/fixtures/identity.html");
+    test.skip(!(await modernSupported(page)), MODERN);
+
+    const state = await page.evaluate(async () => {
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 30));
+
+      const runEnhanced = async () => {
+        const select = document.createElement("select");
+        select.multiple = true;
+        select.innerHTML = `<option value="a" selected>A</option>`;
+        document.body.append(select);
+        const events = [];
+        select.addEventListener("input", () => events.push("input"));
+        select.addEventListener("change", () => events.push("change"));
+        select.addEventListener("combobox:create", () => events.push("create"));
+        select.addEventListener("combobox:createerror", () => events.push("createerror"));
+        const combo = new Combobox(select, { create: true });
+        select.addEventListener("change", () => combo.dispose(), { once: true });
+        const input = combo.input;
+        input.focus();
+        input.value = "plum";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        await tick();
+        return {
+          events,
+          disposed: Combobox.getInstance(select) === null,
+          created: Array.from(select.options, (option) => option.value),
+          selected: Array.from(select.selectedOptions, (option) => option.value),
+        };
+      };
+
+      const runFallback = async () => {
+        const select = document.createElement("select");
+        select.multiple = true;
+        select.innerHTML = `<option value="a" selected>A</option>`;
+        document.body.append(select);
+        const events = [];
+        select.addEventListener("input", () => events.push("input"));
+        select.addEventListener("change", () => events.push("change"));
+        select.addEventListener("combobox:create", () => events.push("create"));
+        const combo = new Combobox(select, { mode: "fallback", create: true });
+        select.addEventListener("change", () => combo.dispose(), { once: true });
+        const input = select.nextElementSibling.querySelector("input");
+        input.value = "plum";
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        await tick();
+        return {
+          events,
+          disposed: Combobox.getInstance(select) === null,
+          created: Array.from(select.options, (option) => option.value),
+          selected: Array.from(select.selectedOptions, (option) => option.value),
+        };
+      };
+
+      return { enhanced: await runEnhanced(), fallback: await runFallback() };
+    });
+
+    for (const scenario of [state.enhanced, state.fallback]) {
+      expect(scenario).toEqual({
+        events: ["input", "change"],
+        disposed: true,
+        created: ["a", "plum"],
+        selected: ["a", "plum"],
+      });
+    }
+  });
+  test("disposing from a native change handler suppresses remove, clear and reorder events", async ({
+    page,
+  }) => {
+    await setup(page, "/test/fixtures/identity.html");
+    test.skip(!(await modernSupported(page)), MODERN);
+
+    const state = await page.evaluate(async () => {
+      const make = (values, options = {}) => {
+        const select = document.createElement("select");
+        select.multiple = true;
+        for (const value of values) select.add(new Option(value.toUpperCase(), value, true, true));
+        document.body.append(select);
+        return new Combobox(select, options);
+      };
+      const disposer = (select, combo, events, name) => {
+        select.addEventListener(name, () => events.push(name));
+        select.addEventListener("change", () => combo.dispose(), { once: true });
+      };
+
+      const removed = make(["a"]);
+      const removeEvents = [];
+      disposer(removed.source, removed, removeEvents, "combobox:remove");
+      const removeResult = await removed.remove("a");
+
+      const cleared = make(["a", "b"]);
+      const clearEvents = [];
+      disposer(cleared.source, cleared, clearEvents, "combobox:clear");
+      const clearResult = await cleared.clear();
+
+      const moved = make(["a", "b"], { selectionOrder: "selected" });
+      const reorderEvents = [];
+      disposer(moved.source, moved, reorderEvents, "combobox:reorder");
+      const moveResult = moved.move(moved.source.options[1], 0);
+
+      return {
+        removed: {
+          result: removeResult,
+          events: removeEvents,
+          disposed: Combobox.getInstance(removed.source) === null,
+        },
+        cleared: {
+          result: clearResult,
+          events: clearEvents,
+          disposed: Combobox.getInstance(cleared.source) === null,
+        },
+        moved: {
+          result: moveResult,
+          events: reorderEvents,
+          disposed: Combobox.getInstance(moved.source) === null,
+        },
+      };
+    });
+
+    // The native mutation and FormData change happened before dispose; only
+    // the engine's own lifecycle event is suppressed.
+    expect(state.removed).toEqual({ result: true, events: [], disposed: true });
+    expect(state.cleared).toEqual({ result: true, events: [], disposed: true });
+    expect(state.moved).toEqual({ result: true, events: [], disposed: true });
+  });
+});
+
 test.describe("Concurrent removals", () => {
   test.beforeEach(async ({ page }) => {
     await setup(page, "/test/fixtures/identity.html");

@@ -41,6 +41,54 @@ test.describe("Guard decisions", () => {
     expect(states.selected).toContain("plum");
   });
 
+  test("guards.add gates new items only, never existing matches", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    await page.evaluate(() => {
+      window.guardCalls = [];
+      Combobox.getOrCreateInstance(document.getElementById("tags"), {
+        create: true,
+        guards: {
+          add: ({ label }) => {
+            window.guardCalls.push(label);
+            return true;
+          },
+        },
+      });
+    });
+
+    const input = page.locator(control("tags"));
+    await input.fill("Banana");
+    await input.press("Enter");
+    await page.waitForTimeout(40);
+    const afterExisting = await page.evaluate(() => ({
+      guardCalls: [...window.guardCalls],
+      selected: Array.from(document.getElementById("tags").selectedOptions, (o) => o.value),
+    }));
+
+    await input.fill("Apple");
+    await input.press("Enter");
+    await page.waitForTimeout(40);
+    const afterSelected = await page.evaluate(() => [...window.guardCalls]);
+
+    await input.fill("Kiwi");
+    await input.press("Enter");
+    await page.waitForTimeout(40);
+    const afterCreate = await page.evaluate(() => ({
+      guardCalls: [...window.guardCalls],
+      values: Array.from(document.getElementById("tags").options, (o) => o.value),
+      selected: Array.from(document.getElementById("tags").selectedOptions, (o) => o.value),
+    }));
+
+    // Selecting an existing option and accepting an already-selected match
+    // are not additions: only the brand-new item reaches guards.add.
+    expect(afterExisting.guardCalls).toEqual([]);
+    expect(afterExisting.selected).toEqual(["1", "2"]);
+    expect(afterSelected).toEqual([]);
+    expect(afterCreate.guardCalls).toEqual(["Kiwi"]);
+    expect(afterCreate.values).toContain("Kiwi");
+    expect(afterCreate.selected).toContain("Kiwi");
+  });
+
   test("guards.remove: refusal keeps the chip selected", async ({ page }) => {
     test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
     await page.evaluate(() => {

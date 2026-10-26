@@ -350,6 +350,41 @@ test.describe("Creation decisions and interaction", () => {
     expect(state.events).toEqual(["input", "change", "create"]);
   });
 
+  test("a created option runs a single post-commit search", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    const state = await page.evaluate(async () => {
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 30));
+      const select = document.getElementById("tags");
+      const combo = Combobox.getOrCreateInstance(select, { create: true });
+      const input = combo.input;
+      const searches = [];
+      input.addEventListener("beforefilter", (event) => searches.push(`before:${event.detail.reason}`));
+      input.addEventListener("filter", () => searches.push("filter"));
+
+      input.focus();
+      input.value = "Plum";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await tick();
+      // Ignore the incremental search for the typed query: only the commit
+      // transition after creation is under test.
+      searches.length = 0;
+
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await tick();
+      return {
+        searches,
+        selected: Array.from(select.selectedOptions, (option) => option.value),
+        inputValue: input.value,
+      };
+    });
+
+    // One beforefilter + one filter, owned by the selection commit. The
+    // creation cleanup must not start a second search ("create").
+    expect(state.searches).toEqual(["before:select", "filter"]);
+    expect(state.selected).toEqual(["1", "Plum"]);
+    expect(state.inputValue).toBe("");
+  });
+
   test("create rejection emits createerror and AbortError stays silent", async ({ page }) => {
     test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
     const state = await page.evaluate(async () => {
@@ -478,6 +513,171 @@ test.describe("Creation decisions and interaction", () => {
     expect(state.bananaSelected).toBe(true);
     expect(state.bananaCount).toBe(1);
     expect(state.hasDuplicate).toBe(false);
+  });
+});
+
+test.describe("Creation resolution and idempotency", () => {
+  const IDENTITY_HTML = "/test/fixtures/identity.html";
+  const MODERN = "Modern Popover + floating placement support is required";
+
+  test.beforeEach(async ({ page }) => {
+    await setup(page, IDENTITY_HTML);
+  });
+
+  test("an already-selected match at maxItems is consumed without value events", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const form = document.createElement("form");
+      form.innerHTML = `<select name="choice" multiple>
+        <option value="a" selected>Alpha</option>
+        <option value="b" selected>Beta</option>
+      </select>`;
+      document.body.append(form);
+      const select = form.querySelector("select");
+      const events = [];
+      for (const type of ["input", "change", "combobox:select", "combobox:create"]) {
+        select.addEventListener(type, () => events.push(type));
+      }
+      let creates = 0;
+      let guardCalls = 0;
+      const combo = Combobox.getOrCreateInstance(select, {
+        create: () => {
+          creates++;
+          return { value: "new", label: "New" };
+        },
+        guards: {
+          add: () => {
+            guardCalls++;
+            return true;
+          },
+        },
+        maxItems: 2,
+      });
+      const input = combo.input;
+      input.focus();
+      input.value = "alpha";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return {
+        events,
+        creates,
+        guardCalls,
+        inputValue: input.value,
+        selected: Array.from(select.selectedOptions, (o) => o.value),
+        options: Array.from(select.options, (o) => o.value),
+        formData: new FormData(form).getAll("choice"),
+      };
+    });
+    expect(state).toEqual({
+      events: [],
+      creates: 0,
+      guardCalls: 0,
+      inputValue: "",
+      selected: ["a", "b"],
+      options: ["a", "b"],
+      formData: ["a", "b"],
+    });
+  });
+
+  test("creation disabled leaves an unselected existing match to the native form", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const select = document.createElement("select");
+      select.multiple = true;
+      select.innerHTML = `<option value="a" selected>Alpha</option><option value="b">Beta</option>`;
+      document.body.append(select);
+      const events = [];
+      for (const type of ["input", "change", "combobox:select"]) {
+        select.addEventListener(type, () => events.push(type));
+      }
+      const combo = Combobox.getOrCreateInstance(select);
+      const input = combo.input;
+      input.focus();
+      input.value = "Beta";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      const keydown = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+      input.dispatchEvent(keydown);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return {
+        prevented: keydown.defaultPrevented,
+        events,
+        inputValue: input.value,
+        selected: Array.from(select.selectedOptions, (o) => o.value),
+        options: Array.from(select.options, (o) => o.value),
+      };
+    });
+    expect(state).toEqual({
+      prevented: false,
+      events: [],
+      inputValue: "Beta",
+      selected: ["a"],
+      options: ["a", "b"],
+    });
+  });
+
+  test("re-entering an existing or just-created label never creates a twin", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), MODERN);
+    const state = await page.evaluate(async () => {
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 30));
+      const select = document.createElement("select");
+      select.multiple = true;
+      select.innerHTML = `<option value="plum" selected>Plum</option>`;
+      document.body.append(select);
+      let creates = 0;
+      const combo = Combobox.getOrCreateInstance(select, {
+        create: (label) => {
+          creates++;
+          return { value: label.toLowerCase(), label };
+        },
+        createOnBlur: true,
+        tabSelect: true,
+      });
+      const input = combo.input;
+      const enter = async (text) => {
+        input.focus();
+        input.value = text;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+        await tick();
+      };
+      const tab = async (text) => {
+        input.focus();
+        input.value = text;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true }));
+        await tick();
+      };
+      const blur = async (text) => {
+        input.focus();
+        input.value = text;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        document.body.tabIndex = -1;
+        document.body.focus();
+        await tick();
+        await tick();
+      };
+
+      // New label: the only real creation.
+      await enter("Kiwi");
+      const afterCreate = { creates, selected: Array.from(select.selectedOptions, (o) => o.value) };
+
+      // Same label through every interaction path: selection/idempotent only.
+      await enter("kiwi");
+      await tab("Kiwi");
+      await blur("KIWI");
+      return {
+        afterCreate,
+        creates,
+        selected: Array.from(select.selectedOptions, (o) => o.value),
+        options: Array.from(select.options, (o) => o.value),
+        inputValue: input.value,
+      };
+    });
+    expect(state.afterCreate).toEqual({ creates: 1, selected: ["plum", "kiwi"] });
+    expect(state.creates).toBe(1);
+    expect(state.selected).toEqual(["plum", "kiwi"]);
+    expect(state.options).toEqual(["plum", "kiwi"]);
   });
 });
 
