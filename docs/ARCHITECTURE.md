@@ -472,9 +472,11 @@ selection, guard or `beforecreate` leaves the typed text editable.
 One creation runs at a time. A repeated intent waits for the creation in
 flight, then revalidates the intent it captured at entry: a newer edit,
 selection, effective reset or disposal wins and nothing is committed. The
-fallback Add control shares this primitive and only owns its own input
-cleanup; the token queue stays separate because tokens are sequenced, not
-mutually exclusive.
+selection commit owns the post-commit picker transition (search or close); the
+creation cleanup only completes a blur-suppressed transition and never starts a
+second search. The fallback Add control shares this primitive and only owns its
+own input cleanup; the token queue stays separate because tokens are sequenced,
+not mutually exclusive.
 
 ## 11. Fallback policy
 

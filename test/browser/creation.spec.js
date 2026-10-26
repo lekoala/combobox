@@ -350,6 +350,41 @@ test.describe("Creation decisions and interaction", () => {
     expect(state.events).toEqual(["input", "change", "create"]);
   });
 
+  test("a created option runs a single post-commit search", async ({ page }) => {
+    test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+    const state = await page.evaluate(async () => {
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 30));
+      const select = document.getElementById("tags");
+      const combo = Combobox.getOrCreateInstance(select, { create: true });
+      const input = combo.input;
+      const searches = [];
+      input.addEventListener("beforefilter", (event) => searches.push(`before:${event.detail.reason}`));
+      input.addEventListener("filter", () => searches.push("filter"));
+
+      input.focus();
+      input.value = "Plum";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await tick();
+      // Ignore the incremental search for the typed query: only the commit
+      // transition after creation is under test.
+      searches.length = 0;
+
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await tick();
+      return {
+        searches,
+        selected: Array.from(select.selectedOptions, (option) => option.value),
+        inputValue: input.value,
+      };
+    });
+
+    // One beforefilter + one filter, owned by the selection commit. The
+    // creation cleanup must not start a second search ("create").
+    expect(state.searches).toEqual(["before:select", "filter"]);
+    expect(state.selected).toEqual(["1", "Plum"]);
+    expect(state.inputValue).toBe("");
+  });
+
   test("create rejection emits createerror and AbortError stays silent", async ({ page }) => {
     test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
     const state = await page.evaluate(async () => {

@@ -2961,9 +2961,11 @@ export class Combobox {
       return result.option;
     }
     if (this.isMultiple) {
+      // #commitItemSelection already ran the post-commit transition: it
+      // searched the emptied query or closed the picker. Only a blur-created
+      // commit suppresses that transition and needs a local refresh, so no
+      // second search is started here.
       if (this.#suppressReopen) this.refresh();
-      else if (this.#closeOnSelect()) this.hide();
-      else this.search("", { show: true, reason: "create" });
     } else {
       this.hide();
     }

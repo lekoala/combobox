@@ -567,7 +567,9 @@ normal `beforeselect`/native commit path, and selecting it is still gated by
 `create`/`createFilter` outside tokenization.
 Only one creation runs at a time: a repeated Enter/Tab/blur (or Add click) while
 `create()` is pending waits for it and then resolves the term against the option
-just created, so it never creates a twin.
+just created, so it never creates a twin. A successful materialized creation
+runs a single post-commit search (owned by the selection commit), so it triggers
+one `beforefilter`/`filter` pair and at most one remote load, not two.
 After each asynchronous guard or create callback, creation rechecks the original
 edit and exact native selection. A newer edit or selection, disposal, or a source
 that has become readonly or disabled (including through a fieldset) discards the

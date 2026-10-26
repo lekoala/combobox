@@ -2481,10 +2481,6 @@
       if (this.isMultiple) {
         if (this.#suppressReopen)
           this.refresh();
-        else if (this.#closeOnSelect())
-          this.hide();
-        else
-          this.search("", { show: true, reason: "create" });
       } else {
         this.hide();
       }
