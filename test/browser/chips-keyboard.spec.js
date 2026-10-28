@@ -150,30 +150,29 @@ test("Left/Right inside a non-empty search move the caret and never focus a chip
   await input.focus();
   await input.fill("abcde");
 
-  const caret = () =>
+  // One round-trip per step: with the engine's trace instrumentation a single
+  // page.evaluate is far from free, and the caret and the focus owner are two
+  // halves of the same assertion.
+  const state = () =>
     page.evaluate(() => {
       const el = document.querySelector("#overlimit + .cb-control .cb-input");
-      return { start: el.selectionStart, end: el.selectionEnd };
+      return {
+        start: el.selectionStart,
+        end: el.selectionEnd,
+        input: document.activeElement === el,
+      };
     });
 
-  expect(await caret()).toEqual({ start: 5, end: 5 });
+  expect(await state()).toEqual({ start: 5, end: 5, input: true });
 
   await input.press("ArrowLeft");
   await input.press("ArrowLeft");
-  expect(await caret()).toEqual({ start: 3, end: 3 });
-  expect(await activeIsInput(page)).toBe(true);
+  expect(await state()).toEqual({ start: 3, end: 3, input: true });
 
   await input.press("ArrowRight");
-  expect(await caret()).toEqual({ start: 4, end: 4 });
-  expect(await activeIsInput(page)).toBe(true);
+  expect(await state()).toEqual({ start: 4, end: 4, input: true });
 
   // A selection collapses to its near boundary instead of handing focus to a chip.
   await input.press("Shift+ArrowLeft");
-  const selected = await page.evaluate(() => {
-    const el = document.querySelector("#overlimit + .cb-control .cb-input");
-    return el.selectionEnd - el.selectionStart;
-  });
-  expect(selected).toBe(1);
-  expect((await activeChip(page)).value).toBeNull();
-  expect(await activeIsInput(page)).toBe(true);
+  expect(await state()).toEqual({ start: 3, end: 4, input: true });
 });
