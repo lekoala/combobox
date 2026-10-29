@@ -474,6 +474,8 @@ The component ships with a small default stylesheet and is designed to be easy t
 
 Defaults are neutral and deterministic: the border, muted and hover colors are derived from `--cb-color`/`--cb-bg`, `--cb-focus-color` is the single interaction accent (`#2563eb`), and the active option is a neutral navigation cursor while the selected option keeps a soft accent plus its check mark.
 
+Focus is an **inner outline**, not an outer halo: `--cb-focus-width` (default `2px`) sets its thickness and its inset at once, so the ring stays inside the control, survives `forced-colors` and never reads as a second selected state. Fields, controls, chips and remove buttons share it; the fallback Add button is the exception — a separate target with room around it, so its outline sits outside. An invalid focused field draws the same outline in `--cb-error-color`. Chips keep their own ring and the control only draws its ring while the search input itself is focused, so a focused chip never halos the whole field.
+
 Select-based controls draw a decorative caret with pure CSS (a `::after` flex item, no injected SVG or extra button) that flips when the picker opens. `input+datalist` stays a real autocomplete and gets no caret.
 
 For example:

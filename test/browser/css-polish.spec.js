@@ -311,6 +311,7 @@ test("active option ink is themeable through --cb-option-active-color", async ({
 
 test("invalid border and focus ring use --cb-error-color", async ({ page }) => {
   await setup(page, "/");
+  await page.addStyleTag({ path: "src/combobox.css" });
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
   const style = await page.evaluate(() => {
@@ -319,17 +320,17 @@ test("invalid border and focus ring use --cb-error-color", async ({ page }) => {
     const control = source.nextElementSibling;
     const input = control.querySelector(".cb-input");
     input.focus();
-    const accent = getComputedStyle(control).boxShadow;
+    const accent = getComputedStyle(control).outlineColor;
 
     host.style.setProperty("--cb-error-color", "rgb(180, 35, 24)");
     input.setAttribute("aria-invalid", "true");
     const invalid = getComputedStyle(control);
-    return { border: invalid.borderTopColor, shadow: invalid.boxShadow, accent };
+    return { border: invalid.borderTopColor, outline: invalid.outlineColor, accent };
   });
 
   expect(style.border).toBe("rgb(180, 35, 24)");
-  expect(style.shadow).toContain("3px");
-  expect(style.shadow).not.toBe(style.accent);
+  expect(style.outline).toBe("rgb(180, 35, 24)");
+  expect(style.outline).not.toBe(style.accent);
 });
 
 test("long chip labels truncate instead of widening the control", async ({ page }) => {
@@ -454,29 +455,82 @@ test("selected rows draw a mask checkmark tinted with the accent color", async (
   expect(check.tint).not.toBe(check.rowColor);
 });
 
-test("focus draws an accent border and a 3px halo on fields and controls", async ({ page }) => {
-  await setup(page, "/");
+test("focus draws an accent border and an inner outline on fields and controls", async ({ page }) => {
+  // src-only on purpose: the demo page also ships the generated dist CSS, and an
+  // undeclared property (the old halo's box-shadow) would survive the override.
+  await setup(page, "/test/fixtures/features.html");
+  await page.addStyleTag({ path: "src/combobox.css" });
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
-  const styles = await page.evaluate(() => {
-    const textControl = document.getElementById("city");
-    textControl.focus();
-    const textStyle = getComputedStyle(textControl);
-    const text = { border: textStyle.borderTopColor, shadow: textStyle.boxShadow };
-
-    const control = document.querySelector("#doctor + .cb-control");
-    control.querySelector(".cb-input").focus();
-    const controlStyle = getComputedStyle(control);
-    return {
-      text,
-      control: { border: controlStyle.borderTopColor, shadow: controlStyle.boxShadow },
+  const styles = await page.evaluate(async () => {
+    const read = (element) => {
+      const style = getComputedStyle(element);
+      return {
+        border: style.borderTopColor,
+        line: style.outlineStyle,
+        width: style.outlineWidth,
+        offset: style.outlineOffset,
+        shadow: style.boxShadow,
+      };
     };
+
+    const text = document.createElement("combo-box");
+    text.innerHTML =
+      `<input id="ring-city" list="ring-cities">` +
+      `<datalist id="ring-cities"><option value="Brussels"></option></datalist>`;
+    document.body.append(text);
+    await text.whenReady();
+    const textControl = document.getElementById("ring-city");
+    textControl.focus();
+    const field = read(textControl);
+
+    const select = document.createElement("combo-box");
+    select.innerHTML = `<select multiple><option value="a" selected>Alpha</option></select>`;
+    document.body.append(select);
+    await select.whenReady();
+    const control = select.querySelector(".cb-control");
+    control.querySelector(".cb-input").focus();
+    return { text: field, control: read(control) };
   });
 
-  expect(styles.text.border).toBe("rgb(37, 99, 235)");
-  expect(styles.text.shadow).toContain("3px");
-  expect(styles.control.border).toBe("rgb(37, 99, 235)");
-  expect(styles.control.shadow).toContain("3px");
+  for (const style of [styles.text, styles.control]) {
+    expect(style.border).toBe("rgb(37, 99, 235)");
+    expect(style.line).toBe("solid");
+    expect(style.width).toBe("2px");
+    expect(style.offset).toBe("-2px");
+    // The ring is an outline, not an inset shadow, so forced colors keeps it.
+    expect(style.shadow).toBe("none");
+  }
+});
+
+test("--cb-focus-width drives the field, chip and remove rings together", async ({ page }) => {
+  await setup(page, "/");
+  await page.addStyleTag({ path: "src/combobox.css" });
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+  const state = await page.evaluate(() => {
+    document.querySelector("#tags").closest("combo-box").style.setProperty("--cb-focus-width", "3px");
+    const read = (element) => {
+      const style = getComputedStyle(element);
+      return { line: style.outlineStyle, width: style.outlineWidth, offset: style.outlineOffset };
+    };
+
+    const control = document.querySelector("#tags + .cb-control");
+    control.querySelector(".cb-input").focus();
+    const field = read(control);
+
+    const chip = control.querySelector(".cb-chip");
+    chip.focus();
+    const chipRing = read(chip);
+
+    const remove = chip.querySelector(".cb-chip-remove");
+    remove.focus();
+    return { field, chip: chipRing, remove: read(remove) };
+  });
+
+  expect(state.field).toEqual({ line: "solid", width: "3px", offset: "-3px" });
+  expect(state.chip).toEqual({ line: "solid", width: "3px", offset: "-3px" });
+  expect(state.remove).toEqual({ line: "solid", width: "3px", offset: "-3px" });
 });
 
 test("chip and remove focus draw an inner ring without haloing the control", async ({ page }) => {
@@ -489,23 +543,54 @@ test("chip and remove focus draw an inner ring without haloing the control", asy
     chip.focus();
     const chipStyle = getComputedStyle(chip);
     const chipRing = { color: chipStyle.outlineColor, offset: chipStyle.outlineOffset };
-    const controlShadow = getComputedStyle(control).boxShadow;
+    const controlStyle = getComputedStyle(control);
 
     const remove = chip.querySelector(".cb-chip-remove");
     remove.focus();
     const removeStyle = getComputedStyle(remove);
     return {
       chipRing,
-      controlShadow,
+      control: { line: controlStyle.outlineStyle, shadow: controlStyle.boxShadow },
       removeRing: { color: removeStyle.outlineColor, offset: removeStyle.outlineOffset },
     };
   });
 
   expect(state.chipRing.color).toBe("rgb(37, 99, 235)");
   expect(state.chipRing.offset).toBe("-2px");
-  expect(state.controlShadow).toBe("none");
+  expect(state.control).toEqual({ line: "none", shadow: "none" });
   expect(state.removeRing.color).toBe("rgb(37, 99, 235)");
   expect(state.removeRing.offset).toBe("-2px");
+});
+
+test("fallback field keeps the inner ring and its Add button takes an outer one", async ({ page }) => {
+  await setup(page, "/");
+  await page.addStyleTag({ path: "src/combobox.css" });
+  test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
+
+  await page.evaluate(() => {
+    const select = document.createElement("select");
+    select.id = "fallback-ring";
+    select.multiple = true;
+    select.innerHTML = `<option value="a">Alpha</option>`;
+    document.body.append(select);
+    Combobox.getOrCreateInstance(select, { mode: "fallback", create: true });
+  });
+
+  const read = (element) => {
+    const style = getComputedStyle(element);
+    return { line: style.outlineStyle, width: style.outlineWidth, offset: style.outlineOffset };
+  };
+
+  const input = page.locator("#fallback-ring + .cb-fallback-create .cb-fallback-input");
+  await input.focus();
+  expect(await input.evaluate(read)).toEqual({ line: "solid", width: "2px", offset: "-2px" });
+
+  // Real keyboard traversal: `:focus-visible` for a button only matches when the
+  // UA considers the focus keyboard-driven, so script focus is not enough here.
+  await page.keyboard.press("Tab");
+  const button = page.locator("#fallback-ring + .cb-fallback-create .cb-fallback-add");
+  await expect(button).toBeFocused();
+  expect(await button.evaluate(read)).toEqual({ line: "solid", width: "2px", offset: "2px" });
 });
 
 test("active rows stay neutral while selected rows keep the soft accent", async ({ page }) => {

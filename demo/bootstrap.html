@@ -69,9 +69,12 @@
       color: var(--bs-body-color);
     }
 
-    /* focus ring like form-control:focus */
-    .bs-demo .cb-control:focus-within,
-    .bs-demo .cb-text-control:focus {
+    /* focus ring like form-control:focus, scoped to the search input itself so
+       a focused chip keeps its own inner ring instead of haloing the whole
+       control. Bootstrap's ring is a box-shadow, so forced colors drops it;
+       the media query below restores a real outline there. */
+    .bs-demo .cb-control:has(.cb-input:focus-visible),
+    .bs-demo .cb-text-control:focus-visible {
       border-color: var(--bs-primary);
       box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
       outline: 0;
@@ -79,9 +82,17 @@
     .bs-demo .cb-control:has([aria-invalid="true"]) {
       border-color: var(--bs-danger);
     }
-    .bs-demo .cb-control:has([aria-invalid="true"]):focus-within {
+    .bs-demo .cb-control:has([aria-invalid="true"]):has(.cb-input:focus-visible) {
       border-color: var(--bs-danger);
       box-shadow: 0 0 0 0.25rem rgba(var(--bs-danger-rgb), 0.25);
+    }
+
+    @media (forced-colors: active) {
+      .bs-demo .cb-control:has(.cb-input:focus-visible),
+      .bs-demo .cb-text-control:focus-visible {
+        outline: 2px solid;
+        outline-offset: -2px;
+      }
     }
 
     /* badge chip: .badge with an inline remove × */

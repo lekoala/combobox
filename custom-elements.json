@@ -198,6 +198,9 @@
               "name": "--cb-focus-color"
             },
             {
+              "name": "--cb-focus-width"
+            },
+            {
               "name": "--cb-chip-bg"
             },
             {

@@ -178,6 +178,32 @@ test("Actual CSS bridge keeps SVG chip removal visible and functional", async ({
   await expect(page.locator("#skills + .cb-control .cb-chip")).toHaveCount(2);
 });
 
+test("Actual CSS bridge follows the theme border width on fields and the picker", async ({ page }) => {
+  await page.goto("/demo/actual-css.html");
+
+  // Brutalist thickens --border-width to 2px. The bridge must carry it to the
+  // control and the top-layer picker, or only the native .input next to the
+  // combobox would look like the theme.
+  await page.evaluate(() => {
+    document.documentElement.dataset.theme = "brutalist";
+  });
+
+  const widths = await page.evaluate(() => {
+    const width = (selector) => getComputedStyle(document.querySelector(selector)).borderTopWidth;
+    return {
+      plain: width(".grid-2 .input"),
+      control: width("#skills + .cb-control"),
+      text: width(".cb-text-control"),
+      popover: width(".cb-popover"),
+    };
+  });
+
+  expect(widths.control).toBe(widths.plain);
+  expect(widths.text).toBe(widths.plain);
+  expect(widths.popover).toBe(widths.plain);
+  expect(widths.control).toBe("2px");
+});
+
 test("directory demo renders rich rows and cancels navigate activations without native side effects", async ({
   page,
 }) => {

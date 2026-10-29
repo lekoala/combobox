@@ -87,6 +87,40 @@ test.describe("High contrast signals", () => {
       expect(parseFloat(state.outlineWidth)).toBeGreaterThan(0);
     });
   }
+
+  test("focused field and control keep a perceptible focus ring under forced colors", async ({ page }) => {
+    // The ring must be an outline: forced colors computes box-shadow to none, so
+    // the soft halo this replaced had no keyboard indicator in high contrast.
+    const state = await page.evaluate(async () => {
+      const read = (element) => {
+        const cs = getComputedStyle(element);
+        return { outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth };
+      };
+
+      const text = document.createElement("combo-box");
+      text.innerHTML =
+        `<input id="fc-city" list="fc-cities">` +
+        `<datalist id="fc-cities"><option value="Brussels"></option></datalist>`;
+      document.body.append(text);
+      await text.whenReady();
+      const textControl = document.getElementById("fc-city");
+      textControl.focus();
+      const field = read(textControl);
+
+      const select = document.createElement("combo-box");
+      select.innerHTML = `<select multiple><option value="a" selected>Alpha</option></select>`;
+      document.body.append(select);
+      await select.whenReady();
+      const control = select.querySelector(".cb-control");
+      control.querySelector(".cb-input").focus();
+      return { field, control: read(control) };
+    });
+
+    for (const ring of [state.field, state.control]) {
+      expect(ring.outlineStyle).not.toBe("none");
+      expect(parseFloat(ring.outlineWidth)).toBeGreaterThan(0);
+    }
+  });
 });
 
 test.describe("High contrast picker and chips", () => {

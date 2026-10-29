@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Combobox × Actual CSS — theme bridge demo</title>
   <meta name="description" content="@lekoala/combobox loaded locally and skinned entirely with Actual CSS tokens: controls, removable badge chips, picker and states follow the framework, the theme switcher included.">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/actual-css@0.9.0/dist/actual.full.min.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lekoala/actual-css@0.9.0/site/assets/actual-themes.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/actual-css@0.15.1/dist/actual.full.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/lekoala/actual-css@0.15.1/src/css/themes/index.css">
   <link rel="stylesheet" href="../dist/combobox.css">
   <style>
     /* ------------------------------------------------------------------ */
@@ -63,11 +63,12 @@
 
     /* 1. Control — one recipe, same as .input/.textarea/.select */
     .actual-combobox {
-      --cb-bg: var(--surface);
+      --cb-bg: var(--control-default-bg, var(--surface));
       --cb-color: var(--text);
-      --cb-border-color: var(--border);
+      --cb-border-color: var(--form-invalid-border, var(--border));
       --cb-border-radius: var(--radius);
       --cb-focus-color: var(--focus);
+      --cb-focus-width: var(--focus-ring-width);
       --cb-muted-color: var(--text-muted);
       --cb-error-color: var(--danger);
       --cb-chip-bg: transparent;
@@ -75,27 +76,47 @@
       --cb-option-min-height: var(--control-size);
     }
 
-    /* 2. Focus — mirror the .input recipe: border -> focus, soft ring */
+    /* 2. Focus — the .input inset outline while the search input is focused;
+          also the core's new default (--cb-focus-width), restated here so this
+          page stays the canonical copy of the Actual template. A chip or its ×
+          keeps the library's own inner ring (--cb-focus-color) and the control
+          never lights up with it. */
     .actual-combobox :is(
       .cb-text-control:focus-visible,
       .cb-control:has(.cb-input:focus-visible)
     ) {
-      --cb-border-color: var(--focus);
-      outline: 2px solid transparent;
-      box-shadow: var(--focus-ring-shadow);
+      border-color: var(--form-invalid-border, var(--cb-border-color));
+      outline: var(--focus-ring-width) solid var(--form-invalid-border, var(--focus));
+      outline-offset: calc(var(--focus-ring-width) * -1);
+      box-shadow: var(--control-shadow, none);
     }
 
-    /* 3. Invalid — the native source is required; follow --danger */
+    /* 3. Invalid — the native source is required; join the field validation
+          hook, so .field.danger and aria-invalid color border and outline. */
     .actual-combobox :is(
       .cb-text-control[aria-invalid="true"],
       .cb-control:has([aria-invalid="true"])
     ) {
-      border-color: var(--danger);
+      --form-invalid-border: var(--danger);
     }
 
-    /* 4. Chips — re-derive the removable .badge soft recipe */
+    /* 4. Field geometry — the theme's border width and field elevation, like
+          .input. Without this the control keeps the library's 1px border, so a
+          theme that thickens borders (brutalist: 2px) would only show it on the
+          native .input next to it. */
+    .actual-combobox :is(.cb-control, .cb-text-control) {
+      border-width: var(--border-width);
+      border-radius: var(--cb-border-radius);
+      box-shadow: var(--control-shadow, none);
+    }
+
+    /* Hover follows .input (you type in it), not the library's own mix. */
+    .actual-combobox :is(.cb-control, .cb-text-control):hover {
+      border-color: var(--form-invalid-border, var(--control-hover-border, var(--text-subtle)));
+    }
+
+    /* 5. Chips — re-derive the removable .badge soft recipe */
     .actual-combobox .cb-chip {
-      min-block-size: var(--density-compact-size);
       padding-inline: 0.55em;
 
       border: var(--border-width) solid
@@ -118,14 +139,16 @@
         color-mix(in oklab, var(--primary) var(--soft-fg-mix), var(--text));
     }
 
-    /* 5. Picker — the popover renders in the top layer, appended to
-          <body>, so its tokens are declared on .cb-popover directly. */
+    /* 6. Picker — the popover renders in the top layer, appended to
+          <body>, so its tokens are declared on .cb-popover directly. Border
+          width follows the theme like Actual's own .flyout. */
     .cb-popover {
       --cb-picker-bg: var(--surface-raised);
       --cb-option-active-bg: var(--hover-overlay);
       --cb-option-active-color: var(--text);
       --cb-muted-color: var(--text-muted);
       --cb-error-color: var(--danger);
+      border-width: var(--border-width);
       border-color: var(--border);
       border-radius: var(--radius);
       background: var(--cb-picker-bg);
@@ -401,11 +424,12 @@
 &lt;link rel="stylesheet" href="combobox/dist/combobox.css"&gt;
 
 .actual-combobox {
-  --cb-bg: var(--surface);
+  --cb-bg: var(--control-default-bg, var(--surface));
   --cb-color: var(--text);
-  --cb-border-color: var(--border);
+  --cb-border-color: var(--form-invalid-border, var(--border));
   --cb-border-radius: var(--radius);
   --cb-focus-color: var(--focus);
+  --cb-focus-width: var(--focus-ring-width);
   --cb-muted-color: var(--text-muted);
   --cb-error-color: var(--danger);
   --cb-chip-bg: transparent;
@@ -413,14 +437,28 @@
   --cb-option-min-height: var(--control-size);
 }
 
-.actual-combobox :is(.cb-text-control, .cb-control):focus-within {
-  --cb-border-color: var(--focus);
-  outline: 2px solid transparent;
-  box-shadow: var(--focus-ring-shadow);
+.actual-combobox :is(.cb-text-control:focus-visible, .cb-control:has(.cb-input:focus-visible)) {
+  border-color: var(--form-invalid-border, var(--cb-border-color));
+  outline: var(--focus-ring-width) solid var(--form-invalid-border, var(--focus));
+  outline-offset: calc(var(--focus-ring-width) * -1);
+  box-shadow: var(--control-shadow, none);
+}
+
+.actual-combobox :is(.cb-text-control[aria-invalid="true"], .cb-control:has([aria-invalid="true"])) {
+  --form-invalid-border: var(--danger);
+}
+
+.actual-combobox :is(.cb-control, .cb-text-control) {
+  border-width: var(--border-width);
+  border-radius: var(--cb-border-radius);
+  box-shadow: var(--control-shadow, none);
+}
+
+.actual-combobox :is(.cb-control, .cb-text-control):hover {
+  border-color: var(--form-invalid-border, var(--control-hover-border, var(--text-subtle)));
 }
 
 .actual-combobox .cb-chip {
-  min-block-size: var(--density-compact-size);
   padding-inline: 0.55em;
   border: var(--border-width) solid
     color-mix(in oklab, var(--surface) var(--soft-border-mix), var(--primary));
@@ -428,7 +466,7 @@
   background: color-mix(in oklab, var(--surface) var(--soft-bg-mix), var(--primary));
   color: color-mix(in oklab, var(--primary) var(--soft-fg-mix), var(--text));
   font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-strong);
+  font-weight: var(--font-weight-semibold);
 }
 
 .actual-combobox .cb-chip-remove {
@@ -437,6 +475,7 @@
 
 .cb-popover {
   --cb-picker-bg: var(--surface-raised);
+  border-width: var(--border-width);
   border-color: var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-popout);
@@ -455,8 +494,8 @@
 
     <footer class="page-note">
       <span>
-        Loaded from jsDelivr, pinned: <code>actual-css@0.9.0/dist/actual.full.min.css</code> and
-        <code>gh/lekoala/actual-css@0.9.0/site/assets/actual-themes.min.css</code>.
+        Loaded from jsDelivr, pinned: <code>actual-css@0.15.1/dist/actual.full.min.css</code> and
+        <code>gh/lekoala/actual-css@0.15.1/src/css/themes/index.css</code>.
       </span>
       <span>Combobox enhanced from native <code>&lt;input&gt;</code>/<code>&lt;select&gt;</code> — the source owns the form value.</span>
     </footer>

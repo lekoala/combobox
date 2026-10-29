@@ -4,6 +4,13 @@ All notable changes to `@lekoala/combobox` are documented here.
 
 The changelog highlights user-facing changes rather than listing every build, dependency, or test commit. Versions and dates follow the GitHub releases.
 
+## [Unreleased]
+
+### Changed
+
+- Focus on fields, controls, chips and remove buttons is an inner `outline` instead of an accent border plus a soft outer halo. The new `--cb-focus-width` token (default `2px`) sets both the thickness and the inset, so the ring stays inside its control, survives `forced-colors` (which computes `box-shadow` to `none`) and no longer reads as a second selected state. The standalone fallback Add button takes an outer outline, and invalid focus uses `--cb-error-color` for the same outline.
+- `demo/actual-css.html` tracks Actual CSS 0.15.1: the `.input` inset-outline focus recipe replaces the removed 0.9.0 halo, and `--border-width` now reaches the controls and the picker, so a theme that thickens borders (brutalist) no longer applies to the native `.input` alone.
+
 ## [0.8.0] - 2026-10-26
 
 ### Added

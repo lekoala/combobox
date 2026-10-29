@@ -9,6 +9,7 @@
   --cb-border-color: color-mix(in srgb, var(--cb-color) 16%, var(--cb-bg));
   --cb-border-radius: 0.5rem;
   --cb-focus-color: #2563eb;
+  --cb-focus-width: 2px;
   --cb-chip-bg: color-mix(in srgb, var(--cb-focus-color) 10%, var(--cb-bg));
   --cb-chip-color: var(--cb-color);
   --cb-chip-border-color: transparent;
@@ -255,30 +256,42 @@
   }
 }
 
+/* Inner rings keep the focus inside the target and survive forced colors. */
 .cb-chips > .cb-chip:focus-visible {
-  outline: 2px solid var(--cb-focus-color);
-  outline-offset: -2px;
+  outline: var(--cb-focus-width) solid var(--cb-focus-color);
+  outline-offset: calc(var(--cb-focus-width) * -1);
 }
 
 .cb-chip .cb-chip-remove:focus-visible {
-  outline: 2px solid var(--cb-focus-color);
-  outline-offset: -2px;
+  outline: var(--cb-focus-width) solid var(--cb-focus-color);
+  outline-offset: calc(var(--cb-focus-width) * -1);
 }
 
 /* ------------------------------------------------------------------------- */
-/* Focus — form-control halo on the field, inner ring on compact targets      */
+/* Focus — inner outline on fields and controls, outer on the standalone CTA  */
 /* ------------------------------------------------------------------------- */
 
-/* Focused field/control = accent border + soft outer ring, the form-control
-   convention. The control only draws the ring while the search input itself is
-   focused: a focused chip or remove button uses its own inner ring below, so
-   the control and the small target never light up together. */
+/* Focused field/control = accent border + inner accent outline. An outline,
+   not an inset box-shadow: forced colors computes box-shadow to none and
+   would erase the keyboard indicator. The offset follows the width, so the
+   ring stays flush with the control edge at any thickness. The control only
+   draws the ring while the search input itself is focused: a focused chip or
+   remove button uses its own inner ring above, so the control and the small
+   target never light up together. */
 .cb-text-control:focus-visible,
 .cb-fallback-input:focus-visible,
 .cb-control:has(.cb-input:focus-visible) {
   border-color: var(--cb-focus-color);
-  outline: 0;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cb-focus-color) 20%, transparent);
+  outline: var(--cb-focus-width) solid var(--cb-focus-color);
+  outline-offset: calc(var(--cb-focus-width) * -1);
+}
+
+/* The fallback Add button is a separate target with room around it (the
+   fallback row's gap), so it takes the outer outline every real button uses
+   instead of hiding the ring inside its own border. */
+.cb-fallback-add:focus-visible {
+  outline: var(--cb-focus-width) solid var(--cb-focus-color);
+  outline-offset: 2px;
 }
 
 /* Open state reflection without a parallel JS state model */
@@ -457,7 +470,8 @@
 /* Invalid focus owns a danger ring, not the accent one. */
 .cb-text-control[aria-invalid="true"]:focus-visible,
 .cb-control:has([aria-invalid="true"]):has(.cb-input:focus-visible) {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cb-error-color) 20%, transparent);
+  outline: var(--cb-focus-width) solid var(--cb-error-color);
+  outline-offset: calc(var(--cb-focus-width) * -1);
 }
 
 .cb-control:has(.cb-input:disabled) {
