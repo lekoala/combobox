@@ -272,6 +272,10 @@ The Popover remains a native top-layer/lifecycle primitive. The floating engine
 writes coordinates in the resolved space and does not open, close or dismiss
 the picker.
 
+Picker rows activate on click. The listbox cancels the default focus change
+on `mousedown` so the filter keeps focus and WebKit can finish synthesizing
+a click from a tap.
+
 ### Coordinate space
 
 The `coordinateSpace` option (`"viewport"` default, `"document"` opt-in,

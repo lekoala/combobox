@@ -46,6 +46,47 @@ test("demo page works directly from file:// via the dist bundle", async ({ page 
   expect(state.formUsable).toBe(true);
 });
 
+for (const { id, previous, label, values } of [
+  {
+    id: "specialties",
+    previous: "doctor",
+    label: "Psychiatry",
+    values: ["cardiology", "neurology", "psychiatry"],
+  },
+  { id: "priorities", previous: "tags", label: "First contact", values: ["a"] },
+]) {
+  test(`the ${id} demo picker follows its focused control during page scroll`, async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.goto(DEMO_HTML);
+
+    const select = page.locator(`#${id}`);
+    const control = page.locator(`#${id} + .cb-control`);
+    const input = control.locator(".cb-input");
+    await page.locator(`#${previous} + .cb-control .cb-input`).focus();
+    await control.evaluate((element) => element.scrollIntoView({ block: "center" }));
+    await input.focus();
+    const picker = page.locator(".cb-popover:popover-open");
+    await expect(picker).toHaveCount(1);
+    const row = picker.getByRole("option", { name: label, exact: true });
+    await expect(row).toBeVisible();
+
+    const geometry = await control.evaluate((element) => {
+      const popover = document.querySelector(".cb-popover:popover-open");
+      const gap = () => popover.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
+      const before = gap();
+      const start = window.scrollY;
+      window.scrollBy(0, 80);
+      return { before, immediate: gap(), scrolled: window.scrollY - start };
+    });
+    expect(geometry.scrolled).toBeGreaterThan(50);
+    expect(geometry.before).toBeCloseTo(4, 0);
+    expect(geometry.immediate).toBeCloseTo(4, 0);
+
+    await row.click();
+    await expect(select).toHaveValues(values);
+  });
+}
+
 test("demo index keeps disabled optgroup selections locked until the group is enabled", async ({ page }) => {
   await page.goto(DEMO_HTML);
   await page.evaluate(() => document.getElementById("plans-widget").whenReady());

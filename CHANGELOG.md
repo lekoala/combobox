@@ -4,6 +4,13 @@ All notable changes to `@lekoala/combobox` are documented here.
 
 The changelog highlights user-facing changes rather than listing every build, dependency, or test commit. Versions and dates follow the GitHub releases.
 
+## [Unreleased]
+
+### Fixed
+
+- Tapping a picker option or a chip's remove button now works in Safari on iPad. The filter retains focus during multiple selection.
+- Pickers in the main demo now use document coordinates so they stay attached to their fields when the page scrolls as the on-screen keyboard opens.
+
 ## [0.8.1] - 2026-10-29
 
 ### Changed

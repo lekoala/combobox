@@ -261,7 +261,7 @@ test.describe("Picker keyboard interaction", () => {
     expect(await isOpen(page, "tags")).toBe(true);
   });
 
-  test("option pointerdown keeps the filter focused; clicking outside closes", async ({ page }) => {
+  test("pressing a picker option keeps the filter focused; clicking outside closes", async ({ page }) => {
     await setup(page, FEATURES);
     await page.evaluate(() => {
       Combobox.getOrCreateInstance(document.getElementById("capped"));
@@ -270,7 +270,8 @@ test.describe("Picker keyboard interaction", () => {
     const input = page.locator(filter("capped"));
     await input.click();
 
-    await page.locator(".cb-popover:visible .cb-option").first().dispatchEvent("pointerdown");
+    await page.locator(".cb-popover:visible .cb-option").first().hover();
+    await page.mouse.down();
     const keptFocus = await page.evaluate(() => ({
       focused:
         document.activeElement ===
@@ -279,6 +280,8 @@ test.describe("Picker keyboard interaction", () => {
     }));
     expect(keptFocus.focused).toBe(true);
     expect(keptFocus.open).toBe(true);
+    await input.hover();
+    await page.mouse.up();
 
     // Clicking the dedicated non-interactive target closes the picker.
     await page.locator("#blur-target").click();

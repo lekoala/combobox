@@ -1446,13 +1446,13 @@
       for (const type of ["focus", "input", "compositionstart", "compositionend", "keydown", "blur"]) {
         input.addEventListener(type, this, { signal });
       }
-      this.#listEl().addEventListener("pointerdown", (event) => event.preventDefault(), { signal });
+      this.#listEl().addEventListener("mousedown", (event) => event.preventDefault(), { signal });
       this.#listEl().addEventListener("pointermove", this, { signal });
       this.#listEl().addEventListener("click", this, { signal });
       if (this.chips) {
         this.chips.addEventListener("keydown", this, { signal });
         this.chips.addEventListener("click", this, { signal });
-        this.chips.addEventListener("pointerdown", (event) => {
+        this.chips.addEventListener("mousedown", (event) => {
           if (event.target.closest(".cb-chip-remove")) {
             event.preventDefault();
           }

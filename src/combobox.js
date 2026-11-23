@@ -1466,7 +1466,9 @@ export class Combobox {
       input.addEventListener(type, this, { signal });
     }
 
-    this.#listEl().addEventListener("pointerdown", (event) => event.preventDefault(), { signal });
+    // Cancel the focus change on mousedown. Cancelling touch pointerdown
+    // suppresses the click that activates a row in WebKit.
+    this.#listEl().addEventListener("mousedown", (event) => event.preventDefault(), { signal });
     this.#listEl().addEventListener("pointermove", this, { signal });
     this.#listEl().addEventListener("click", this, { signal });
 
@@ -1480,7 +1482,7 @@ export class Combobox {
       // the input back without reopening (see #focusInputWithoutReopen).
       // Chip bodies keep their focus behavior for keyboard navigation.
       this.chips.addEventListener(
-        "pointerdown",
+        "mousedown",
         (event) => {
           if (/** @type {HTMLElement} */ (event.target).closest(".cb-chip-remove")) {
             event.preventDefault();

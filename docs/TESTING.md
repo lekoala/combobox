@@ -394,6 +394,8 @@ Prior-art security corpora cover original values, group labels, option labels/va
 - [x] picker flips when viewport lacks block-end space (`layout.spec.js` bottom-anchored control).
 - [x] input group/floating label/table/modal/overflow containers do not clip picker (`layout.spec.js` + `popover-dialog.spec.js` for modal/overflow).
 - [x] open pickers follow scroll/resize updates through `@lekoala/floating` (`layout.spec.js`: the picker stays attached to its reference after a page scroll).
+- [x] the main demo's in-flow pickers follow root scrolling before the next placement update and still select into the native source (`test/dist/demo.spec.js`).
+- [x] touch taps activate picker rows and remove chips in Chromium and WebKit while the filter keeps focus during multiple selection (`touch.spec.js`).
 - [x] coordinate space resolves once per opening (`coordinate-space.spec.js`): the default is viewport + fixed, explicit `document` uses document + absolute, invalid values fall back to `viewport`. Layout is never inferred; a change while open applies on the next opening.
 - [x] forced-document-in-sticky mismatch is measured, not asserted blind (`demo/position-modes.html` + `demo.spec.js`: sequential protocol, one open picker at a time, immediate gap vs settled gap).
 - [x] chip removal never changes picker visibility and never searches (`chips-remove.spec.js`: closed stays closed on × and last-chip Delete, open stays open, `beforefilter`/`filter`/`load` counters stay at zero).

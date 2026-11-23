@@ -534,10 +534,11 @@
     (() => {
       const forceNative = new URLSearchParams(location.search).has("native");
 
-      if (forceNative) {
-        for (const wrapper of document.querySelectorAll("combo-box")) {
-          wrapper.options = { mode: "fallback" };
-        }
+      // These controls scroll with the page. Their popovers can follow root
+      // scrolling immediately, including when Safari scrolls a focused input
+      // into view as the software keyboard opens.
+      for (const wrapper of document.querySelectorAll("#demo-form combo-box")) {
+        wrapper.configure({ coordinateSpace: "document", ...(forceNative ? { mode: "fallback" } : {}) });
       }
 
       document.getElementById("tags-widget").configure({
