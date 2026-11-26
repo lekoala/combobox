@@ -4,6 +4,17 @@ All notable changes to `@lekoala/combobox` are documented here.
 
 The changelog highlights user-facing changes rather than listing every build, dependency, or test commit. Versions and dates follow the GitHub releases.
 
+## Unreleased
+
+### Fixed
+
+- The picker now preserves the filter input's typography when custom font settings prevent the browser from serializing the `font` shorthand.
+- The native fallback initializes without `Object.hasOwn`, restoring the Add control for creatable selects on browsers such as Safari 15.0–15.3.
+
+### Documentation
+
+- Clarified the browser requirements for enhanced and fallback modes, documented the VoiceOver risk on iOS, and explained how document coordinates can help during mobile scrolling.
+
 ## [0.8.2] - 2026-11-23
 
 ### Fixed

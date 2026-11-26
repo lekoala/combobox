@@ -368,8 +368,18 @@ Automated browser assertions (`test/browser/aria.spec.js` for the role/attribute
 Manual AT matrix (deliberately outside the automated gate):
 
 - NVDA + Firefox/Chromium;
-- VoiceOver + Safari;
+- VoiceOver + Safari on macOS and iOS;
 - TalkBack/Android if mobile support is claimed.
+
+### Safari testing
+
+CI runs Playwright WebKit on Linux. Real Safari on macOS and iOS, the oldest browser versions listed in the README, the iOS software keyboard and inertial scrolling, and VoiceOver are outside that automated coverage. The fallback regression simulates a browser missing Popover and `Object.hasOwn`.
+
+For device checks, record the Safari and OS versions alongside the results.
+
+- Safari on macOS and the oldest Safari version you need to support. Check focus, Tab, selection, the picker in a modal dialog, and form validation.
+- Safari on iPhone. Tap an option, remove a chip, tap outside, scroll with the picker open, and show or hide the software keyboard.
+- VoiceOver on iPhone. Open the picker, swipe to an option and activate it. WebKit tracks an open issue in Safari 18 where VoiceOver skips a listbox mounted outside the combobox subtree. Reproduction with this component's top-layer picker still needs device testing. [WebKit bug 289338](https://bugs.webkit.org/show_bug.cgi?id=289338)
 
 ## S. Security / renderer safety
 

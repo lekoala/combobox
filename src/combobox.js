@@ -1392,10 +1392,25 @@ export class Combobox {
     const dialog = this.source.closest("dialog");
     (dialog || document.body).append(popover);
 
-    // The popover renders in the top layer, outside the control's subtree, so
-    // it cannot inherit the control's typography. Adopt the interaction
-    // input's resolved font to avoid falling back to the page-level font.
-    popover.style.font = getComputedStyle(this.#inputEl()).font;
+    // The portaled picker inherits from its DOM parent. Copy the input's
+    // computed properties individually since the font shorthand can be empty.
+    const typography = getComputedStyle(this.#inputEl());
+    for (const property of [
+      "font-family",
+      "font-size",
+      "font-style",
+      "font-weight",
+      "font-stretch",
+      "font-variant",
+      "font-feature-settings",
+      "font-variation-settings",
+      "font-kerning",
+      "font-optical-sizing",
+      "line-height",
+      "letter-spacing",
+    ]) {
+      popover.style.setProperty(property, typography.getPropertyValue(property));
+    }
 
     this.#inputEl().setAttribute("role", "combobox");
     this.#inputEl().setAttribute("aria-autocomplete", "list");

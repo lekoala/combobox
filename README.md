@@ -454,9 +454,9 @@ Firefox 125+
 Chromium 114+
 ```
 
-Below this floor the component automatically switches to `mode = "fallback"` and the native control remains fully functional.
+Without Popover support, the JavaScript runtime uses `mode = "fallback"`. The native control stays visible, and a creatable multiple select gets an unnamed Add input. The untranspiled runtime targets Safari 15+ for this fallback. If JavaScript cannot run, the authored controls still work as native form controls.
 
-The `showPopover({ source })` parameter is a *supplementary* enhancement — it establishes the invoker→popover relationship for focus navigation and implicit CSS anchoring. It is optional and does not affect the floor, since Combobox uses `@lekoala/floating` and `autoUpdate()` for placement rather than CSS anchor positioning.
+The optional `source` argument to `showPopover()` supplies the native invoker relationship on browsers that support it. Picker placement uses `@lekoala/floating` and `autoUpdate()`.
 
 This means the enhanced mode shares the same core Popover manual baseline as [Actual 0.8](https://github.com/lekoala/actual):
 
@@ -466,11 +466,15 @@ Actual full runtime   ┐
 Combobox enhanced     ┘
 ```
 
-The difference is that Combobox can fall back to native controls below the floor, while Actual ships a complete runtime above it.
+The automated browser matrix uses Playwright engines. See [Safari testing](docs/TESTING.md#safari-testing) for device coverage and the open VoiceOver risk for listboxes mounted outside the combobox subtree.
+
+On iOS, `coordinateSpace: "document"` can keep the picker aligned with a control in normal page flow during touch scrolling or scroll triggered by the software keyboard. Use the default `"viewport"` for fixed or sticky anchors.
 
 ## Styling
 
 The component ships with a small default stylesheet and is designed to be easy to theme with CSS custom properties.
+
+The picker copies the interaction input's computed typography at initialization, including font stretch, OpenType features, variable font settings, line height and letter spacing.
 
 Defaults are neutral and deterministic: the border, muted and hover colors are derived from `--cb-color`/`--cb-bg`, `--cb-focus-color` is the single interaction accent (`#2563eb`), and the active option is a neutral navigation cursor while the selected option keeps a soft accent plus its check mark.
 

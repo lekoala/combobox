@@ -372,7 +372,7 @@
 
   // src/helpers.js
   function hasOwn(object, key) {
-    return Object.hasOwn(object, key);
+    return Object.prototype.hasOwnProperty.call(object, key);
   }
   function escapeRegExp(value) {
     return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1404,7 +1404,23 @@
       popover.append(listbox, status);
       const dialog = this.source.closest("dialog");
       (dialog || document.body).append(popover);
-      popover.style.font = getComputedStyle(this.#inputEl()).font;
+      const typography = getComputedStyle(this.#inputEl());
+      for (const property of [
+        "font-family",
+        "font-size",
+        "font-style",
+        "font-weight",
+        "font-stretch",
+        "font-variant",
+        "font-feature-settings",
+        "font-variation-settings",
+        "font-kerning",
+        "font-optical-sizing",
+        "line-height",
+        "letter-spacing"
+      ]) {
+        popover.style.setProperty(property, typography.getPropertyValue(property));
+      }
       this.#inputEl().setAttribute("role", "combobox");
       this.#inputEl().setAttribute("aria-autocomplete", "list");
       this.#inputEl().setAttribute("aria-expanded", "false");

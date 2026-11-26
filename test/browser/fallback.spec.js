@@ -528,6 +528,27 @@ test.describe("Declarative fallback and creation parity", () => {
 test.describe("Progressive enhancement and native fallback", () => {
   const FEATURES = "/test/fixtures/features.html";
 
+  test("declarative creation falls back without Popover or Object.hasOwn", async ({ page }) => {
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript(() => {
+      Reflect.deleteProperty(HTMLElement.prototype, "showPopover");
+      Reflect.deleteProperty(Object, "hasOwn");
+    });
+    await page.goto("/test/fixtures/elements.html");
+
+    const select = page.locator("#frameworks");
+    const input = page.locator("#frameworks + .cb-fallback-create input");
+    await expect(select).toBeVisible();
+    await expect(input).toBeVisible();
+    await expect(input).not.toHaveAttribute("name");
+    await input.fill("Alpine");
+    await input.press("Enter");
+
+    await expect(select.locator("option:checked")).toHaveText(["React", "Alpine"]);
+    expect(errors).toEqual([]);
+  });
+
   test("auto mode selects enhanced when Popover is supported and native fallback otherwise", async ({
     page,
   }) => {

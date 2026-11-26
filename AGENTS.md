@@ -74,6 +74,7 @@ Lifecycle: `init`, `getInstance`, `getOrCreateInstance`, `show`, `hide`, `dispos
 - Prefer a small helper with an explicit contract over a new generic abstraction.
 - Do not add aliases or compatibility options without a concrete current use case.
 - When behavior changes, update the relevant docs and add/adjust a browser test in the same change.
+- Record user-facing changes in the `Unreleased` section of `CHANGELOG.md`. Group related changes by their effect for users. Internal changes need an entry only when they affect users.
 - Test the native source state, not only generated DOM.
 - Organize test files and `describe` groups semantically, by behavior or public
   contract (for example tokenization, forms, lifecycle or ordering), within each

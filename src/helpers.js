@@ -57,7 +57,8 @@
  * @returns {boolean}
  */
 export function hasOwn(object, key) {
-  return Object.hasOwn(object, key);
+  // biome-ignore lint/suspicious/noPrototypeBuiltins: Safari 15.0–15.3 lack Object.hasOwn.
+  return Object.prototype.hasOwnProperty.call(object, key);
 }
 
 /**

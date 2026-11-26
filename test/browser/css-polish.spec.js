@@ -64,28 +64,51 @@ test("no horizontal overflow in controls, picker or document at 320px", async ({
   await capture(page, "11-fallback-320.png");
 });
 
-test("picker adopts the control typography instead of the page font", async ({ page }) => {
-  await setup(page, "/");
+test("picker and options adopt the control typography with custom font settings", async ({ page }) => {
+  await setup(page, "/test/fixtures/layout.html");
   test.skip(!(await modernSupported(page)), "Modern Popover + floating placement support is required");
 
-  await page.locator("#city").click();
-  await expect(page.locator(".cb-popover:visible")).toHaveCount(1);
+  await page.addStyleTag({
+    content: `.cb-input {
+      font: italic 600 18px/24px Georgia, serif;
+      font-stretch: condensed;
+      font-feature-settings: "liga" 0;
+      font-variant-numeric: tabular-nums;
+      font-variation-settings: "wght" 550;
+      letter-spacing: 0.5px;
+    }`,
+  });
+  await page.evaluate(() => new Combobox(document.getElementById("chips")));
+  await page.getByRole("combobox", { name: "Many chips" }).click();
+  await expect(page.getByRole("listbox")).toBeVisible();
 
   const fonts = await page.evaluate(() => {
-    const popover = document.querySelector(".cb-popover");
-    const input = document.getElementById("city");
-    const sample = popover.querySelector(".cb-option, .cb-empty");
+    const read = (element) => {
+      const style = getComputedStyle(element);
+      return [
+        style.fontFamily,
+        style.fontSize,
+        style.fontStyle,
+        style.fontWeight,
+        style.lineHeight,
+        style.fontStretch,
+        style.fontFeatureSettings,
+        style.fontVariantNumeric,
+        style.fontVariationSettings,
+        style.letterSpacing,
+      ];
+    };
     return {
-      popover: getComputedStyle(popover).fontFamily,
-      input: getComputedStyle(input).fontFamily,
-      body: getComputedStyle(document.body).fontFamily,
-      option: sample ? getComputedStyle(sample).fontFamily : "",
+      popover: read(document.querySelector(".cb-popover")),
+      input: read(document.querySelector(".cb-input")),
+      body: read(document.body),
+      option: read(document.querySelector(".cb-option")),
     };
   });
 
-  expect(fonts.popover).toBe(fonts.input);
-  expect(fonts.option).toBe(fonts.input);
-  expect(fonts.input).not.toBe(fonts.body);
+  expect(fonts.popover).toEqual(fonts.input);
+  expect(fonts.option).toEqual(fonts.input);
+  expect(fonts.input[0]).not.toBe(fonts.body[0]);
 });
 
 test("input combobox and single-select control share geometry", async ({ page }) => {
