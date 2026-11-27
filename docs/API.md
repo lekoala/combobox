@@ -185,10 +185,12 @@ configuration, not application metadata.
   placeholder: "Search…",
   chipClass: "",            // space-separated author classes; replaces the default chip skin
   messages: {
+    add: "Add",               // fallback Add-control label
     noResults: "No results",
     loading: "Loading…",
     loadError: "Failed to load results",
     create: (query) => `Create “${query}”`,
+    remove: (label) => `Remove ${label}`,  // chip remove-button accessible label
     position: (label, position, total) => `${label} position ${position} of ${total}`,
   },
   minChars: 0,
@@ -247,6 +249,8 @@ new Combobox(select, {
   },
 })
 ```
+
+The full catalog is `add` (fallback Add-control label), `noResults`, `loading`, `loadError`, `create(query)`, `remove(label)` (chip remove-button accessible label) and `position(label, position, total)` (spoken position).
 
 `placeholder` deliberately stays top-level: it maps to the `<combo-box placeholder="…">` attribute and is structural input state, not generated text. It supplies the generated select filter or an input+datalist source only when that interaction input has no authored native `placeholder`; `dispose()` restores authored input state exactly. `render` stays separate from `messages` — messages are the accessible/bypassable text fallback, renderers return DOM.
 

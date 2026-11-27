@@ -6,11 +6,18 @@
 :root {
   --cb-bg: #fff;
   --cb-color: #1f2328;
-  --cb-border-color: color-mix(in srgb, var(--cb-color) 16%, var(--cb-bg));
+  /* Static palette for engines without color-mix() (Safari 15–16.1, the
+     documented fallback floor). A color-mix() value in a custom property is
+     still a valid token stream there, so it only fails when substituted and
+     would silently erase the border/placeholder. The color-mix() versions
+     override these in the @supports block below. These literals mirror the
+     default palette: an application retheming --cb-color/--cb-bg must set
+     these tokens itself in those engines. */
+  --cb-border-color: #dbdcdd;
   --cb-border-radius: 0.5rem;
   --cb-focus-color: #2563eb;
   --cb-focus-width: 2px;
-  --cb-chip-bg: color-mix(in srgb, var(--cb-focus-color) 10%, var(--cb-bg));
+  --cb-chip-bg: #e9effd;
   --cb-chip-color: var(--cb-color);
   --cb-chip-border-color: transparent;
   --cb-chip-border-width: 0px;
@@ -19,14 +26,25 @@
   --cb-chip-remove-size: 1.4286em;
   --cb-chip-remove-inset: 0.1429em;
   --cb-picker-bg: var(--cb-bg);
-  --cb-option-active-bg: color-mix(in srgb, var(--cb-color) 5%, var(--cb-picker-bg));
+  --cb-option-active-bg: #f4f4f4;
   --cb-option-active-color: var(--cb-color);
-  --cb-option-selected-bg: color-mix(in srgb, var(--cb-focus-color) 12%, var(--cb-picker-bg));
-  --cb-muted-color: color-mix(in srgb, var(--cb-color) 58%, var(--cb-bg));
+  --cb-option-selected-bg: #e5ecfd;
+  --cb-muted-color: #7d7f82;
   --cb-error-color: #dc2626;
   --cb-control-height: 2.375rem;
   --cb-option-min-height: 2rem;
   --cb-check-size: 1em;
+}
+
+/* Derived tokens, only where color-mix() is understood. */
+@supports (color: color-mix(in srgb, red 50%, blue)) {
+  :root {
+    --cb-border-color: color-mix(in srgb, var(--cb-color) 16%, var(--cb-bg));
+    --cb-chip-bg: color-mix(in srgb, var(--cb-focus-color) 10%, var(--cb-bg));
+    --cb-option-active-bg: color-mix(in srgb, var(--cb-color) 5%, var(--cb-picker-bg));
+    --cb-option-selected-bg: color-mix(in srgb, var(--cb-focus-color) 12%, var(--cb-picker-bg));
+    --cb-muted-color: color-mix(in srgb, var(--cb-color) 58%, var(--cb-bg));
+  }
 }
 
 .cb-source-hidden {
